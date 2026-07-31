@@ -1,4 +1,4 @@
-name: DevReinstaller
+name: DevManagement
 
 options:
   bundleIdPrefix: com.zivtal
@@ -9,13 +9,13 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "1.1.5"
-    CURRENT_PROJECT_VERSION: "16"
+    MARKETING_VERSION: "1.1.6"
+    CURRENT_PROJECT_VERSION: "17"
     DEVELOPMENT_TEAM: 52HV33827A
     CODE_SIGN_STYLE: Automatic
 
 targets:
-  DevReinstaller:
+  DevManagement:
     type: application
     platform: macOS
     sources:
@@ -28,9 +28,9 @@ targets:
       - sdk: UserNotifications.framework
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.zivtal.DevReinstaller
+        PRODUCT_BUNDLE_IDENTIFIER: com.zivtal.DevManagement
         PRODUCT_NAME: Development Management
-        PRODUCT_MODULE_NAME: DevReinstaller
+        PRODUCT_MODULE_NAME: DevManagement
         GENERATE_INFOPLIST_FILE: true
         INFOPLIST_KEY_CFBundleDisplayName: Development Management
         INFOPLIST_KEY_CFBundleShortVersionString: $(MARKETING_VERSION)
@@ -43,26 +43,26 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
 
-  DevReinstallerTests:
+  DevManagementTests:
     type: bundle.unit-test
     platform: macOS
     sources:
       - Tests
     dependencies:
-      - target: DevReinstaller
+      - target: DevManagement
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.zivtal.DevReinstallerTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.zivtal.DevManagementTests
         GENERATE_INFOPLIST_FILE: true
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Development Management.app/Contents/MacOS/Development Management"
 
 schemes:
-  DevReinstaller:
+  DevManagement:
     build:
       targets:
-        DevReinstaller: all
-        DevReinstallerTests:
+        DevManagement: all
+        DevManagementTests:
           - test
     test:
       targets:
-        - DevReinstallerTests
+        - DevManagementTests

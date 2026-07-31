@@ -1,5 +1,5 @@
 import XCTest
-@testable import DevReinstaller
+@testable import DevManagement
 
 final class ProjectIconServiceTests: XCTestCase {
     func testPrefersPhoneApplicationIconOverWatchIcon() async throws {

@@ -10,7 +10,7 @@ final class SettingsStore {
         self.fileManager = fileManager
         let applicationSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        let directory = applicationSupport.appendingPathComponent("DevReinstaller", isDirectory: true)
+        let directory = applicationSupport.appendingPathComponent("DevManagement", isDirectory: true)
         stateURL = directory.appendingPathComponent("state.json")
 
         encoder = JSONEncoder()
@@ -38,8 +38,7 @@ final class SettingsStore {
             let data = try encoder.encode(state)
             try data.write(to: stateURL, options: .atomic)
         } catch {
-            NSLog("DevReinstaller could not save state: %@", error.localizedDescription)
+            NSLog("DevManagement could not save state: %@", error.localizedDescription)
         }
     }
 }
-

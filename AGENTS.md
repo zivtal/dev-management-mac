@@ -1,6 +1,6 @@
-# Dev Reinstaller development rules
+# Development Management development rules
 
-Dev Reinstaller is a native macOS 14+ SwiftUI menu-bar utility. It must remain
+Development Management is a native macOS 14+ SwiftUI menu-bar utility. It must remain
 an `LSUIElement` accessory app: no Dock icon and no ordinary main window.
 
 ## Required delivery workflow
@@ -10,7 +10,7 @@ an `LSUIElement` accessory app: no Dock icon and no ordinary main window.
   `scripts/bump-version.sh`.
 - Run the unit tests, then run `scripts/build-dmg-unsigned.sh` once.
 - The DMG script is the deployment step: it builds Release, verifies the DMG,
-  stops the running DevReinstaller process, replaces the copy in `/Applications`,
+  stops the running Development Management process, replaces the copy in `/Applications`,
   and launches the new copy. Do not repeat those deployment actions manually.
 - After the tests and DMG deployment succeed, commit the completed changes and
   push the current branch to `origin`.

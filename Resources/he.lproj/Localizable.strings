@@ -1,4 +1,3 @@
-"Dev Reinstaller" = "מתקין אפליקציות פיתוח";
 "Development Management" = "Development Management";
 "Something went wrong" = "משהו השתבש";
 "OK" = "אישור";
@@ -61,7 +60,6 @@
 "The interval is tracked separately for each application and each iPhone. A newly added application is installed at the next connection." = "המרווח נשמר בנפרד לכל אפליקציה ולכל iPhone. אפליקציה חדשה תותקן בחיבור הבא.";
 "The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection." = "המרווח נשמר בנפרד לכל אפליקציה ולכל iPhone או iPad שנבחרו. אפליקציה חדשה תותקן בחיבור הבא.";
 "Background operation" = "פעולה ברקע";
-"Open Dev Reinstaller at login" = "פתח את התוכנה בעת הכניסה למק";
 "Open Development Management at login" = "פתח את Development Management בעת הכניסה למק";
 "The application has no Dock window and remains available from the menu bar." = "לתוכנה אין חלון ב־Dock והיא נשארת זמינה בשורת התפריטים.";
 "settings.launch_at_login.default_description" = "הפעלה בעת הכניסה פעילה כברירת מחדל בהרצה הראשונה, וניתן לכבות אותה כאן.";

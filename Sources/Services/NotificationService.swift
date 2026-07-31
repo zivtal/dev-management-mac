@@ -34,7 +34,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         center.delegate = self
         center.requestAuthorization(options: [.alert, .sound]) { _, error in
             if let error {
-                NSLog("DevReinstaller notification permission error: %@", error.localizedDescription)
+                NSLog("DevManagement notification permission error: %@", error.localizedDescription)
             }
         }
     }
@@ -64,7 +64,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                     try? FileManager.default.removeItem(at: attachmentDirectoryURL)
                 }
                 NSLog(
-                    "DevReinstaller could not attach the installed application icon: %@",
+                    "DevManagement could not attach the installed application icon: %@",
                     error.localizedDescription
                 )
             }
@@ -80,7 +80,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
                 try? FileManager.default.removeItem(at: attachmentDirectoryURL)
             }
             if let error {
-                NSLog("DevReinstaller could not deliver notification: %@", error.localizedDescription)
+                NSLog("DevManagement could not deliver notification: %@", error.localizedDescription)
             }
         }
     }
@@ -90,7 +90,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         fileManager: FileManager = .default
     ) throws -> NotificationAttachmentCopy {
         let directoryURL = fileManager.temporaryDirectory
-            .appendingPathComponent("DevReinstaller-Notification-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("DevManagement-Notification-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
 
         let fileURL = directoryURL.appendingPathComponent(

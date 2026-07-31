@@ -19,7 +19,7 @@ final class DeviceService {
 
     func availableDevices() async throws -> [ConnectedDevice] {
         let temporaryDirectory = fileManager.temporaryDirectory
-            .appendingPathComponent("DevReinstaller-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("DevManagement-\(UUID().uuidString)", isDirectory: true)
         let jsonURL = temporaryDirectory.appendingPathComponent("devices.json")
 
         try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)

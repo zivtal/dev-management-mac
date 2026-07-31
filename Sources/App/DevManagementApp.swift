@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct DevReinstallerApp: App {
+struct DevManagementApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
 

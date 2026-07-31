@@ -15,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "34B8ECE8E55601C721C40F92"
-               BuildableName = "DevReinstaller.app"
-               BlueprintName = "DevReinstaller"
-               ReferencedContainer = "container:DevReinstaller.xcodeproj">
+               BlueprintIdentifier = "A389D3247DCD751F33F8BA33"
+               BuildableName = "DevManagement.app"
+               BlueprintName = "DevManagement"
+               ReferencedContainer = "container:DevManagement.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
@@ -29,10 +29,10 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "38EEA9702C852901ED4297A3"
-               BuildableName = "DevReinstallerTests.xctest"
-               BlueprintName = "DevReinstallerTests"
-               ReferencedContainer = "container:DevReinstaller.xcodeproj">
+               BlueprintIdentifier = "1C9ABA666569EE5A31F5770D"
+               BuildableName = "DevManagementTests.xctest"
+               BlueprintName = "DevManagementTests"
+               ReferencedContainer = "container:DevManagement.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -46,10 +46,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "34B8ECE8E55601C721C40F92"
-            BuildableName = "DevReinstaller.app"
-            BlueprintName = "DevReinstaller"
-            ReferencedContainer = "container:DevReinstaller.xcodeproj">
+            BlueprintIdentifier = "A389D3247DCD751F33F8BA33"
+            BuildableName = "DevManagement.app"
+            BlueprintName = "DevManagement"
+            ReferencedContainer = "container:DevManagement.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -58,10 +58,10 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "38EEA9702C852901ED4297A3"
-               BuildableName = "DevReinstallerTests.xctest"
-               BlueprintName = "DevReinstallerTests"
-               ReferencedContainer = "container:DevReinstaller.xcodeproj">
+               BlueprintIdentifier = "1C9ABA666569EE5A31F5770D"
+               BuildableName = "DevManagementTests.xctest"
+               BlueprintName = "DevManagementTests"
+               ReferencedContainer = "container:DevManagement.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -82,10 +82,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "34B8ECE8E55601C721C40F92"
-            BuildableName = "DevReinstaller.app"
-            BlueprintName = "DevReinstaller"
-            ReferencedContainer = "container:DevReinstaller.xcodeproj">
+            BlueprintIdentifier = "A389D3247DCD751F33F8BA33"
+            BuildableName = "DevManagement.app"
+            BlueprintName = "DevManagement"
+            ReferencedContainer = "container:DevManagement.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -99,10 +99,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "34B8ECE8E55601C721C40F92"
-            BuildableName = "DevReinstaller.app"
-            BlueprintName = "DevReinstaller"
-            ReferencedContainer = "container:DevReinstaller.xcodeproj">
+            BlueprintIdentifier = "A389D3247DCD751F33F8BA33"
+            BuildableName = "DevManagement.app"
+            BlueprintName = "DevManagement"
+            ReferencedContainer = "container:DevManagement.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

@@ -89,7 +89,7 @@ final class InstallationService {
         }
 
         let temporaryDirectory = fileManager.temporaryDirectory
-            .appendingPathComponent("DevReinstaller-Build-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("DevManagement-Build-\(UUID().uuidString)", isDirectory: true)
         let derivedDataURL = temporaryDirectory.appendingPathComponent("DerivedData", isDirectory: true)
         try fileManager.createDirectory(at: derivedDataURL, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: temporaryDirectory) }

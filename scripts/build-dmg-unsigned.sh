@@ -3,10 +3,10 @@
 # stops the old process, and launches the newly installed version.
 set -euo pipefail
 
-PROJECT_NAME="DevReinstaller"
+PROJECT_NAME="DevManagement"
 APP_NAME="Development Management"
 DISPLAY_NAME="Development Management"
-SCHEME="DevReinstaller"
+SCHEME="DevManagement"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$ROOT/.build-dmg"
 DERIVED="$BUILD_DIR/DerivedData"
@@ -15,7 +15,6 @@ DIST_DIR="$ROOT/dist"
 DMG_PATH="$DIST_DIR/${PROJECT_NAME}.dmg"
 INSTALL_PATH="/Applications/${APP_NAME}.app"
 INSTALL_TMP="/Applications/.${APP_NAME}.installing-$$.app"
-LEGACY_INSTALL_PATH="/Applications/DevReinstaller.app"
 MOUNT_POINT=""
 DMG_ATTACHED=0
 
@@ -103,7 +102,6 @@ hdiutil verify "$DMG_PATH" >/dev/null
 
 echo "==> Closing running ${DISPLAY_NAME}"
 stop_process "$APP_NAME"
-stop_process "$PROJECT_NAME"
 
 echo "==> Installing into /Applications"
 MOUNT_POINT="$(mktemp -d "${TMPDIR:-/tmp}/${APP_NAME}-dmg.XXXXXX")"
@@ -113,8 +111,7 @@ DMG_ATTACHED=1
 rm -rf "$INSTALL_TMP"
 ditto "$MOUNT_POINT/${APP_NAME}.app" "$INSTALL_TMP"
 codesign --verify --deep --strict "$INSTALL_TMP"
-[[ ! -d "$LEGACY_INSTALL_PATH" ]] || "$LSREGISTER" -u "$LEGACY_INSTALL_PATH" 2>/dev/null || true
-rm -rf "$INSTALL_PATH" "$LEGACY_INSTALL_PATH"
+rm -rf "$INSTALL_PATH"
 mv "$INSTALL_TMP" "$INSTALL_PATH"
 [[ ! -x "$LSREGISTER" ]] || "$LSREGISTER" -f "$INSTALL_PATH" 2>/dev/null || true
 

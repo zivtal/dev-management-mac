@@ -1,5 +1,5 @@
 import XCTest
-@testable import DevReinstaller
+@testable import DevManagement
 
 final class SchedulingPolicyTests: XCTestCase {
     func testNeverInstalledIsImmediatelyDue() {
@@ -24,4 +24,3 @@ final class SchedulingPolicyTests: XCTestCase {
         XCTAssertFalse(SchedulingPolicy.isDue(lastInstalledAt: twelveHoursAgo, now: now, intervalDays: 0))
     }
 }
-

@@ -1,4 +1,3 @@
-"Dev Reinstaller" = "Dev Reinstaller";
 "Development Management" = "Development Management";
 "Something went wrong" = "Something went wrong";
 "OK" = "OK";
@@ -61,7 +60,6 @@
 "The interval is tracked separately for each application and each iPhone. A newly added application is installed at the next connection." = "The interval is tracked separately for each application and each iPhone. A newly added application is installed at the next connection.";
 "The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection." = "The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection.";
 "Background operation" = "Background operation";
-"Open Dev Reinstaller at login" = "Open Dev Reinstaller at login";
 "Open Development Management at login" = "Open Development Management at login";
 "The application has no Dock window and remains available from the menu bar." = "The application has no Dock window and remains available from the menu bar.";
 "settings.launch_at_login.default_description" = "Launch at login is enabled by default on first run and can be turned off here.";

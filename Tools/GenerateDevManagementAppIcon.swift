@@ -3,7 +3,7 @@ import Foundation
 
 let arguments = CommandLine.arguments
 guard arguments.count == 2 else {
-    fputs("usage: swift Tools/GenerateDevReinstallerAppIcon.swift <AppIcon.appiconset>\n", stderr)
+    fputs("usage: swift Tools/GenerateDevManagementAppIcon.swift <AppIcon.appiconset>\n", stderr)
     exit(2)
 }
 
@@ -74,7 +74,7 @@ func generateIcon(pixelSize: Int) throws {
           let bitmap = NSBitmapImageRep(data: tiff),
           let png = bitmap.representation(using: .png, properties: [:])
     else {
-        throw NSError(domain: "DevReinstallerIcon", code: 1)
+        throw NSError(domain: "DevManagementIcon", code: 1)
     }
     try png.write(to: outputURL.appendingPathComponent("AppIcon-\(pixelSize).png"), options: .atomic)
 }
