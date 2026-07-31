@@ -118,6 +118,8 @@ The menu-bar popover is the app's primary status surface. It displays:
 - Installation progress and the latest command-output line while work runs.
 - Every managed application with its icon, enabled state, version, next due
   date, and most recent installation.
+- A per-application Play/Pause control that resumes or pauses future
+  installations directly from the menu-bar popover.
 - Per-application **Install now** actions.
 - **Install All Now**, **Check now**, **Settings…**, and **Quit** actions.
 

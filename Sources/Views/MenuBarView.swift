@@ -115,7 +115,7 @@ struct MenuBarView: View {
                             .frame(width: 80, alignment: .leading)
                         Text("Last installed")
                             .frame(width: 135, alignment: .leading)
-                        Color.clear.frame(width: 18, height: 1)
+                        Color.clear.frame(width: 48, height: 1)
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -148,18 +148,32 @@ struct MenuBarView: View {
                                 .frame(width: 135, alignment: .leading)
                                 .lineLimit(1)
 
-                            Button {
-                                model.installNow(projectID: project.id)
-                            } label: {
-                                Image(systemName: "arrow.clockwise")
+                            HStack(spacing: 6) {
+                                Button {
+                                    model.setProjectEnabled(!project.isEnabled, projectID: project.id)
+                                } label: {
+                                    Image(systemName: project.isEnabled ? "pause.fill" : "play.fill")
+                                        .frame(width: 14)
+                                }
+                                .buttonStyle(.borderless)
+                                .foregroundStyle(project.isEnabled ? Color.primary : Color.green)
+                                .help(projectActivationActionText(for: project))
+                                .accessibilityLabel(projectActivationActionText(for: project))
+
+                                Button {
+                                    model.installNow(projectID: project.id)
+                                } label: {
+                                    Image(systemName: "arrow.clockwise")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Install now")
+                                .disabled(
+                                    !project.isEnabled
+                                        || model.selectedInstallableDevices(for: project).isEmpty
+                                        || model.progress != nil
+                                )
                             }
-                            .buttonStyle(.borderless)
-                            .help("Install now")
-                            .disabled(
-                                !project.isEnabled
-                                    || model.selectedInstallableDevices(for: project).isEmpty
-                                    || model.progress != nil
-                            )
+                            .frame(width: 48, alignment: .trailing)
                         }
                     }
                 }
@@ -230,6 +244,12 @@ struct MenuBarView: View {
         }
         if nextDate <= Date() { return L10n.text("Installation is due") }
         return L10n.format("Next: %@", nextDate.formatted(date: .abbreviated, time: .shortened))
+    }
+
+    private func projectActivationActionText(for project: ManagedProject) -> String {
+        project.isEnabled
+            ? L10n.text("Pause application installations")
+            : L10n.text("Resume application installations")
     }
 
     private func lastInstalledText(for project: ManagedProject) -> String {

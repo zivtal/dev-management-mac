@@ -27,6 +27,8 @@ an `LSUIElement` accessory app: no Dock icon and no ordinary main window.
 - Pausing an application preserves its device selections but blocks automatic,
   manual, and Install All work until it is resumed. Work already in progress may
   finish.
+- Every application row in the menu-bar popover provides a direct Play/Pause
+  control for resuming or pausing future installations.
 - Application details remain internally scrollable at the minimum supported
   Settings window height.
 - When work is due, retry discovery every five minutes. Once all work succeeds,
