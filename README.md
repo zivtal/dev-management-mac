@@ -192,8 +192,8 @@ Discovery follows these rules:
    `Watch`, or `Share`.
 6. Prefer the `Debug` configuration, then a configuration containing `debug`,
    then the first available configuration.
-7. If `install.sh` exists at the selected folder's root, select it by default;
-   otherwise select direct Xcode installation.
+7. Select direct Xcode installation by default. If `install.sh` exists at the
+   selected folder's root, keep it available as an optional installation method.
 8. Query the selected scheme and configuration with `xcodebuild
    -showBuildSettings -json` for a generic iOS destination. Read
    `TARGETED_DEVICE_FAMILY` from the installable iOS application target (`1`
@@ -234,14 +234,23 @@ selected project/workspace, scheme, configuration, and device, Dev Reinstaller:
    destination timeout.
 3. Passes `-allowProvisioningUpdates` and
    `-allowProvisioningDeviceRegistration`.
-4. Resolves the built application with `xcodebuild -showBuildSettings -json`,
+4. When a signing team is selected for the managed application, overrides
+   `DEVELOPMENT_TEAM` for that build and uses Xcode automatic signing without
+   modifying the source project. Available teams come from valid local Apple
+   Development identities and can be refreshed in Settings.
+5. Resolves the built application with `xcodebuild -showBuildSettings -json`,
    with a Derived Data scan as fallback.
-5. Runs `xcrun devicectl device install app --device <device-udid>
+6. Runs `xcrun devicectl device install app --device <device-udid>
    --timeout 180 <built-app>`.
-6. Removes the temporary build directory.
+7. Removes the temporary build directory.
 
 The build uses the source tree's current contents and the developer account and
 signing configuration available to Xcode.
+
+Successful-installation notifications may show the installed application's
+icon as an attachment. Dev Reinstaller always creates a temporary copy first,
+because macOS moves notification attachment files into its own data store; files
+inside the managed source project are never handed to the notification system.
 
 ### Optional `install.sh`
 

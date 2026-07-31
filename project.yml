@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "1.1.3"
-    CURRENT_PROJECT_VERSION: "14"
+    MARKETING_VERSION: "1.1.4"
+    CURRENT_PROJECT_VERSION: "15"
     DEVELOPMENT_TEAM: 52HV33827A
     CODE_SIGN_STYLE: Automatic
 
@@ -24,6 +24,7 @@ targets:
         buildPhase: resources
     dependencies:
       - sdk: IOKit.framework
+      - sdk: Security.framework
       - sdk: UserNotifications.framework
     settings:
       base:

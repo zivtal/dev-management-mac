@@ -92,10 +92,16 @@
 "Installation method" = "שיטת התקנה";
 "Scheme" = "Scheme";
 "Configuration" = "Configuration";
+"Signing team" = "צוות חתימה";
+"Project default" = "ברירת המחדל של הפרויקט";
+"Refresh signing teams" = "רענן צוותי חתימה";
+"Team %@" = "צוות %@";
+"No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh." = "לא נמצאו צוותי חתימה של Apple Development. יש להוסיף את החשבון והתעודה ב־Xcode ואז לרענן.";
+"Choosing a team uses Xcode automatic signing for this application without changing the project files." = "בחירת צוות מפעילה חתימה אוטומטית של Xcode לאפליקציה הזו בלי לשנות את קובצי הפרויקט.";
 "Show in Finder" = "הצג ב־Finder";
 "Choose an iOS application folder" = "בחירת תיקיית אפליקציית iOS";
 "Add" = "הוסף";
-"install.sh (recommended)" = "install.sh (מומלץ)";
+"install.sh (optional)" = "install.sh (אופציונלי)";
 "Direct Xcode build" = "בנייה ישירה עם Xcode";
 "Select an application to edit its build settings." = "יש לבחור אפליקציה כדי לערוך את הגדרות הבנייה שלה.";
 "Status" = "מצב";

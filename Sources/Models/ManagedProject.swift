@@ -22,7 +22,7 @@ enum InstallMethod: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .installScript: L10n.text("install.sh (recommended)")
+        case .installScript: L10n.text("install.sh (optional)")
         case .xcodebuild: L10n.text("Direct Xcode build")
         }
     }
@@ -45,6 +45,7 @@ struct ManagedProject: Identifiable, Codable, Equatable {
     var buildNumber: String?
     var supportedDeviceFamilies: Set<MobileDeviceFamily>? = nil
     var excludedDeviceUDIDs: Set<String>? = nil
+    var signingTeamID: String? = nil
 
     var folderURL: URL { URL(fileURLWithPath: folderPath, isDirectory: true) }
     var containerURL: URL { URL(fileURLWithPath: containerPath) }
@@ -135,7 +136,7 @@ struct ProjectDescriptor: Equatable {
             configuration: preferredConfiguration,
             availableSchemes: schemes,
             availableConfigurations: configurations,
-            installMethod: installScriptPath == nil ? .xcodebuild : .installScript,
+            installMethod: .xcodebuild,
             installScriptPath: installScriptPath,
             isEnabled: true,
             marketingVersion: nil,

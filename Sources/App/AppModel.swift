@@ -28,6 +28,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var compatibilityRefreshProjectIDs: Set<UUID> = []
     @Published private(set) var pendingInstallAllCount = 0
     @Published private(set) var projectIconURLs: [UUID: URL] = [:]
+    @Published private(set) var developerTeams: [DeveloperTeam] = []
+    @Published private(set) var isRefreshingDeveloperTeams = false
     @Published var presentedError: String?
 
     var installableDevices: [ConnectedDevice] {
@@ -43,6 +45,7 @@ final class AppModel: ObservableObject {
     private let usbConnectionMonitor: USBConnectionMonitor
     private let notificationService: NotificationService
     private let projectIconService: ProjectIconService
+    private let developerTeamService: DeveloperTeamService
     private var monitoringTask: Task<Void, Never>?
     private var isLoading = true
     private var failedAttemptCooldowns: [String: Date] = [:]
@@ -52,6 +55,7 @@ final class AppModel: ObservableObject {
     private var completedInstallAllTargets: Set<String> = []
     private var lastDeviceError: String?
     private var didApplyLaunchAtLoginDefault: Bool
+    private var didRequestNotificationAuthorization = false
 
     init(
         settingsStore: SettingsStore = SettingsStore(),
@@ -62,7 +66,8 @@ final class AppModel: ObservableObject {
         launchAtLoginService: LaunchAtLoginService = LaunchAtLoginService(),
         usbConnectionMonitor: USBConnectionMonitor = USBConnectionMonitor(),
         notificationService: NotificationService = NotificationService(),
-        projectIconService: ProjectIconService = ProjectIconService()
+        projectIconService: ProjectIconService = ProjectIconService(),
+        developerTeamService: DeveloperTeamService = DeveloperTeamService()
     ) {
         self.settingsStore = settingsStore
         self.deviceService = deviceService
@@ -73,6 +78,7 @@ final class AppModel: ObservableObject {
         self.usbConnectionMonitor = usbConnectionMonitor
         self.notificationService = notificationService
         self.projectIconService = projectIconService
+        self.developerTeamService = developerTeamService
 
         let savedState = settingsStore.load()
         var loadedPreferences = savedState.preferences
@@ -100,6 +106,7 @@ final class AppModel: ObservableObject {
         }
 
         persist()
+        refreshDeveloperTeams()
         Task { @MainActor [weak self] in
             await self?.refreshProjectIcons()
         }
@@ -107,9 +114,6 @@ final class AppModel: ObservableObject {
             await self?.refreshUnknownProjectCompatibility()
         }
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-            if preferences.notificationsEnabled != false {
-                notificationService.requestAuthorization()
-            }
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(500))
                 self?.applyLaunchAtLoginPreferenceOnStartup()
@@ -123,6 +127,10 @@ final class AppModel: ObservableObject {
 
     func startMonitoring() {
         guard monitoringTask == nil else { return }
+        if !didRequestNotificationAuthorization, preferences.notificationsEnabled != false {
+            didRequestNotificationAuthorization = true
+            notificationService.requestAuthorization()
+        }
         usbConnectionMonitor.start()
         monitoringTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -136,6 +144,13 @@ final class AppModel: ObservableObject {
 
     func refreshNow() {
         Task { await refreshDevices(installWhenDue: true) }
+    }
+
+    func refreshDeveloperTeams() {
+        guard !isRefreshingDeveloperTeams else { return }
+        isRefreshingDeveloperTeams = true
+        developerTeams = developerTeamService.availableTeams()
+        isRefreshingDeveloperTeams = false
     }
 
     func refreshDevices(installWhenDue: Bool) async {
@@ -489,13 +504,8 @@ final class AppModel: ObservableObject {
             )
             recordSuccessfulInstallation(projectID: project.id, deviceUDID: device.udid)
             if preferences.notificationsEnabled != false {
-                let iconURL: URL?
-                if let cachedIconURL = projectIconURLs[project.id] {
-                    iconURL = cachedIconURL
-                } else {
-                    iconURL = await projectIconService.iconURL(for: project)
-                }
-                if let iconURL { projectIconURLs[project.id] = iconURL }
+                let iconURL = await projectIconService.iconURL(for: project)
+                projectIconURLs[project.id] = iconURL
                 notificationService.notifySuccessfulInstallation(
                     project: project,
                     device: device,
@@ -580,9 +590,7 @@ final class AppModel: ObservableObject {
     }
 
     private func refreshProjectIcon(for project: ManagedProject) async {
-        if let url = await projectIconService.iconURL(for: project) {
-            projectIconURLs[project.id] = url
-        }
+        projectIconURLs[project.id] = await projectIconService.iconURL(for: project)
     }
 
     private func refreshUnknownProjectCompatibility() async {

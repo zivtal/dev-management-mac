@@ -92,10 +92,16 @@
 "Installation method" = "Installation method";
 "Scheme" = "Scheme";
 "Configuration" = "Configuration";
+"Signing team" = "Signing team";
+"Project default" = "Project default";
+"Refresh signing teams" = "Refresh signing teams";
+"Team %@" = "Team %@";
+"No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh." = "No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh.";
+"Choosing a team uses Xcode automatic signing for this application without changing the project files." = "Choosing a team uses Xcode automatic signing for this application without changing the project files.";
 "Show in Finder" = "Show in Finder";
 "Choose an iOS application folder" = "Choose an iOS application folder";
 "Add" = "Add";
-"install.sh (recommended)" = "install.sh (recommended)";
+"install.sh (optional)" = "install.sh (optional)";
 "Direct Xcode build" = "Direct Xcode build";
 "Select an application to edit its build settings." = "Select an application to edit its build settings.";
 "Status" = "Status";

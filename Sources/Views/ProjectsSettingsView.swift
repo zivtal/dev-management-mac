@@ -61,6 +61,9 @@ struct ProjectsSettingsView: View {
         } message: {
             Text("The source folder and its files will not be deleted.")
         }
+        .onAppear {
+            model.refreshDeveloperTeams()
+        }
     }
 
     private var applicationTable: some View {
@@ -265,6 +268,56 @@ struct ProjectsSettingsView: View {
                     }
                     .labelsHidden()
                 }
+
+                settingsDivider
+
+                settingsPickerRow("Signing team") {
+                    HStack(spacing: 8) {
+                        Picker(
+                            "Signing team",
+                            selection: Binding(
+                                get: { project.signingTeamID ?? "" },
+                                set: { teamID in
+                                    model.updateProject(id: project.id) {
+                                        $0.signingTeamID = teamID.isEmpty ? nil : teamID
+                                    }
+                                }
+                            )
+                        ) {
+                            Text("Project default").tag("")
+                            ForEach(model.developerTeams) { team in
+                                Text(team.displayName).tag(team.id)
+                            }
+                            if let selectedTeamID = project.signingTeamID,
+                               !model.developerTeams.contains(where: { $0.id == selectedTeamID }) {
+                                Text(L10n.format("Team %@", selectedTeamID)).tag(selectedTeamID)
+                            }
+                        }
+                        .labelsHidden()
+
+                        Button {
+                            model.refreshDeveloperTeams()
+                        } label: {
+                            if model.isRefreshingDeveloperTeams {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Refresh signing teams")
+                        .disabled(model.isRefreshingDeveloperTeams || model.progress != nil)
+                    }
+                }
+
+                settingsDivider
+
+                Text(signingTeamGuidance)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
             }
         }
         .background(settingsCardBackground)
@@ -384,6 +437,13 @@ struct ProjectsSettingsView: View {
     private var settingsCardBackground: some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
             .fill(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private var signingTeamGuidance: String {
+        if model.developerTeams.isEmpty {
+            return L10n.text("No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh.")
+        }
+        return L10n.text("Choosing a team uses Xcode automatic signing for this application without changing the project files.")
     }
 
     private var selectedProject: ManagedProject? {

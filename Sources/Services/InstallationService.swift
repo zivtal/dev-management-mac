@@ -94,14 +94,11 @@ final class InstallationService {
         try fileManager.createDirectory(at: derivedDataURL, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: temporaryDirectory) }
 
-        let commonArguments = [
-            project.containerKind.xcodebuildFlag, project.containerPath,
-            "-scheme", project.scheme,
-            "-configuration", project.configuration,
-            "-destination", "platform=iOS,id=\(device.udid)",
-            "-destination-timeout", "45",
-            "-derivedDataPath", derivedDataURL.path
-        ]
+        let commonArguments = Self.xcodeArguments(
+            project: project,
+            device: device,
+            derivedDataURL: derivedDataURL
+        )
 
         eventHandler(.phase(.building))
         let buildResult = try await processRunner.runAndRequireSuccess(
@@ -137,6 +134,31 @@ final class InstallationService {
         return InstallationOutcome(log: Self.trimmedLog(
             buildResult.output + "\n\n" + installResult.output
         ))
+    }
+
+    static func xcodeArguments(
+        project: ManagedProject,
+        device: ConnectedDevice,
+        derivedDataURL: URL
+    ) -> [String] {
+        var arguments = [
+            project.containerKind.xcodebuildFlag, project.containerPath,
+            "-scheme", project.scheme,
+            "-configuration", project.configuration,
+            "-destination", "platform=iOS,id=\(device.udid)",
+            "-destination-timeout", "45",
+            "-derivedDataPath", derivedDataURL.path
+        ]
+        if let teamID = project.signingTeamID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !teamID.isEmpty {
+            arguments.append(contentsOf: [
+                "DEVELOPMENT_TEAM=\(teamID)",
+                "CODE_SIGN_STYLE=Automatic",
+                "PROVISIONING_PROFILE=",
+                "PROVISIONING_PROFILE_SPECIFIER="
+            ])
+        }
+        return arguments
     }
 
     private func locateBuiltApplication(

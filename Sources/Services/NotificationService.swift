@@ -1,6 +1,11 @@
 import Foundation
 import UserNotifications
 
+struct NotificationAttachmentCopy: Equatable {
+    let fileURL: URL
+    let directoryURL: URL
+}
+
 enum InstallationNotificationText {
     static func title(project: ManagedProject) -> String {
         L10n.format("%@ reinstalled successfully", project.displayName)
@@ -43,13 +48,21 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         content.title = InstallationNotificationText.title(project: project)
         content.body = InstallationNotificationText.body(project: project, device: device)
         content.sound = .default
+        var attachmentDirectoryURL: URL?
         if let applicationIconURL {
             do {
+                let attachmentCopy = try Self.copyForNotificationAttachment(
+                    sourceURL: applicationIconURL
+                )
+                attachmentDirectoryURL = attachmentCopy.directoryURL
                 content.attachments = [try UNNotificationAttachment(
                     identifier: "installed-application-icon",
-                    url: applicationIconURL
+                    url: attachmentCopy.fileURL
                 )]
             } catch {
+                if let attachmentDirectoryURL {
+                    try? FileManager.default.removeItem(at: attachmentDirectoryURL)
+                }
                 NSLog(
                     "DevReinstaller could not attach the installed application icon: %@",
                     error.localizedDescription
@@ -63,9 +76,32 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
             trigger: nil
         )
         center.add(request) { error in
+            if let attachmentDirectoryURL {
+                try? FileManager.default.removeItem(at: attachmentDirectoryURL)
+            }
             if let error {
                 NSLog("DevReinstaller could not deliver notification: %@", error.localizedDescription)
             }
+        }
+    }
+
+    static func copyForNotificationAttachment(
+        sourceURL: URL,
+        fileManager: FileManager = .default
+    ) throws -> NotificationAttachmentCopy {
+        let directoryURL = fileManager.temporaryDirectory
+            .appendingPathComponent("DevReinstaller-Notification-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+
+        let fileURL = directoryURL.appendingPathComponent(
+            sourceURL.lastPathComponent.isEmpty ? "ApplicationIcon.png" : sourceURL.lastPathComponent
+        )
+        do {
+            try fileManager.copyItem(at: sourceURL, to: fileURL)
+            return NotificationAttachmentCopy(fileURL: fileURL, directoryURL: directoryURL)
+        } catch {
+            try? fileManager.removeItem(at: directoryURL)
+            throw error
         }
     }
 

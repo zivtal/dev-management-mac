@@ -112,6 +112,7 @@ ditto "$MOUNT_POINT/${APP_NAME}.app" "$INSTALL_TMP"
 codesign --verify --deep --strict "$INSTALL_TMP"
 rm -rf "$INSTALL_PATH"
 mv "$INSTALL_TMP" "$INSTALL_PATH"
+[[ ! -x "$LSREGISTER" ]] || "$LSREGISTER" -f "$INSTALL_PATH" 2>/dev/null || true
 
 hdiutil detach "$MOUNT_POINT" >/dev/null
 DMG_ATTACHED=0
@@ -127,4 +128,3 @@ SIZE="$(du -h "$DMG_PATH" | cut -f1)"
 echo ""
 echo "✅ Built $DMG_PATH ($SIZE)"
 echo "✅ Installed and launched ${DISPLAY_NAME} $VERSION (build $BUILD)"
-
