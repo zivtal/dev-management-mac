@@ -25,6 +25,12 @@ struct SettingsView: View {
         .frame(minWidth: 820, idealWidth: 900, minHeight: 620, idealHeight: 720)
         .tint(.blue)
         .background(SettingsWindowConfigurator())
+        .onAppear {
+            model.setSettingsWindowOpen(true)
+        }
+        .onDisappear {
+            model.setSettingsWindowOpen(false)
+        }
         .alert(
             Text("Something went wrong"),
             isPresented: Binding(

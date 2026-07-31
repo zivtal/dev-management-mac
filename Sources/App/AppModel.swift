@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var projectIconURLs: [UUID: URL] = [:]
     @Published private(set) var developerTeams: [DeveloperTeam] = []
     @Published private(set) var isRefreshingDeveloperTeams = false
+    @Published private(set) var isSettingsWindowOpen = false
     @Published var presentedError: String?
 
     var installableDevices: [ConnectedDevice] {
@@ -169,7 +170,7 @@ final class AppModel: ObservableObject {
             if !installAllTargets.isEmpty {
                 preparePendingInstallAllTargets()
                 await installAllRequestedProjects(on: appInstallableDevices)
-            } else if installWhenDue, preferences.automationEnabled {
+            } else if installWhenDue, preferences.automationEnabled, !isSettingsWindowOpen {
                 await installDueProjects(on: appInstallableDevices)
             }
         } catch {
@@ -207,7 +208,7 @@ final class AppModel: ObservableObject {
             )
             if connectedDevices.isEmpty {
                 await refreshDevices(installWhenDue: true)
-            } else if preferences.automationEnabled {
+            } else if preferences.automationEnabled, !isSettingsWindowOpen {
                 await installDueProjects(on: installableDevices)
             }
         } catch {
@@ -355,6 +356,13 @@ final class AppModel: ObservableObject {
             preferences.launchAtLogin = launchAtLoginService.isEnabled
             presentedError = L10n.format("Could not change launch at login: %@", error.localizedDescription)
         }
+    }
+
+    func setSettingsWindowOpen(_ isOpen: Bool) {
+        guard isSettingsWindowOpen != isOpen else { return }
+        isSettingsWindowOpen = isOpen
+        guard !isOpen else { return }
+        Task { await refreshDevices(installWhenDue: true) }
     }
 
     private func applyLaunchAtLoginPreferenceOnStartup() {

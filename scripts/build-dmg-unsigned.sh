@@ -49,6 +49,19 @@ stop_process() {
   killall -9 "$process_name"
 }
 
+cleanup_stale_login_items() {
+  osascript \
+    -e 'tell application "System Events"' \
+    -e 'repeat with loginItem in every login item' \
+    -e 'try' \
+    -e 'set itemPath to POSIX path of (path of loginItem)' \
+    -e 'if itemPath is "/Applications/Development Management.app" or itemPath starts with "/private/tmp/" then delete loginItem' \
+    -e 'end try' \
+    -e 'end repeat' \
+    -e 'end tell' \
+    2>/dev/null || echo "warning: could not clean stale login items" >&2
+}
+
 require xcodegen "install with: brew install xcodegen"
 require xcodebuild "install Xcode command line tools"
 require hdiutil
@@ -57,6 +70,7 @@ require ditto
 require killall
 require open
 require pgrep
+require osascript
 
 cd "$ROOT"
 
@@ -102,6 +116,7 @@ hdiutil verify "$DMG_PATH" >/dev/null
 
 echo "==> Closing running ${DISPLAY_NAME}"
 stop_process "$APP_NAME"
+cleanup_stale_login_items
 
 echo "==> Installing into /Applications"
 MOUNT_POINT="$(mktemp -d "${TMPDIR:-/tmp}/${APP_NAME}-dmg.XXXXXX")"
