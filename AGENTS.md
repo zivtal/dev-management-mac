@@ -29,8 +29,9 @@ an `LSUIElement` accessory app: no Dock icon and no ordinary main window.
   finish.
 - Every application row in the menu-bar popover provides a direct Play/Pause
   control for resuming or pausing future installations.
-- Application details remain internally scrollable at the minimum supported
-  Settings window height.
+- Settings opens at no less than 80% of the available screen height.
+- Application build controls and device-selection guidance remain fixed; only
+  the compatible-device rows scroll when their list exceeds the available space.
 - When work is due, retry discovery every five minutes. Once all work succeeds,
   sleep until the next scheduled reinstall date.
 - A project folder may use `install.sh`, but it must never be required; direct

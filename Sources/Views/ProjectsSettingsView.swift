@@ -171,40 +171,55 @@ struct ProjectsSettingsView: View {
     }
 
     private func projectDetails(_ project: ManagedProject) -> some View {
-        Form {
-            Section {
-                HStack {
-                    Toggle(
-                        "Allow installations",
-                        isOn: Binding(
-                            get: { project.isEnabled },
-                            set: { model.setProjectEnabled($0, projectID: project.id) }
-                        )
-                    )
-                    .help(
-                        project.isEnabled
-                            ? L10n.text("Pause application installations")
-                            : L10n.text("Resume application installations")
-                    )
-                    Spacer()
-                    Button {
-                        model.installNow(projectID: project.id)
-                    } label: {
-                        Label("Install now", systemImage: "arrow.clockwise")
-                    }
-                    .disabled(
-                        !project.isEnabled
-                            || model.selectedInstallableDevices(for: project).isEmpty
-                            || model.progress != nil
-                    )
+        VStack(alignment: .leading, spacing: 16) {
+            projectConfigurationCard(project)
+            deviceTargetsSection(project)
+                .frame(maxHeight: .infinity)
+                .layoutPriority(1)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+    }
 
-                    Button {
-                        NSWorkspace.shared.activateFileViewerSelecting([project.folderURL])
-                    } label: {
-                        Label("Show in Finder", systemImage: "folder")
-                    }
+    private func projectConfigurationCard(_ project: ManagedProject) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Toggle(
+                    "Allow installations",
+                    isOn: Binding(
+                        get: { project.isEnabled },
+                        set: { model.setProjectEnabled($0, projectID: project.id) }
+                    )
+                )
+                .help(
+                    project.isEnabled
+                        ? L10n.text("Pause application installations")
+                        : L10n.text("Resume application installations")
+                )
+                Spacer()
+                Button {
+                    model.installNow(projectID: project.id)
+                } label: {
+                    Label("Install now", systemImage: "arrow.clockwise")
                 }
+                .disabled(
+                    !project.isEnabled
+                        || model.selectedInstallableDevices(for: project).isEmpty
+                        || model.progress != nil
+                )
 
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([project.folderURL])
+                } label: {
+                    Label("Show in Finder", systemImage: "folder")
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+
+            settingsDivider
+
+            settingsPickerRow("Installation method") {
                 Picker(
                     "Installation method",
                     selection: Binding(
@@ -217,8 +232,13 @@ struct ProjectsSettingsView: View {
                     }
                     Text(InstallMethod.xcodebuild.title).tag(InstallMethod.xcodebuild)
                 }
+                .labelsHidden()
+            }
 
-                if project.installMethod == .xcodebuild {
+            if project.installMethod == .xcodebuild {
+                settingsDivider
+
+                settingsPickerRow("Scheme") {
                     Picker(
                         "Scheme",
                         selection: Binding(
@@ -228,7 +248,12 @@ struct ProjectsSettingsView: View {
                     ) {
                         ForEach(project.availableSchemes, id: \.self) { Text($0).tag($0) }
                     }
+                    .labelsHidden()
+                }
 
+                settingsDivider
+
+                settingsPickerRow("Configuration") {
                     Picker(
                         "Configuration",
                         selection: Binding(
@@ -238,20 +263,32 @@ struct ProjectsSettingsView: View {
                     ) {
                         ForEach(project.availableConfigurations, id: \.self) { Text($0).tag($0) }
                     }
+                    .labelsHidden()
                 }
             }
+        }
+        .background(settingsCardBackground)
+        .fixedSize(horizontal: false, vertical: true)
+    }
 
-            Section("Install on devices") {
-                HStack {
-                    LabeledContent("Supported devices") {
-                        HStack(spacing: 6) {
-                            if model.isRefreshingCompatibility(for: project.id) {
-                                ProgressView().controlSize(.small)
-                            }
-                            Text(project.deviceCompatibilityDescription)
-                                .foregroundStyle(.secondary)
-                        }
+    private func deviceTargetsSection(_ project: ManagedProject) -> some View {
+        let compatibleDevices = model.compatibleConnectedDevices(for: project)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Install on devices")
+                .font(.headline)
+                .padding(.horizontal, 2)
+
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    Text("Supported devices")
+                        .fontWeight(.medium)
+                    Spacer()
+                    if model.isRefreshingCompatibility(for: project.id) {
+                        ProgressView().controlSize(.small)
                     }
+                    Text(project.deviceCompatibilityDescription)
+                        .foregroundStyle(.secondary)
                     Button {
                         model.refreshNow()
                     } label: {
@@ -259,37 +296,94 @@ struct ProjectsSettingsView: View {
                     }
                     .disabled(model.isRefreshingDevices || model.progress != nil)
                 }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+
+                settingsDivider
 
                 Text("Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
 
-                let compatibleDevices = model.compatibleConnectedDevices(for: project)
+                settingsDivider
+
                 if compatibleDevices.isEmpty {
                     Label("No compatible iPhone or iPad is currently connected.", systemImage: "iphone.slash")
                         .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .padding(12)
                 } else {
-                    ForEach(compatibleDevices) { device in
-                        Toggle(
-                            isOn: Binding(
-                                get: { model.isDeviceInstallationEnabled(device.udid, for: project.id) },
-                                set: { model.setDeviceInstallationEnabled($0, deviceUDID: device.udid, for: project.id) }
-                            )
-                        ) {
-                            HStack {
-                                Label(device.name, systemImage: device.symbolName)
-                                Spacer()
-                                Text(L10n.format("%@ · %@", device.model ?? device.platformDescription, device.connectionDescription))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(compatibleDevices) { device in
+                                deviceTargetRow(device, project: project)
+                                Divider().padding(.leading, 12)
                             }
                         }
-                        .toggleStyle(.checkbox)
                     }
+                    .scrollIndicators(.automatic)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .frame(minHeight: 130, maxHeight: .infinity)
+            .background(settingsCardBackground)
         }
-        .formStyle(.grouped)
+    }
+
+    private func deviceTargetRow(_ device: ConnectedDevice, project: ManagedProject) -> some View {
+        Toggle(
+            isOn: Binding(
+                get: { model.isDeviceInstallationEnabled(device.udid, for: project.id) },
+                set: {
+                    model.setDeviceInstallationEnabled(
+                        $0,
+                        deviceUDID: device.udid,
+                        for: project.id
+                    )
+                }
+            )
+        ) {
+            HStack {
+                Label(device.name, systemImage: device.symbolName)
+                Spacer()
+                Text(L10n.format(
+                    "%@ · %@",
+                    device.model ?? device.platformDescription,
+                    device.connectionDescription
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .toggleStyle(.checkbox)
+        .padding(.horizontal, 12)
+        .frame(minHeight: 38)
+    }
+
+    private func settingsPickerRow<Content: View>(
+        _ title: LocalizedStringKey,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack {
+            Text(title)
+            Spacer(minLength: 20)
+            content()
+                .frame(width: 300)
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 44)
+    }
+
+    private var settingsDivider: some View {
+        Divider().padding(.leading, 12)
+    }
+
+    private var settingsCardBackground: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color(nsColor: .controlBackgroundColor))
     }
 
     private var selectedProject: ManagedProject? {

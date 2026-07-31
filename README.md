@@ -155,8 +155,10 @@ Settings contains four tabs and is the only ordinary app window.
 - Install the selected app immediately or reveal its folder in Finder.
 - Remove one or more entries without deleting their source folders.
 - Queue all enabled applications for immediate installation.
-- Scroll the detail form independently from the application table, including
-  at the Settings window's minimum supported height.
+- Keep application build controls and device-selection guidance fixed and
+  visible. The Settings window opens at no less than 80% of the available
+  screen height, while only the compatible-device rows scroll when their list
+  exceeds the available space.
 
 #### Activity
 

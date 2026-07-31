@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -21,7 +22,8 @@ struct SettingsView: View {
                 .environmentObject(model)
                 .tabItem { Label("Devices", systemImage: "iphone.and.arrow.forward") }
         }
-        .frame(minWidth: 720, idealWidth: 780, minHeight: 480, idealHeight: 560)
+        .frame(minWidth: 820, idealWidth: 900, minHeight: 620, idealHeight: 720)
+        .background(SettingsWindowConfigurator())
         .alert(
             Text("Something went wrong"),
             isPresented: Binding(
@@ -31,6 +33,41 @@ struct SettingsView: View {
             actions: { Button("OK") { model.presentedError = nil } },
             message: { Text(model.presentedError ?? "") }
         )
+    }
+}
+
+private struct SettingsWindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> SettingsWindowSizingView {
+        SettingsWindowSizingView()
+    }
+
+    func updateNSView(_ nsView: SettingsWindowSizingView, context: Context) {}
+}
+
+private final class SettingsWindowSizingView: NSView {
+    private weak var configuredWindow: NSWindow?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window, configuredWindow !== window else { return }
+        configuredWindow = window
+
+        DispatchQueue.main.async { [weak window] in
+            guard let window, let screen = window.screen ?? NSScreen.main else { return }
+            let visibleFrame = screen.visibleFrame
+            let targetHeight = max(window.frame.height, visibleFrame.height * 0.8)
+            let targetWidth = max(window.frame.width, min(900, visibleFrame.width * 0.8))
+            let targetSize = NSSize(
+                width: min(targetWidth, visibleFrame.width),
+                height: min(targetHeight, visibleFrame.height)
+            )
+
+            var targetFrame = window.frame
+            targetFrame.size = targetSize
+            targetFrame.origin.x = visibleFrame.midX - targetSize.width / 2
+            targetFrame.origin.y = visibleFrame.midY - targetSize.height / 2
+            window.setFrame(targetFrame, display: true)
+        }
     }
 }
 
