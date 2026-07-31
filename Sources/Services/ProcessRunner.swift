@@ -1,0 +1,126 @@
+import Foundation
+
+struct CommandResult {
+    let terminationStatus: Int32
+    let output: String
+}
+
+enum ProcessRunnerError: LocalizedError {
+    case couldNotStart(String)
+    case commandFailed(executable: String, status: Int32, output: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .couldNotStart(let message):
+            return L10n.format("Could not start the command: %@", message)
+        case .commandFailed(let executable, let status, let output):
+            let usefulOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            return usefulOutput.isEmpty
+                ? L10n.format("The %@ command failed (code %d).", executable, status)
+                : L10n.format("The %@ command failed (code %d).\n%@", executable, status, usefulOutput)
+        }
+    }
+}
+
+final class ProcessRunner {
+    typealias OutputHandler = @Sendable (String) -> Void
+
+    func run(
+        executable: URL,
+        arguments: [String],
+        workingDirectory: URL? = nil,
+        additionalEnvironment: [String: String] = [:],
+        onOutput: OutputHandler? = nil
+    ) async throws -> CommandResult {
+        try await withCheckedThrowingContinuation { continuation in
+            let process = Process()
+            let outputPipe = Pipe()
+            let buffer = ThreadSafeTextBuffer()
+
+            process.executableURL = executable
+            process.arguments = arguments
+            process.currentDirectoryURL = workingDirectory
+            process.standardOutput = outputPipe
+            process.standardError = outputPipe
+
+            var environment = ProcessInfo.processInfo.environment
+            let commonToolPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+            let existingPath = environment["PATH"] ?? ""
+            environment["PATH"] = (commonToolPaths + [existingPath])
+                .filter { !$0.isEmpty }
+                .joined(separator: ":")
+            additionalEnvironment.forEach { environment[$0.key] = $0.value }
+            process.environment = environment
+
+            outputPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+                buffer.append(text)
+                onOutput?(text)
+            }
+
+            process.terminationHandler = { finishedProcess in
+                outputPipe.fileHandleForReading.readabilityHandler = nil
+                let remainingData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                if let remainingText = String(data: remainingData, encoding: .utf8), !remainingText.isEmpty {
+                    buffer.append(remainingText)
+                    onOutput?(remainingText)
+                }
+
+                continuation.resume(returning: CommandResult(
+                    terminationStatus: finishedProcess.terminationStatus,
+                    output: buffer.value
+                ))
+            }
+
+            do {
+                try process.run()
+            } catch {
+                outputPipe.fileHandleForReading.readabilityHandler = nil
+                continuation.resume(throwing: ProcessRunnerError.couldNotStart(error.localizedDescription))
+            }
+        }
+    }
+
+    func runAndRequireSuccess(
+        executable: URL,
+        arguments: [String],
+        workingDirectory: URL? = nil,
+        additionalEnvironment: [String: String] = [:],
+        onOutput: OutputHandler? = nil
+    ) async throws -> CommandResult {
+        let result = try await run(
+            executable: executable,
+            arguments: arguments,
+            workingDirectory: workingDirectory,
+            additionalEnvironment: additionalEnvironment,
+            onOutput: onOutput
+        )
+
+        guard result.terminationStatus == 0 else {
+            throw ProcessRunnerError.commandFailed(
+                executable: executable.lastPathComponent,
+                status: result.terminationStatus,
+                output: result.output
+            )
+        }
+        return result
+    }
+}
+
+private final class ThreadSafeTextBuffer {
+    private let lock = NSLock()
+    private var storage = ""
+
+    func append(_ text: String) {
+        lock.lock()
+        storage.append(text)
+        lock.unlock()
+    }
+
+    var value: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+}

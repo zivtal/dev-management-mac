@@ -1,0 +1,65 @@
+name: DevReinstaller
+
+options:
+  bundleIdPrefix: com.zivtal
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "1.0.4"
+    CURRENT_PROJECT_VERSION: "5"
+    DEVELOPMENT_TEAM: 52HV33827A
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  DevReinstaller:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+      - path: Resources
+        buildPhase: resources
+    dependencies:
+      - sdk: IOKit.framework
+      - sdk: UserNotifications.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.zivtal.DevReinstaller
+        PRODUCT_NAME: DevReinstaller
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_CFBundleDisplayName: Dev Reinstaller
+        INFOPLIST_KEY_CFBundleShortVersionString: $(MARKETING_VERSION)
+        INFOPLIST_KEY_CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        INFOPLIST_KEY_LSUIElement: true
+        ENABLE_APP_SANDBOX: false
+        ENABLE_HARDENED_RUNTIME: true
+        ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: false
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+
+  DevReinstallerTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: DevReinstaller
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.zivtal.DevReinstallerTests
+        GENERATE_INFOPLIST_FILE: true
+
+schemes:
+  DevReinstaller:
+    build:
+      targets:
+        DevReinstaller: all
+        DevReinstallerTests:
+          - test
+    test:
+      targets:
+        - DevReinstallerTests
