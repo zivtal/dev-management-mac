@@ -1,6 +1,6 @@
-# Dev Reinstaller
+# Development Management
 
-Dev Reinstaller is a native macOS menu-bar utility that periodically rebuilds
+Development Management is a native macOS menu-bar utility that periodically rebuilds
 and reinstalls locally developed iOS applications on paired iPhones and iPads.
 It is intended for development-signed apps whose installed builds need to be
 renewed before their signing period expires.
@@ -45,6 +45,7 @@ configurable number of days.
   scheme's `TARGETED_DEVICE_FAMILY` build setting.
 - USB hot-plug monitoring and manual device refresh.
 - Application version, build number, icon, schedule, and last-install status.
+- A live, copyable installation log opened by clicking the progress card.
 - A persistent activity log with command output and error details.
 - A notification after every successful installation, including the app,
   device, model, connection type, and discovered app icon.
@@ -52,7 +53,7 @@ configurable number of days.
 
 ## System requirements
 
-### To run Dev Reinstaller
+### To run Development Management
 
 - macOS 14.0 or newer.
 - A full Xcode installation with its command-line tools selected.
@@ -81,8 +82,8 @@ brew install xcodegen
 The packaged artifact is `dist/DevReinstaller.dmg`.
 
 1. Open the DMG.
-2. Copy `DevReinstaller.app` to `/Applications`.
-3. Launch Dev Reinstaller.
+2. Copy `Development Management.app` to `/Applications`.
+3. Launch Development Management.
 4. Find the stacked-apps icon in the menu bar.
 
 The repository produces an ad-hoc-signed, non-notarized DMG. On another Mac,
@@ -205,7 +206,7 @@ Adding the same standardized folder path twice is rejected.
 
 ### Version and icon discovery
 
-The displayed app version is refreshed during device checks. Dev Reinstaller
+The displayed app version is refreshed during device checks. Development Management
 looks for literal `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` values in:
 
 1. `.xcconfig` files up to four levels below the source folder, with filenames
@@ -227,7 +228,7 @@ image is used as a fallback.
 ### Direct Xcode build
 
 Direct installation does not require any repository-specific script. For the
-selected project/workspace, scheme, configuration, and device, Dev Reinstaller:
+selected project/workspace, scheme, configuration, and device, Development Management:
 
 1. Creates a temporary Derived Data directory.
 2. Runs `xcodebuild` for `platform=iOS,id=<device-udid>` with a 45-second
@@ -248,13 +249,13 @@ The build uses the source tree's current contents and the developer account and
 signing configuration available to Xcode.
 
 Successful-installation notifications may show the installed application's
-icon as an attachment. Dev Reinstaller always creates a temporary copy first,
+icon as an attachment. Development Management always creates a temporary copy first,
 because macOS moves notification attachment files into its own data store; files
 inside the managed source project are never handed to the notification system.
 
 ### Optional `install.sh`
 
-If the selected folder contains `install.sh`, Dev Reinstaller can execute it
+If the selected folder contains `install.sh`, Development Management can execute it
 with `/bin/bash`. The executable bit is not required.
 
 Script contract:
@@ -333,7 +334,7 @@ connection events and **Check now** can still refresh immediately.
 
 Notification permission is requested on startup when notifications are enabled
 and again when the setting is turned back on. Each successful application
-installation produces its own banner and sound, even while Dev Reinstaller is
+installation produces its own banner and sound, even while Development Management is
 frontmost. The notification includes:
 
 - Application name.
@@ -367,7 +368,7 @@ attempt cooldowns are runtime-only and are rebuilt or discarded after relaunch.
 ## Localization
 
 The app ships complete English (`en`) and Hebrew (`he`) string tables and uses
-the locale selected for Dev Reinstaller in macOS. Dates, times, numeric values,
+the locale selected for Development Management in macOS. Dates, times, numeric values,
 and formatted messages use the current system locale.
 
 New user-visible text must be added to both:
@@ -377,7 +378,7 @@ New user-visible text must be added to both:
 
 ## Privacy and security
 
-- Dev Reinstaller operates locally and does not provide its own cloud service
+- Development Management operates locally and does not provide its own cloud service
   or analytics pipeline.
 - Device discovery and installation are delegated to the active Xcode
   toolchain.
@@ -427,6 +428,7 @@ Key project settings:
 | Product | Native SwiftUI macOS application |
 | Minimum macOS | 14.0 |
 | Swift language version | 5.10 |
+| Display name | `Development Management` |
 | Bundle identifier | `com.zivtal.DevReinstaller` |
 | App category | Developer Tools |
 | Activation policy | Accessory |
@@ -485,7 +487,7 @@ xcodebuild \
   build
 ```
 
-Because Dev Reinstaller is an accessory app, launching it does not create a
+Because Development Management is an accessory app, launching it does not create a
 Dock icon or ordinary main window. Use its menu-bar icon to open the popover and
 Settings.
 
@@ -542,8 +544,9 @@ number in `project.yml`. Patch and minor components roll over after 9.
 2. Performs a clean Release build with ad-hoc signing.
 3. Creates `dist/DevReinstaller.dmg` with an `/Applications` shortcut.
 4. Verifies the DMG.
-5. Stops a running `DevReinstaller` process.
-6. Replaces `/Applications/DevReinstaller.app` atomically through a temporary
+5. Stops a running `Development Management` process (and the legacy
+   `DevReinstaller` process during migration).
+6. Replaces `/Applications/Development Management.app` atomically through a temporary
    application copy.
 7. Verifies the installed app's signature.
 8. Launches the installed copy.
@@ -569,7 +572,7 @@ launch around this script.
 - Confirm the app's scheme is marked **Shared** in Xcode.
 - Run `xcodebuild -list -json` against the selected container to inspect Xcode's
   response.
-- If multiple containers exist, remember that Dev Reinstaller prefers the first
+- If multiple containers exist, remember that Development Management prefers the first
   workspace, then the first project.
 
 ### A direct build fails
@@ -593,12 +596,12 @@ launch around this script.
 ### No notification appears
 
 - Enable notifications in **Settings → General**.
-- Allow Dev Reinstaller in **System Settings → Notifications**.
+- Allow Development Management in **System Settings → Notifications**.
 - Confirm the Activity log records a successful installation.
 
 ## Current constraints
 
-- Dev Reinstaller manages local source folders; it does not clone, pull, or
+- Development Management manages local source folders; it does not clone, pull, or
   otherwise update source control.
 - Its schedule is elapsed time since a successful installation, not the
   provisioning profile's measured expiration.

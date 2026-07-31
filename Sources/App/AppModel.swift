@@ -23,6 +23,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var activity: [ActivityEntry] { didSet { persist() } }
     @Published private(set) var connectedDevices: [ConnectedDevice] = []
     @Published private(set) var progress: InstallationProgress?
+    @Published private(set) var installationLog: InstallationLogSession?
     @Published private(set) var isRefreshingDevices = false
     @Published private(set) var isDiscoveringProject = false
     @Published private(set) var compatibilityRefreshProjectIDs: Set<UUID> = []
@@ -278,6 +279,9 @@ final class AppModel: ObservableObject {
     func setProjectScheme(_ scheme: String, for projectID: UUID) {
         updateProject(id: projectID) {
             $0.scheme = scheme
+            if let matchingConfiguration = $0.configurationMatchingScheme(scheme) {
+                $0.configuration = matchingConfiguration
+            }
             $0.supportedDeviceFamilies = nil
         }
         resetQueuedTargets(for: projectID)
@@ -479,11 +483,17 @@ final class AppModel: ObservableObject {
             return false
         }
 
+        let installationLogID = UUID()
         progress = InstallationProgress(
             projectName: project.displayName,
             deviceName: device.name,
             phase: .preparing,
             latestOutput: ""
+        )
+        installationLog = InstallationLogSession(
+            id: installationLogID,
+            projectName: project.displayName,
+            deviceName: device.name
         )
         addActivity(
             level: .info,
@@ -498,7 +508,7 @@ final class AppModel: ObservableObject {
                 on: device,
                 eventHandler: { [weak self] event in
                     Task { @MainActor [weak self] in
-                        self?.handleInstallationEvent(event)
+                        self?.handleInstallationEvent(event, installationLogID: installationLogID)
                     }
                 }
             )
@@ -520,6 +530,7 @@ final class AppModel: ObservableObject {
                 projectID: project.id,
                 deviceUDID: device.udid
             )
+            finishInstallationLog(id: installationLogID, state: .succeeded)
             progress = nil
             return true
         } catch {
@@ -532,23 +543,44 @@ final class AppModel: ObservableObject {
                 projectID: project.id,
                 deviceUDID: device.udid
             )
+            finishInstallationLog(
+                id: installationLogID,
+                state: .failed,
+                fallbackError: error.localizedDescription
+            )
             progress = nil
             return false
         }
     }
 
-    private func handleInstallationEvent(_ event: InstallationEvent) {
+    private func handleInstallationEvent(_ event: InstallationEvent, installationLogID: UUID) {
         guard var current = progress else { return }
+        guard var log = installationLog, log.id == installationLogID else { return }
         switch event {
         case .phase(let phase):
             current.phase = phase
+            log.phase = phase
         case .output(let output):
-            let lines = output.split(whereSeparator: \Character.isNewline)
-            if let latest = lines.last {
-                current.latestOutput = String(latest).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
+            log.append(output)
+            current.latestOutput = log.latestOutputLine
         }
+        installationLog = log
         progress = current
+    }
+
+    private func finishInstallationLog(
+        id: UUID,
+        state: InstallationLogSession.State,
+        fallbackError: String? = nil
+    ) {
+        guard var log = installationLog, log.id == id else { return }
+        log.state = state
+        if log.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let fallbackError,
+           !fallbackError.isEmpty {
+            log.append(fallbackError)
+        }
+        installationLog = log
     }
 
     private func recordSuccessfulInstallation(projectID: UUID, deviceUDID: String) {

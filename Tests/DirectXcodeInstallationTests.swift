@@ -2,6 +2,21 @@ import XCTest
 @testable import DevReinstaller
 
 final class DirectXcodeInstallationTests: XCTestCase {
+    func testPersonalSchemeFindsMatchingPersonalConfiguration() {
+        let project = makeProject(
+            scheme: "ShekelExchange",
+            configuration: "Release",
+            availableSchemes: ["ShekelExchange", "ShekelExchangePersonal"],
+            availableConfigurations: ["Debug", "PersonalDebug", "Release"]
+        )
+
+        XCTAssertEqual(
+            project.configurationMatchingScheme("ShekelExchangePersonal"),
+            "PersonalDebug"
+        )
+        XCTAssertNil(project.configurationMatchingScheme("ShekelExchange"))
+    }
+
     func testNewProjectUsesDirectXcodeEvenWhenInstallScriptExists() {
         let descriptor = ProjectDescriptor(
             displayName: "Example",
@@ -100,17 +115,22 @@ final class DirectXcodeInstallationTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: attachmentCopy.fileURL), Data([1, 2, 3, 4]))
     }
 
-    private func makeProject() -> ManagedProject {
+    private func makeProject(
+        scheme: String = "Example",
+        configuration: String = "Debug",
+        availableSchemes: [String] = ["Example"],
+        availableConfigurations: [String] = ["Debug"]
+    ) -> ManagedProject {
         ManagedProject(
             id: UUID(),
             displayName: "Example",
             folderPath: "/tmp/Example",
             containerPath: "/tmp/Example/Example.xcodeproj",
             containerKind: .project,
-            scheme: "Example",
-            configuration: "Debug",
-            availableSchemes: ["Example"],
-            availableConfigurations: ["Debug"],
+            scheme: scheme,
+            configuration: configuration,
+            availableSchemes: availableSchemes,
+            availableConfigurations: availableConfigurations,
             installMethod: .xcodebuild,
             installScriptPath: nil,
             isEnabled: true,

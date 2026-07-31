@@ -106,6 +106,18 @@ struct ManagedProject: Identifiable, Codable, Equatable {
         }
         excludedDeviceUDIDs = exclusions.isEmpty ? nil : exclusions
     }
+
+    func configurationMatchingScheme(_ selectedScheme: String) -> String? {
+        let normalizedScheme = selectedScheme.lowercased()
+        return availableConfigurations.first { configuration in
+            let distinctiveName = configuration.lowercased()
+                .replacingOccurrences(of: "debug", with: "")
+                .replacingOccurrences(of: "release", with: "")
+                .replacingOccurrences(of: "profile", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return !distinctiveName.isEmpty && normalizedScheme.contains(distinctiveName)
+        }
+    }
 }
 
 struct ProjectDescriptor: Equatable {

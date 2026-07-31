@@ -12,7 +12,7 @@ struct DevReinstallerApp: App {
                 .task { model.startMonitoring() }
         } label: {
             Image(systemName: menuBarSymbol)
-                .accessibilityLabel(Text("Dev Reinstaller"))
+                .accessibilityLabel(Text("Development Management"))
         }
         .menuBarExtraStyle(.window)
 

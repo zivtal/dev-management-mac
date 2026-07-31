@@ -91,7 +91,7 @@ private struct GeneralSettingsView: View {
 
             Section("Background operation") {
                 Toggle(
-                    "Open Dev Reinstaller at login",
+                    "Open Development Management at login",
                     isOn: Binding(
                         get: { model.preferences.launchAtLogin },
                         set: { model.setLaunchAtLogin($0) }

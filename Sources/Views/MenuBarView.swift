@@ -23,7 +23,7 @@ struct MenuBarView: View {
             footer
         }
         .padding(14)
-        .frame(width: 550)
+        .frame(width: 585)
         .onChange(of: model.connectedDevices.isEmpty) { _, isEmpty in
             if isEmpty {
                 isDeviceListExpanded = false
@@ -45,25 +45,29 @@ struct MenuBarView: View {
             Image(systemName: model.progress == nil ? "square.stack.3d.up.fill" : "arrow.triangle.2.circlepath")
                 .font(.title2)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Dev Reinstaller")
+                Text("Development Management")
                     .font(.headline)
-                HStack(spacing: 4) {
-                    Text(statusText)
+                Group {
                     if model.progress == nil, !model.connectedDevices.isEmpty {
                         Button {
                             withAnimation(.easeInOut(duration: 0.16)) {
                                 isDeviceListExpanded.toggle()
                             }
                         } label: {
-                            Image(systemName: "chevron.right")
-                                .font(.caption2.weight(.semibold))
-                                .rotationEffect(.degrees(isDeviceListExpanded ? 90 : 0))
-                                .frame(width: 14, height: 14)
-                                .contentShape(Rectangle())
+                            HStack(spacing: 4) {
+                                Text(statusText)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.weight(.semibold))
+                                    .rotationEffect(.degrees(isDeviceListExpanded ? 90 : 0))
+                                    .frame(width: 14, height: 14)
+                            }
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .help(deviceDisclosureActionText)
                         .accessibilityLabel(deviceDisclosureActionText)
+                    } else {
+                        Text(statusText)
                     }
                 }
                 .font(.caption)
@@ -80,26 +84,37 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private func progressSection(_ progress: InstallationProgress) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                ProgressView()
-                    .controlSize(.small)
-                Text(progress.phaseTitle)
-                    .font(.subheadline.weight(.medium))
-                Spacer()
+        Button {
+            InstallationLogWindowPresenter.shared.show(model: model)
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(progress.phaseTitle)
+                        .font(.subheadline.weight(.medium))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Text(L10n.format("Installing %@ on %@", progress.projectName, progress.deviceName))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if !progress.latestOutput.isEmpty {
+                    Text(progress.latestOutput)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(2)
+                }
             }
-            Text(L10n.format("Installing %@ on %@", progress.projectName, progress.deviceName))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if !progress.latestOutput.isEmpty {
-                Text(progress.latestOutput)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(2)
-            }
+            .contentShape(Rectangle())
+            .padding(10)
+            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
         }
-        .padding(10)
-        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
+        .buttonStyle(.plain)
+        .help("Show installation log")
+        .accessibilityLabel("Show installation log")
     }
 
     private var deviceSection: some View {
@@ -132,14 +147,14 @@ struct MenuBarView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             } else {
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 7) {
+                Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 7) {
                     GridRow {
                         Text("Application")
-                            .frame(width: 145, alignment: .leading)
+                            .frame(width: 160, alignment: .leading)
                         Text("Devices")
-                            .frame(width: 60, alignment: .center)
-                        Text("Version")
-                            .frame(width: 80, alignment: .leading)
+                            .frame(width: 55, alignment: .center)
+                        Text("Next build")
+                            .frame(width: 110, alignment: .leading)
                         Text("Last installed")
                             .frame(width: 135, alignment: .leading)
                         Color.clear.frame(width: 48, height: 1)
@@ -156,19 +171,20 @@ struct MenuBarView: View {
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(project.displayName)
                                         .lineLimit(1)
-                                    Text(scheduleText(for: project))
+                                    Text(project.versionDisplay)
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
                             }
-                            .frame(width: 145, alignment: .leading)
+                            .frame(width: 160, alignment: .leading)
 
                             installedDeviceCountCell(for: project)
 
-                            Text(project.versionDisplay)
-                                .font(.caption.monospacedDigit())
-                                .frame(width: 80, alignment: .leading)
+                            Text(nextBuildText(for: project))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 110, alignment: .leading)
                                 .lineLimit(1)
 
                             Text(lastInstalledText(for: project))
@@ -281,18 +297,18 @@ struct MenuBarView: View {
             : L10n.format("Installed on %d devices", count)
         return Text(verbatim: "\(count)")
             .font(.caption.monospacedDigit())
-            .frame(width: 60, alignment: .center)
+            .frame(width: 55, alignment: .center)
             .help(description)
             .accessibilityLabel(description)
     }
 
-    private func scheduleText(for project: ManagedProject) -> String {
+    private func nextBuildText(for project: ManagedProject) -> String {
         guard project.isEnabled else { return L10n.text("Paused") }
         guard let nextDate = model.nextInstallation(for: project.id) else {
             return L10n.text("Ready for first installation")
         }
         if nextDate <= Date() { return L10n.text("Installation is due") }
-        return L10n.format("Next: %@", nextDate.formatted(date: .abbreviated, time: .shortened))
+        return nextDate.formatted(date: .abbreviated, time: .shortened)
     }
 
     private func projectActivationActionText(for project: ManagedProject) -> String {

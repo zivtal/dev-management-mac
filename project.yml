@@ -9,8 +9,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "1.1.4"
-    CURRENT_PROJECT_VERSION: "15"
+    MARKETING_VERSION: "1.1.5"
+    CURRENT_PROJECT_VERSION: "16"
     DEVELOPMENT_TEAM: 52HV33827A
     CODE_SIGN_STYLE: Automatic
 
@@ -29,9 +29,10 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.zivtal.DevReinstaller
-        PRODUCT_NAME: DevReinstaller
+        PRODUCT_NAME: Development Management
+        PRODUCT_MODULE_NAME: DevReinstaller
         GENERATE_INFOPLIST_FILE: true
-        INFOPLIST_KEY_CFBundleDisplayName: Dev Reinstaller
+        INFOPLIST_KEY_CFBundleDisplayName: Development Management
         INFOPLIST_KEY_CFBundleShortVersionString: $(MARKETING_VERSION)
         INFOPLIST_KEY_CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
@@ -53,6 +54,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.zivtal.DevReinstallerTests
         GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Development Management.app/Contents/MacOS/Development Management"
 
 schemes:
   DevReinstaller:

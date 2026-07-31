@@ -99,3 +99,77 @@ struct InstallationProgress: Equatable {
         }
     }
 }
+
+struct InstallationLogSession: Equatable, Identifiable {
+    enum State: Equatable {
+        case inProgress
+        case succeeded
+        case failed
+    }
+
+    let id: UUID
+    let projectName: String
+    let deviceName: String
+    let startedAt: Date
+    var phase: InstallationProgress.Phase
+    var state: State
+    private(set) var output: String
+    private(set) var revision: Int
+
+    init(
+        id: UUID = UUID(),
+        projectName: String,
+        deviceName: String,
+        startedAt: Date = Date(),
+        phase: InstallationProgress.Phase = .preparing,
+        state: State = .inProgress,
+        output: String = ""
+    ) {
+        self.id = id
+        self.projectName = projectName
+        self.deviceName = deviceName
+        self.startedAt = startedAt
+        self.phase = phase
+        self.state = state
+        self.output = output
+        revision = 0
+    }
+
+    mutating func append(_ text: String) {
+        guard !text.isEmpty else { return }
+        output.append(text)
+        revision += 1
+    }
+
+    var latestOutputLine: String {
+        output
+            .split(whereSeparator: \Character.isNewline)
+            .last
+            .map(String.init)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    var statusTitle: String {
+        switch state {
+        case .inProgress:
+            phase.title
+        case .succeeded:
+            L10n.text("Installation completed successfully")
+        case .failed:
+            L10n.text("Installation failed")
+        }
+    }
+}
+
+private extension InstallationProgress.Phase {
+    var title: String {
+        switch self {
+        case .preparing:
+            L10n.text("Preparing installation…")
+        case .building:
+            L10n.text("Building the application…")
+        case .installing:
+            L10n.text("Installing on iPhone…")
+        }
+    }
+}
