@@ -4,6 +4,7 @@ import SwiftUI
 struct MenuBarView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.dismiss) private var dismiss
     @State private var isDeviceListExpanded = false
 
     var body: some View {
@@ -228,8 +229,12 @@ struct MenuBarView: View {
             Spacer(minLength: 8)
 
             Button {
-                openSettings()
+                let menuWindow = NSApplication.shared.keyWindow
+                dismiss()
+                menuWindow?.orderOut(nil)
                 Task { @MainActor in
+                    await Task.yield()
+                    openSettings()
                     for _ in 0..<10 {
                         try? await Task.sleep(for: .milliseconds(50))
                         if let settingsWindow = NSApplication.shared.windows.first(where: {

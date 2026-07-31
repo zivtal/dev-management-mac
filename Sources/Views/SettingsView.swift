@@ -23,6 +23,7 @@ struct SettingsView: View {
                 .tabItem { Label("Devices", systemImage: "iphone.and.arrow.forward") }
         }
         .frame(minWidth: 820, idealWidth: 900, minHeight: 620, idealHeight: 720)
+        .tint(.blue)
         .background(SettingsWindowConfigurator())
         .alert(
             Text("Something went wrong"),
