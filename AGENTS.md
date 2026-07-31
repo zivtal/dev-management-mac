@@ -12,6 +12,8 @@ an `LSUIElement` accessory app: no Dock icon and no ordinary main window.
 - The DMG script is the deployment step: it builds Release, verifies the DMG,
   stops the running DevReinstaller process, replaces the copy in `/Applications`,
   and launches the new copy. Do not repeat those deployment actions manually.
+- After the tests and DMG deployment succeed, commit the completed changes and
+  push the current branch to `origin`.
 - Report the marketing version/build and the DMG/install result.
 
 ## Product invariants
@@ -24,4 +26,3 @@ an `LSUIElement` accessory app: no Dock icon and no ordinary main window.
   sleep until the next scheduled reinstall date.
 - A project folder may use `install.sh`, but it must never be required; direct
   Xcode project/workspace build and installation is a first-class path.
-
