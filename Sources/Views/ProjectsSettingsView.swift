@@ -7,31 +7,45 @@ struct ProjectsSettingsView: View {
     @State private var showsRemoveConfirmation = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Managed applications")
-                    .font(.title2.bold())
-                Text("Add the source folder of each iOS application. An install script is optional.")
-                    .foregroundStyle(.secondary)
+        GeometryReader { geometry in
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Managed applications")
+                        .font(.title2.bold())
+                    Text("Add the source folder of each iOS application. An install script is optional.")
+                        .foregroundStyle(.secondary)
+                }
+                .padding([.horizontal, .top])
+                .padding(.bottom, 12)
+
+                applicationTable
+                    .padding(.horizontal)
+
+                actionBar
+                    .padding(.horizontal)
+
+                if let selectedProject {
+                    Divider().padding(.top, 8)
+                    GeometryReader { detailsGeometry in
+                        projectDetails(selectedProject)
+                            .frame(
+                                width: detailsGeometry.size.width,
+                                height: detailsGeometry.size.height
+                            )
+                    }
+                    .frame(minHeight: 150)
+                } else {
+                    Text("Select an application to edit its build settings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
-            .padding([.horizontal, .top])
-            .padding(.bottom, 12)
-
-            applicationTable
-                .padding(.horizontal)
-
-            actionBar
-                .padding(.horizontal)
-
-            if let selectedProject {
-                Divider().padding(.top, 12)
-                projectDetails(selectedProject)
-            } else {
-                Text("Select an application to edit its build settings.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 100)
-            }
+            .frame(
+                width: geometry.size.width,
+                height: geometry.size.height,
+                alignment: .top
+            )
         }
         .confirmationDialog(
             Text("Remove application?"),
@@ -81,17 +95,26 @@ struct ProjectsSettingsView: View {
             .width(min: 145, ideal: 170)
 
             TableColumn("Status") { project in
-                Label(
-                    project.isEnabled ? L10n.text("Enabled") : L10n.text("Paused"),
-                    systemImage: project.isEnabled ? "checkmark.circle.fill" : "pause.circle"
+                Toggle(
+                    isOn: Binding(
+                        get: { project.isEnabled },
+                        set: { model.setProjectEnabled($0, projectID: project.id) }
+                    )
+                ) {
+                    Text(project.isEnabled ? L10n.text("Enabled") : L10n.text("Paused"))
+                        .foregroundStyle(project.isEnabled ? .green : .secondary)
+                }
+                .toggleStyle(.switch)
+                .help(
+                    project.isEnabled
+                        ? L10n.text("Pause application installations")
+                        : L10n.text("Resume application installations")
                 )
-                .foregroundStyle(project.isEnabled ? .green : .secondary)
-                .labelStyle(.titleAndIcon)
             }
-            .width(min: 95, ideal: 110)
+            .width(min: 120, ideal: 145)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
-        .frame(minHeight: 185, idealHeight: 250, maxHeight: 300)
+        .frame(minHeight: 120, idealHeight: 175, maxHeight: 220)
         .overlay {
             RoundedRectangle(cornerRadius: 7)
                 .stroke(.separator, lineWidth: 1)
@@ -152,11 +175,16 @@ struct ProjectsSettingsView: View {
             Section {
                 HStack {
                     Toggle(
-                        "Enabled",
+                        "Allow installations",
                         isOn: Binding(
                             get: { project.isEnabled },
-                            set: { value in model.updateProject(id: project.id) { $0.isEnabled = value } }
+                            set: { model.setProjectEnabled($0, projectID: project.id) }
                         )
+                    )
+                    .help(
+                        project.isEnabled
+                            ? L10n.text("Pause application installations")
+                            : L10n.text("Resume application installations")
                     )
                     Spacer()
                     Button {
@@ -164,7 +192,11 @@ struct ProjectsSettingsView: View {
                     } label: {
                         Label("Install now", systemImage: "arrow.clockwise")
                     }
-                    .disabled(model.selectedInstallableDevices(for: project).isEmpty || model.progress != nil)
+                    .disabled(
+                        !project.isEnabled
+                            || model.selectedInstallableDevices(for: project).isEmpty
+                            || model.progress != nil
+                    )
 
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([project.folderURL])
@@ -258,7 +290,6 @@ struct ProjectsSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minHeight: 245)
     }
 
     private var selectedProject: ManagedProject? {

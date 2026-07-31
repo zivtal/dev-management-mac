@@ -38,6 +38,9 @@ configurable number of days.
   targets, while Apple Watch is displayed as a companion device.
 - Per-application device selection in Settings, persisted by application and
   device UDID.
+- Per-application pause and resume. Paused apps are excluded from automatic,
+  manual, and Install All installation paths while retaining their device
+  selections and installation history.
 - Automatic iPhone/iPad compatibility detection from the selected Xcode
   scheme's `TARGETED_DEVICE_FAMILY` build setting.
 - USB hot-plug monitoring and manual device refresh.
@@ -95,7 +98,8 @@ the first launch may require right-clicking the application and selecting
    **Connect via network** in Xcode.
 5. In **Applications**, select the app and choose which of its compatible
    connected iPhones and iPads should receive installations.
-6. Select **Install now**, **Install All Now**, or leave automation enabled.
+6. Leave **Allow installations** enabled, then select **Install now**, **Install
+   All Now**, or leave automation enabled. Turn it off to pause that app.
 
 A newly added application has no installation record, so it is immediately due
 for every selected and available iOS or iPadOS device.
@@ -137,7 +141,9 @@ Settings contains four tabs and is the only ordinary app window.
 - Add one source folder at a time.
 - View each app's source path, detected version, last installation, and enabled
   or paused state.
-- Enable or pause a managed application.
+- Enable, pause, or resume each managed application from its table row or
+  detail view. Pausing prevents new automatic, manual, and Install All work;
+  an installation already in progress is allowed to finish.
 - Choose `install.sh` or direct Xcode installation when a script exists.
 - Choose the shared scheme and build configuration for direct builds.
 - View whether the selected scheme supports iPhone, iPad, or both. Only
@@ -147,6 +153,8 @@ Settings contains four tabs and is the only ordinary app window.
 - Install the selected app immediately or reveal its folder in Finder.
 - Remove one or more entries without deleting their source folders.
 - Queue all enabled applications for immediate installation.
+- Scroll the detail form independently from the application table, including
+  at the Settings window's minimum supported height.
 
 #### Activity
 
@@ -298,8 +306,8 @@ connection events and **Check now** can still refresh immediately.
 - **Install now** ignores the schedule and targets the selected device when one
   is supplied, otherwise every selected and available iOS/iPadOS device.
 - **Install All Now** snapshots all currently enabled applications, ignores
-  their schedules, and installs them on every selected and available
-  iOS/iPadOS device.
+  their schedules, and installs each one only on its selected, compatible, and
+  available iOS/iPadOS devices. Paused applications are excluded.
 - If no installation target is available, the Install All queue stays active
   in memory and checks every five minutes.
 - Successful items leave the queue. Failed items remain queued for another
@@ -333,8 +341,8 @@ State is encoded as pretty-printed JSON with ISO-8601 dates at:
 Persisted data includes:
 
 - Preferences.
-- Device UDIDs excluded from installation.
-- Managed-project paths and build choices.
+- Managed-project paths, build choices, supported device families, paused
+  state, and per-project device-UDID exclusions.
 - Per-project, per-device successful installation records and installed
   versions.
 - The latest 100 activity entries and their command output.

@@ -22,6 +22,13 @@ an `LSUIElement` accessory app: no Dock icon and no ordinary main window.
 - English and Hebrew localizations follow the macOS language selection.
 - iPhone discovery uses CoreDevice and supports every transport it reports as
   available, including USB and local-network/Wi-Fi connections.
+- Device targeting is configured separately for each managed application. Show
+  only connected iPhone and iPad families supported by the selected Xcode scheme.
+- Pausing an application preserves its device selections but blocks automatic,
+  manual, and Install All work until it is resumed. Work already in progress may
+  finish.
+- Application details remain internally scrollable at the minimum supported
+  Settings window height.
 - When work is due, retry discovery every five minutes. Once all work succeeds,
   sleep until the next scheduled reinstall date.
 - A project folder may use `install.sh`, but it must never be required; direct

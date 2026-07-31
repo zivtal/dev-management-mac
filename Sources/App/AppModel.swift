@@ -218,6 +218,11 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func setProjectEnabled(_ enabled: Bool, projectID: UUID) {
+        updateProject(id: projectID) { $0.isEnabled = enabled }
+        restartMonitoring()
+    }
+
     func projectIconURL(for projectID: UUID) -> URL? {
         projectIconURLs[projectID]
     }
@@ -236,7 +241,7 @@ final class AppModel: ObservableObject {
         else {
             return false
         }
-        return project.installationEnabled(for: device)
+        return project.isSelectedInstallationTarget(device)
     }
 
     func setDeviceInstallationEnabled(_ enabled: Bool, deviceUDID: String, for projectID: UUID) {
@@ -275,6 +280,10 @@ final class AppModel: ObservableObject {
 
     func installNow(projectID: UUID, deviceUDID: String? = nil) {
         guard let project = projects.first(where: { $0.id == projectID }) else { return }
+        guard project.isEnabled else {
+            presentedError = L10n.text("This application is paused. Resume it in Settings before installing.")
+            return
+        }
         let targetDevices: [ConnectedDevice]
         if let deviceUDID {
             targetDevices = selectedInstallableDevices(for: project).filter { $0.udid == deviceUDID }
@@ -437,7 +446,12 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    private func install(project: ManagedProject, on device: ConnectedDevice, ignoreSchedule: Bool) async -> Bool {
+    private func install(
+        project requestedProject: ManagedProject,
+        on device: ConnectedDevice,
+        ignoreSchedule: Bool
+    ) async -> Bool {
+        guard let project = projects.first(where: { $0.id == requestedProject.id }) else { return false }
         guard project.installationEnabled(for: device) else { return false }
         guard progress == nil else {
             if ignoreSchedule {

@@ -81,6 +81,9 @@
 "Cancel" = "ביטול";
 "The source folder and its files will not be deleted." = "תיקיית המקור והקבצים שבתוכה לא יימחקו.";
 "Enabled" = "פעילה";
+"Allow installations" = "אפשר התקנות";
+"Pause application installations" = "השהה התקנות של האפליקציה";
+"Resume application installations" = "חדש התקנות של האפליקציה";
 "Current version" = "גרסה נוכחית";
 "Installation method" = "שיטת התקנה";
 "Scheme" = "Scheme";
@@ -135,6 +138,7 @@
 "Removed %@" = "הוסרה האפליקציה %@";
 "No selected iPhone or iPad is available. Choose a connected device in Settings." = "אין iPhone או iPad שנבחרו וזמינים. יש לבחור מכשיר מחובר בהגדרות.";
 "No selected compatible device is available for this application. Choose a connected device in Applications settings." = "אין מכשיר תואם שנבחר וזמין לאפליקציה הזו. יש לבחור מכשיר מחובר בהגדרות אפליקציות.";
+"This application is paused. Resume it in Settings before installing." = "האפליקציה מושהית. יש לחדש אותה בהגדרות לפני ההתקנה.";
 "Could not change launch at login: %@" = "לא ניתן לשנות את ההפעלה בעת כניסה: %@";
 "An installation is already in progress. Try again when it finishes." = "כבר מתבצעת התקנה. אפשר לנסות שוב בסיומה.";
 "Starting installation of %@ on %@" = "מתחיל להתקין את %@ על %@";

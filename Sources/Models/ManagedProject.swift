@@ -88,8 +88,12 @@ struct ManagedProject: Identifiable, Codable, Equatable {
         return effectiveSupportedDeviceFamilies.contains(family)
     }
 
-    func installationEnabled(for device: ConnectedDevice) -> Bool {
+    func isSelectedInstallationTarget(_ device: ConnectedDevice) -> Bool {
         supports(device) && excludedDeviceUDIDs?.contains(device.udid) != true
+    }
+
+    func installationEnabled(for device: ConnectedDevice) -> Bool {
+        isEnabled && isSelectedInstallationTarget(device)
     }
 
     mutating func setInstallationEnabled(_ enabled: Bool, for deviceUDID: String) {

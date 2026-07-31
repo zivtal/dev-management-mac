@@ -155,7 +155,11 @@ struct MenuBarView: View {
                             }
                             .buttonStyle(.borderless)
                             .help("Install now")
-                            .disabled(model.selectedInstallableDevices(for: project).isEmpty || model.progress != nil)
+                            .disabled(
+                                !project.isEnabled
+                                    || model.selectedInstallableDevices(for: project).isEmpty
+                                    || model.progress != nil
+                            )
                         }
                     }
                 }

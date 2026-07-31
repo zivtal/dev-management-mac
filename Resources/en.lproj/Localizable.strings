@@ -81,6 +81,9 @@
 "Cancel" = "Cancel";
 "The source folder and its files will not be deleted." = "The source folder and its files will not be deleted.";
 "Enabled" = "Enabled";
+"Allow installations" = "Allow installations";
+"Pause application installations" = "Pause application installations";
+"Resume application installations" = "Resume application installations";
 "Current version" = "Current version";
 "Installation method" = "Installation method";
 "Scheme" = "Scheme";
@@ -135,6 +138,7 @@
 "Removed %@" = "Removed %@";
 "No selected iPhone or iPad is available. Choose a connected device in Settings." = "No selected iPhone or iPad is available. Choose a connected device in Settings.";
 "No selected compatible device is available for this application. Choose a connected device in Applications settings." = "No selected compatible device is available for this application. Choose a connected device in Applications settings.";
+"This application is paused. Resume it in Settings before installing." = "This application is paused. Resume it in Settings before installing.";
 "Could not change launch at login: %@" = "Could not change launch at login: %@";
 "An installation is already in progress. Try again when it finishes." = "An installation is already in progress. Try again when it finishes.";
 "Starting installation of %@ on %@" = "Starting installation of %@ on %@";

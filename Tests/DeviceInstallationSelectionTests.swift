@@ -42,6 +42,21 @@ final class DeviceInstallationSelectionTests: XCTestCase {
         XCTAssertNil(project.excludedDeviceUDIDs)
     }
 
+    func testPausedProjectKeepsItsDeviceSelectionButDisablesInstallation() {
+        var project = makeProject(families: [.iPhone])
+
+        XCTAssertTrue(project.isSelectedInstallationTarget(iPhone))
+        XCTAssertTrue(project.installationEnabled(for: iPhone))
+
+        project.isEnabled = false
+
+        XCTAssertTrue(project.isSelectedInstallationTarget(iPhone))
+        XCTAssertFalse(project.installationEnabled(for: iPhone))
+
+        project.isEnabled = true
+        XCTAssertTrue(project.installationEnabled(for: iPhone))
+    }
+
     func testProjectCompatibilityCoversEveryIPhoneAndIPadCombination() {
         let iPhoneOnly = makeProject(families: [.iPhone])
         let iPadOnly = makeProject(families: [.iPad])
