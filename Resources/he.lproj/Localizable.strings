@@ -42,15 +42,18 @@
 "No connected devices" = "אין מכשירים מחוברים";
 "All available iPhone, iPad, and Apple Watch devices reported by Xcode." = "כל מכשירי ה־iPhone, ה־iPad וה־Apple Watch הזמינים ש־Xcode מדווח עליהם.";
 "Choose which connected iPhone and iPad devices receive application installations." = "יש לבחור את מכשירי ה־iPhone וה־iPad המחוברים שעליהם יותקנו האפליקציות.";
+"Choose installation devices separately for each application in the Applications tab." = "יש לבחור מכשירי התקנה בנפרד לכל אפליקציה בלשונית אפליקציות.";
 "Supported" = "נתמכת";
 "Companion device" = "מכשיר נלווה";
 "Install apps" = "התקנת אפליקציות";
 "Install on %@" = "התקן על %@";
+"Choose per application" = "בחירה לפי אפליקציה";
 "Automatic installation" = "התקנה אוטומטית";
 "Check and install automatically" = "בדוק והתקן אוטומטית";
 "Reinstall interval" = "מרווח התקנה מחדש";
 "%d days" = "%d ימים";
 "The interval is tracked separately for each application and each iPhone. A newly added application is installed at the next connection." = "המרווח נשמר בנפרד לכל אפליקציה ולכל iPhone. אפליקציה חדשה תותקן בחיבור הבא.";
+"The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection." = "המרווח נשמר בנפרד לכל אפליקציה ולכל iPhone או iPad שנבחרו. אפליקציה חדשה תותקן בחיבור הבא.";
 "Background operation" = "פעולה ברקע";
 "Open Dev Reinstaller at login" = "פתח את התוכנה בעת הכניסה למק";
 "The application has no Dock window and remains available from the menu bar." = "לתוכנה אין חלון ב־Dock והיא נשארת זמינה בשורת התפריטים.";
@@ -94,7 +97,16 @@
 "There are no enabled applications to install." = "אין אפליקציות פעילות להתקנה.";
 "Install All requested for %d application(s)" = "התבקשה התקנת כל %d האפליקציות";
 "Waiting for a selected iPhone or iPad. Choose devices in Settings; the search will continue in the background." = "ממתין ל־iPhone או ל־iPad שנבחרו. יש לבחור מכשירים בהגדרות; החיפוש ימשיך ברקע.";
+"Some applications are waiting for a selected compatible iPhone or iPad. Choose devices per application in Settings; the search will continue in the background." = "חלק מהאפליקציות ממתינות ל־iPhone או ל־iPad תואמים שנבחרו. יש לבחור מכשירים לכל אפליקציה בהגדרות; החיפוש ימשיך ברקע.";
 "Install All completed successfully" = "התקנת כל האפליקציות הסתיימה בהצלחה";
+"Install on devices" = "התקנה על מכשירים";
+"Supported devices" = "מכשירים נתמכים";
+"iPhone only" = "iPhone בלבד";
+"iPad only" = "iPad בלבד";
+"iPhone and iPad" = "iPhone ו־iPad";
+"iPhone and iPad (not detected by Xcode)" = "iPhone ו־iPad (לא זוהה על ידי Xcode)";
+"Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application." = "מוצגים רק מכשירים שנתמכים על ידי ה־scheme שנבחר ב־Xcode. הבחירה נשמרת בנפרד לאפליקציה הזו.";
+"No compatible iPhone or iPad is currently connected." = "אין כרגע iPhone או iPad תואמים מחוברים.";
 
 "Activity log" = "יומן פעילות";
 "The latest build, installation, and device events." = "אירועי הבנייה, ההתקנה והמכשירים האחרונים.";
@@ -122,6 +134,7 @@
 "Added %@" = "נוספה האפליקציה %@";
 "Removed %@" = "הוסרה האפליקציה %@";
 "No selected iPhone or iPad is available. Choose a connected device in Settings." = "אין iPhone או iPad שנבחרו וזמינים. יש לבחור מכשיר מחובר בהגדרות.";
+"No selected compatible device is available for this application. Choose a connected device in Applications settings." = "אין מכשיר תואם שנבחר וזמין לאפליקציה הזו. יש לבחור מכשיר מחובר בהגדרות אפליקציות.";
 "Could not change launch at login: %@" = "לא ניתן לשנות את ההפעלה בעת כניסה: %@";
 "An installation is already in progress. Try again when it finishes." = "כבר מתבצעת התקנה. אפשר לנסות שוב בסיומה.";
 "Starting installation of %@ on %@" = "מתחיל להתקין את %@ על %@";

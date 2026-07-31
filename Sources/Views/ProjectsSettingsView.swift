@@ -164,7 +164,7 @@ struct ProjectsSettingsView: View {
                     } label: {
                         Label("Install now", systemImage: "arrow.clockwise")
                     }
-                    .disabled(model.installableDevices.isEmpty || model.progress != nil)
+                    .disabled(model.selectedInstallableDevices(for: project).isEmpty || model.progress != nil)
 
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([project.folderURL])
@@ -191,7 +191,7 @@ struct ProjectsSettingsView: View {
                         "Scheme",
                         selection: Binding(
                             get: { project.scheme },
-                            set: { value in model.updateProject(id: project.id) { $0.scheme = value } }
+                            set: { model.setProjectScheme($0, for: project.id) }
                         )
                     ) {
                         ForEach(project.availableSchemes, id: \.self) { Text($0).tag($0) }
@@ -201,16 +201,64 @@ struct ProjectsSettingsView: View {
                         "Configuration",
                         selection: Binding(
                             get: { project.configuration },
-                            set: { value in model.updateProject(id: project.id) { $0.configuration = value } }
+                            set: { model.setProjectConfiguration($0, for: project.id) }
                         )
                     ) {
                         ForEach(project.availableConfigurations, id: \.self) { Text($0).tag($0) }
                     }
                 }
             }
+
+            Section("Install on devices") {
+                HStack {
+                    LabeledContent("Supported devices") {
+                        HStack(spacing: 6) {
+                            if model.isRefreshingCompatibility(for: project.id) {
+                                ProgressView().controlSize(.small)
+                            }
+                            Text(project.deviceCompatibilityDescription)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Button {
+                        model.refreshNow()
+                    } label: {
+                        Label("Refresh devices", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(model.isRefreshingDevices || model.progress != nil)
+                }
+
+                Text("Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                let compatibleDevices = model.compatibleConnectedDevices(for: project)
+                if compatibleDevices.isEmpty {
+                    Label("No compatible iPhone or iPad is currently connected.", systemImage: "iphone.slash")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(compatibleDevices) { device in
+                        Toggle(
+                            isOn: Binding(
+                                get: { model.isDeviceInstallationEnabled(device.udid, for: project.id) },
+                                set: { model.setDeviceInstallationEnabled($0, deviceUDID: device.udid, for: project.id) }
+                            )
+                        ) {
+                            HStack {
+                                Label(device.name, systemImage: device.symbolName)
+                                Spacer()
+                                Text(L10n.format("%@ · %@", device.model ?? device.platformDescription, device.connectionDescription))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
-        .frame(minHeight: 145)
+        .frame(minHeight: 245)
     }
 
     private var selectedProject: ManagedProject? {

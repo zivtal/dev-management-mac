@@ -1,5 +1,10 @@
 import Foundation
 
+enum MobileDeviceFamily: String, Codable, CaseIterable, Equatable {
+    case iPhone
+    case iPad
+}
+
 struct ConnectedDevice: Identifiable, Codable, Equatable {
     let udid: String
     let name: String
@@ -19,12 +24,23 @@ struct ConnectedDevice: Identifiable, Codable, Equatable {
     }
 
     var supportsIOSAppInstallation: Bool {
-        platform.lowercased() == "ios"
+        mobileDeviceFamily != nil
+    }
+
+    var mobileDeviceFamily: MobileDeviceFamily? {
+        if platform.lowercased() == "ipados" { return .iPad }
+        guard platform.lowercased() == "ios" else { return nil }
+        let identity = [model, name]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+        return identity.contains("ipad") ? .iPad : .iPhone
     }
 
     var platformDescription: String {
         switch platform.lowercased() {
-        case "ios" where model?.lowercased().contains("ipad") == true: "iPadOS"
+        case "ipados": "iPadOS"
+        case "ios" where mobileDeviceFamily == .iPad: "iPadOS"
         case "ios": "iOS"
         case "watchos": "watchOS"
         default: platform
@@ -34,7 +50,8 @@ struct ConnectedDevice: Identifiable, Codable, Equatable {
     var symbolName: String {
         switch platform.lowercased() {
         case "watchos": "applewatch"
-        case "ios" where model?.lowercased().contains("ipad") == true: "ipad"
+        case "ipados": "ipad"
+        case "ios" where mobileDeviceFamily == .iPad: "ipad"
         case "ios": "iphone"
         default: "display"
         }
@@ -51,6 +68,8 @@ struct DeviceListEnvelope: Decodable {
             let platform: String?
             let udid: String?
             let marketingName: String?
+            let deviceType: String?
+            let productType: String?
         }
 
         struct DeviceProperties: Decodable {
@@ -73,7 +92,7 @@ struct DeviceListEnvelope: Decodable {
     var availableAppleDevices: [ConnectedDevice] {
         result.devices.compactMap { payload in
             guard let platform = payload.hardwareProperties?.platform,
-                  ["ios", "watchos"].contains(platform.lowercased()),
+                  ["ios", "ipados", "watchos"].contains(platform.lowercased()),
                   payload.connectionProperties?.pairingState?.lowercased() == "paired",
                   let udid = payload.hardwareProperties?.udid,
                   !udid.isEmpty
@@ -84,7 +103,9 @@ struct DeviceListEnvelope: Decodable {
             return ConnectedDevice(
                 udid: udid,
                 name: payload.deviceProperties?.name ?? "iPhone",
-                model: payload.hardwareProperties?.marketingName,
+                model: payload.hardwareProperties?.marketingName
+                    ?? payload.hardwareProperties?.deviceType
+                    ?? payload.hardwareProperties?.productType,
                 platform: platform,
                 transportType: payload.connectionProperties?.transportType,
                 isInstallReady: payload.connectionProperties?.tunnelState?.lowercased() == "connected"

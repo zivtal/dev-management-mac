@@ -2,38 +2,185 @@ import XCTest
 @testable import DevReinstaller
 
 final class DeviceInstallationSelectionTests: XCTestCase {
-    func testDevicesAreEnabledByDefault() {
-        let preferences = AppPreferences()
+    private let iPhone = ConnectedDevice(
+        udid: "PHONE-1",
+        name: "Test iPhone",
+        model: "iPhone 17 Pro",
+        platform: "iOS",
+        transportType: "localNetwork",
+        isInstallReady: true
+    )
+    private let iPad = ConnectedDevice(
+        udid: "TABLET-1",
+        name: "Test iPad",
+        model: "iPad Pro 13-inch",
+        platform: "iOS",
+        transportType: "wired",
+        isInstallReady: true
+    )
 
-        XCTAssertTrue(preferences.installationEnabled(for: "PHONE-1"))
-        XCTAssertTrue(preferences.installationEnabled(for: "PHONE-2"))
+    func testProjectDevicesAreEnabledIndependentlyByDefault() {
+        var firstProject = makeProject(families: [.iPhone, .iPad])
+        let secondProject = makeProject(families: [.iPhone, .iPad])
+
+        firstProject.setInstallationEnabled(false, for: iPhone.udid)
+
+        XCTAssertFalse(firstProject.installationEnabled(for: iPhone))
+        XCTAssertTrue(firstProject.installationEnabled(for: iPad))
+        XCTAssertTrue(secondProject.installationEnabled(for: iPhone))
+        XCTAssertTrue(secondProject.installationEnabled(for: iPad))
     }
 
-    func testDeviceCanBeExcludedAndEnabledAgain() {
-        var preferences = AppPreferences()
+    func testDeviceCanBeExcludedAndEnabledAgainForOneProject() {
+        var project = makeProject(families: [.iPhone])
 
-        preferences.setInstallationEnabled(false, for: "PHONE-1")
-        XCTAssertFalse(preferences.installationEnabled(for: "PHONE-1"))
-        XCTAssertTrue(preferences.installationEnabled(for: "PHONE-2"))
+        project.setInstallationEnabled(false, for: iPhone.udid)
+        XCTAssertFalse(project.installationEnabled(for: iPhone))
 
-        preferences.setInstallationEnabled(true, for: "PHONE-1")
-        XCTAssertTrue(preferences.installationEnabled(for: "PHONE-1"))
-        XCTAssertNil(preferences.excludedDeviceUDIDs)
+        project.setInstallationEnabled(true, for: iPhone.udid)
+        XCTAssertTrue(project.installationEnabled(for: iPhone))
+        XCTAssertNil(project.excludedDeviceUDIDs)
     }
 
-    func testLegacyPreferencesDecodeWithAllDevicesEnabled() throws {
+    func testProjectCompatibilityCoversEveryIPhoneAndIPadCombination() {
+        let iPhoneOnly = makeProject(families: [.iPhone])
+        let iPadOnly = makeProject(families: [.iPad])
+        let universal = makeProject(families: [.iPhone, .iPad])
+
+        XCTAssertTrue(iPhoneOnly.supports(iPhone))
+        XCTAssertFalse(iPhoneOnly.supports(iPad))
+        XCTAssertFalse(iPadOnly.supports(iPhone))
+        XCTAssertTrue(iPadOnly.supports(iPad))
+        XCTAssertTrue(universal.supports(iPhone))
+        XCTAssertTrue(universal.supports(iPad))
+    }
+
+    func testIPadFamilyUsesDeviceNameWhenMarketingModelIsUnavailable() {
+        let namedIPad = ConnectedDevice(
+            udid: "TABLET-2",
+            name: "Living Room iPad",
+            model: nil,
+            platform: "iOS",
+            transportType: "localNetwork",
+            isInstallReady: true
+        )
+
+        XCTAssertEqual(namedIPad.mobileDeviceFamily, .iPad)
+        XCTAssertEqual(namedIPad.platformDescription, "iPadOS")
+        XCTAssertEqual(namedIPad.symbolName, "ipad")
+    }
+
+    func testExplicitIPadOSPlatformIsSupported() {
+        let explicitIPad = ConnectedDevice(
+            udid: "TABLET-3",
+            name: "Tablet",
+            model: nil,
+            platform: "iPadOS",
+            transportType: "wired",
+            isInstallReady: true
+        )
+
+        XCTAssertEqual(explicitIPad.mobileDeviceFamily, .iPad)
+        XCTAssertTrue(explicitIPad.supportsIOSAppInstallation)
+    }
+
+    func testUnknownLegacyCompatibilityAllowsIPhoneAndIPad() throws {
+        let project = try JSONDecoder().decode(
+            ManagedProject.self,
+            from: JSONEncoder().encode(makeProject(families: nil))
+        )
+
+        XCTAssertTrue(project.supports(iPhone))
+        XCTAssertTrue(project.supports(iPad))
+    }
+
+    func testBuildSettingsDetectIPhoneOnly() {
+        XCTAssertEqual(
+            ProjectDiscoveryService.supportedDeviceFamilies(
+                fromBuildSettingsJSON: buildSettingsJSON(targetedDeviceFamily: "1")
+            ),
+            [.iPhone]
+        )
+    }
+
+    func testBuildSettingsDetectIPadOnly() {
+        XCTAssertEqual(
+            ProjectDiscoveryService.supportedDeviceFamilies(
+                fromBuildSettingsJSON: buildSettingsJSON(targetedDeviceFamily: "2")
+            ),
+            [.iPad]
+        )
+    }
+
+    func testBuildSettingsDetectUniversalApplication() {
+        XCTAssertEqual(
+            ProjectDiscoveryService.supportedDeviceFamilies(
+                fromBuildSettingsJSON: buildSettingsJSON(targetedDeviceFamily: "1, 2")
+            ),
+            [.iPhone, .iPad]
+        )
+    }
+
+    func testBuildSettingsIgnoreWatchApplicationBeforeIOSApplication() {
         let json = #"""
-        {
-          "automationEnabled": true,
-          "reinstallAfterDays": 3,
-          "launchAtLogin": true,
-          "pollIntervalSeconds": 300,
-          "notificationsEnabled": true
-        }
+        [
+          {
+            "buildSettings": {
+              "PRODUCT_TYPE": "com.apple.product-type.application",
+              "SUPPORTED_PLATFORMS": "watchos watchsimulator",
+              "TARGETED_DEVICE_FAMILY": "4",
+              "WRAPPER_EXTENSION": "app"
+            }
+          },
+          {
+            "buildSettings": {
+              "PRODUCT_TYPE": "com.apple.product-type.application",
+              "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+              "TARGETED_DEVICE_FAMILY": "1,2",
+              "WRAPPER_EXTENSION": "app"
+            }
+          }
+        ]
         """#
 
-        let preferences = try JSONDecoder().decode(AppPreferences.self, from: Data(json.utf8))
+        XCTAssertEqual(
+            ProjectDiscoveryService.supportedDeviceFamilies(fromBuildSettingsJSON: json),
+            [.iPhone, .iPad]
+        )
+    }
 
-        XCTAssertTrue(preferences.installationEnabled(for: "PHONE-1"))
+    private func makeProject(families: Set<MobileDeviceFamily>?) -> ManagedProject {
+        ManagedProject(
+            id: UUID(),
+            displayName: "Example",
+            folderPath: "/tmp/Example",
+            containerPath: "/tmp/Example/Example.xcodeproj",
+            containerKind: .project,
+            scheme: "Example",
+            configuration: "Debug",
+            availableSchemes: ["Example"],
+            availableConfigurations: ["Debug"],
+            installMethod: .xcodebuild,
+            installScriptPath: nil,
+            isEnabled: true,
+            marketingVersion: nil,
+            buildNumber: nil,
+            supportedDeviceFamilies: families
+        )
+    }
+
+    private func buildSettingsJSON(targetedDeviceFamily: String) -> String {
+        #"""
+        [
+          {
+            "buildSettings": {
+              "PRODUCT_TYPE": "com.apple.product-type.application",
+              "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+              "TARGETED_DEVICE_FAMILY": "\#(targetedDeviceFamily)",
+              "WRAPPER_EXTENSION": "app"
+            }
+          }
+        ]
+        """#
     }
 }

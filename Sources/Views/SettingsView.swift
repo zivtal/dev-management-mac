@@ -46,7 +46,7 @@ private struct GeneralSettingsView: View {
                         Text(L10n.format("%d days", model.preferences.reinstallAfterDays))
                     }
                 }
-                Text("The interval is tracked separately for each application and each iPhone. A newly added application is installed at the next connection.")
+                Text("The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -106,7 +106,7 @@ private struct DevicesSettingsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Connected devices")
                         .font(.title2.bold())
-                    Text("Choose which connected iPhone and iPad devices receive application installations.")
+                    Text("Choose installation devices separately for each application in the Applications tab.")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -148,17 +148,10 @@ private struct DevicesSettingsView: View {
                     }
                     .width(min: 90, ideal: 110)
 
-                    TableColumn("Install apps") { device in
+                    TableColumn("Installation") { device in
                         if device.supportsIOSAppInstallation {
-                            Toggle(
-                                L10n.format("Install on %@", device.name),
-                                isOn: Binding(
-                                    get: { model.isDeviceInstallationEnabled(device.udid) },
-                                    set: { model.setDeviceInstallationEnabled($0, deviceUDID: device.udid) }
-                                )
-                            )
-                            .toggleStyle(.checkbox)
-                            .labelsHidden()
+                            Text("Choose per application")
+                                .foregroundStyle(.secondary)
                         } else {
                             Text("Companion device")
                                 .foregroundStyle(.secondary)

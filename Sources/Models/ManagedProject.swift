@@ -43,6 +43,8 @@ struct ManagedProject: Identifiable, Codable, Equatable {
     var isEnabled: Bool
     var marketingVersion: String?
     var buildNumber: String?
+    var supportedDeviceFamilies: Set<MobileDeviceFamily>? = nil
+    var excludedDeviceUDIDs: Set<String>? = nil
 
     var folderURL: URL { URL(fileURLWithPath: folderPath, isDirectory: true) }
     var containerURL: URL { URL(fileURLWithPath: containerPath) }
@@ -59,6 +61,46 @@ struct ManagedProject: Identifiable, Codable, Equatable {
             L10n.text("Unknown")
         }
     }
+
+    var effectiveSupportedDeviceFamilies: Set<MobileDeviceFamily> {
+        guard let supportedDeviceFamilies, !supportedDeviceFamilies.isEmpty else {
+            return Set(MobileDeviceFamily.allCases)
+        }
+        return supportedDeviceFamilies
+    }
+
+    var deviceCompatibilityDescription: String {
+        guard let supportedDeviceFamilies, !supportedDeviceFamilies.isEmpty else {
+            return L10n.text("iPhone and iPad (not detected by Xcode)")
+        }
+        switch supportedDeviceFamilies {
+        case [.iPhone]:
+            return L10n.text("iPhone only")
+        case [.iPad]:
+            return L10n.text("iPad only")
+        default:
+            return L10n.text("iPhone and iPad")
+        }
+    }
+
+    func supports(_ device: ConnectedDevice) -> Bool {
+        guard let family = device.mobileDeviceFamily else { return false }
+        return effectiveSupportedDeviceFamilies.contains(family)
+    }
+
+    func installationEnabled(for device: ConnectedDevice) -> Bool {
+        supports(device) && excludedDeviceUDIDs?.contains(device.udid) != true
+    }
+
+    mutating func setInstallationEnabled(_ enabled: Bool, for deviceUDID: String) {
+        var exclusions = excludedDeviceUDIDs ?? []
+        if enabled {
+            exclusions.remove(deviceUDID)
+        } else {
+            exclusions.insert(deviceUDID)
+        }
+        excludedDeviceUDIDs = exclusions.isEmpty ? nil : exclusions
+    }
 }
 
 struct ProjectDescriptor: Equatable {
@@ -69,6 +111,7 @@ struct ProjectDescriptor: Equatable {
     let schemes: [String]
     let configurations: [String]
     let installScriptPath: String?
+    var supportedDeviceFamilies: Set<MobileDeviceFamily>? = nil
 
     func makeManagedProject() -> ManagedProject {
         let preferredScheme = Self.preferredScheme(in: schemes, projectName: displayName)
@@ -92,7 +135,8 @@ struct ProjectDescriptor: Equatable {
             installScriptPath: installScriptPath,
             isEnabled: true,
             marketingVersion: nil,
-            buildNumber: nil
+            buildNumber: nil,
+            supportedDeviceFamilies: supportedDeviceFamilies
         )
     }
 

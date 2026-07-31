@@ -25,14 +25,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var progress: InstallationProgress?
     @Published private(set) var isRefreshingDevices = false
     @Published private(set) var isDiscoveringProject = false
+    @Published private(set) var compatibilityRefreshProjectIDs: Set<UUID> = []
     @Published private(set) var pendingInstallAllCount = 0
     @Published private(set) var projectIconURLs: [UUID: URL] = [:]
     @Published var presentedError: String?
 
     var installableDevices: [ConnectedDevice] {
-        connectedDevices.filter {
-            $0.supportsIOSAppInstallation && preferences.installationEnabled(for: $0.udid)
-        }
+        connectedDevices.filter(\.supportsIOSAppInstallation)
     }
 
     private let settingsStore: SettingsStore
@@ -47,10 +46,9 @@ final class AppModel: ObservableObject {
     private var monitoringTask: Task<Void, Never>?
     private var isLoading = true
     private var failedAttemptCooldowns: [String: Date] = [:]
-    private var installAllProjectIDs: Set<UUID> = [] {
-        didSet { pendingInstallAllCount = installAllProjectIDs.count }
+    private var installAllTargets: [UUID: Set<String>] = [:] {
+        didSet { pendingInstallAllCount = installAllTargets.count }
     }
-    private var installAllTargetDeviceUDIDs: Set<String> = []
     private var completedInstallAllTargets: Set<String> = []
     private var lastDeviceError: String?
     private var didApplyLaunchAtLoginDefault: Bool
@@ -78,11 +76,18 @@ final class AppModel: ObservableObject {
 
         let savedState = settingsStore.load()
         var loadedPreferences = savedState.preferences
+        var loadedProjects = savedState.projects
         if savedState.didApplyLaunchAtLoginDefault != true {
             loadedPreferences.launchAtLogin = true
         }
+        if let legacyExclusions = loadedPreferences.excludedDeviceUDIDs {
+            for index in loadedProjects.indices where loadedProjects[index].excludedDeviceUDIDs == nil {
+                loadedProjects[index].excludedDeviceUDIDs = legacyExclusions
+            }
+            loadedPreferences.excludedDeviceUDIDs = nil
+        }
         preferences = loadedPreferences
-        projects = savedState.projects
+        projects = loadedProjects
         installationRecords = savedState.installationRecords
         activity = savedState.activity
         didApplyLaunchAtLoginDefault = true
@@ -97,6 +102,9 @@ final class AppModel: ObservableObject {
         persist()
         Task { @MainActor [weak self] in
             await self?.refreshProjectIcons()
+        }
+        Task { @MainActor [weak self] in
+            await self?.refreshUnknownProjectCompatibility()
         }
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
             if preferences.notificationsEnabled != false {
@@ -142,14 +150,9 @@ final class AppModel: ObservableObject {
             connectedDevices = devices
             lastDeviceError = nil
             let appInstallableDevices = installableDevices
-            if !installAllProjectIDs.isEmpty, !appInstallableDevices.isEmpty {
-                if installAllTargetDeviceUDIDs.isEmpty {
-                    installAllTargetDeviceUDIDs = Set(appInstallableDevices.map(\.udid))
-                }
-                let requestedDevices = appInstallableDevices.filter {
-                    installAllTargetDeviceUDIDs.contains($0.udid)
-                }
-                await installAllRequestedProjects(on: requestedDevices)
+            if !installAllTargets.isEmpty {
+                preparePendingInstallAllTargets()
+                await installAllRequestedProjects(on: appInstallableDevices)
             } else if installWhenDue, preferences.automationEnabled {
                 await installDueProjects(on: appInstallableDevices)
             }
@@ -199,6 +202,8 @@ final class AppModel: ObservableObject {
     func removeProject(id: UUID) {
         guard let project = projects.first(where: { $0.id == id }) else { return }
         projects.removeAll { $0.id == id }
+        installAllTargets[id] = nil
+        clearTransientInstallationState(for: id)
         projectIconURLs[id] = nil
         installationRecords.removeAll { $0.projectID == id }
         addActivity(level: .info, title: L10n.format("Removed %@", project.displayName))
@@ -207,34 +212,77 @@ final class AppModel: ObservableObject {
     func updateProject(id: UUID, mutation: (inout ManagedProject) -> Void) {
         guard let index = projects.firstIndex(where: { $0.id == id }) else { return }
         mutation(&projects[index])
+        if !projects[index].isEnabled {
+            installAllTargets[id] = nil
+            clearTransientInstallationState(for: id)
+        }
     }
 
     func projectIconURL(for projectID: UUID) -> URL? {
         projectIconURLs[projectID]
     }
 
-    func isDeviceInstallationEnabled(_ deviceUDID: String) -> Bool {
-        preferences.installationEnabled(for: deviceUDID)
+    func compatibleConnectedDevices(for project: ManagedProject) -> [ConnectedDevice] {
+        installableDevices.filter(project.supports)
     }
 
-    func setDeviceInstallationEnabled(_ enabled: Bool, deviceUDID: String) {
-        preferences.setInstallationEnabled(enabled, for: deviceUDID)
+    func selectedInstallableDevices(for project: ManagedProject) -> [ConnectedDevice] {
+        compatibleConnectedDevices(for: project).filter(project.installationEnabled)
+    }
+
+    func isDeviceInstallationEnabled(_ deviceUDID: String, for projectID: UUID) -> Bool {
+        guard let project = projects.first(where: { $0.id == projectID }),
+              let device = connectedDevices.first(where: { $0.udid == deviceUDID })
+        else {
+            return false
+        }
+        return project.installationEnabled(for: device)
+    }
+
+    func setDeviceInstallationEnabled(_ enabled: Bool, deviceUDID: String, for projectID: UUID) {
+        updateProject(id: projectID) {
+            $0.setInstallationEnabled(enabled, for: deviceUDID)
+        }
         if !enabled {
-            installAllTargetDeviceUDIDs.remove(deviceUDID)
+            installAllTargets[projectID]?.remove(deviceUDID)
+            completedInstallAllTargets.remove(recordKey(projectID: projectID, deviceUDID: deviceUDID))
+            failedAttemptCooldowns[recordKey(projectID: projectID, deviceUDID: deviceUDID)] = nil
         }
         restartMonitoring()
+    }
+
+    func isRefreshingCompatibility(for projectID: UUID) -> Bool {
+        compatibilityRefreshProjectIDs.contains(projectID)
+    }
+
+    func setProjectScheme(_ scheme: String, for projectID: UUID) {
+        updateProject(id: projectID) {
+            $0.scheme = scheme
+            $0.supportedDeviceFamilies = nil
+        }
+        resetQueuedTargets(for: projectID)
+        refreshProjectCompatibility(projectID: projectID)
+    }
+
+    func setProjectConfiguration(_ configuration: String, for projectID: UUID) {
+        updateProject(id: projectID) {
+            $0.configuration = configuration
+            $0.supportedDeviceFamilies = nil
+        }
+        resetQueuedTargets(for: projectID)
+        refreshProjectCompatibility(projectID: projectID)
     }
 
     func installNow(projectID: UUID, deviceUDID: String? = nil) {
         guard let project = projects.first(where: { $0.id == projectID }) else { return }
         let targetDevices: [ConnectedDevice]
         if let deviceUDID {
-            targetDevices = installableDevices.filter { $0.udid == deviceUDID }
+            targetDevices = selectedInstallableDevices(for: project).filter { $0.udid == deviceUDID }
         } else {
-            targetDevices = installableDevices
+            targetDevices = selectedInstallableDevices(for: project)
         }
         guard !targetDevices.isEmpty else {
-            presentedError = L10n.text("No selected iPhone or iPad is available. Choose a connected device in Settings.")
+            presentedError = L10n.text("No selected compatible device is available for this application. Choose a connected device in Applications settings.")
             return
         }
 
@@ -250,20 +298,21 @@ final class AppModel: ObservableObject {
             presentedError = L10n.text("An installation is already in progress. Try again when it finishes.")
             return
         }
-        let enabledProjectIDs = Set(projects.filter(\.isEnabled).map(\.id))
-        guard !enabledProjectIDs.isEmpty else {
+        let enabledProjects = projects.filter(\.isEnabled)
+        guard !enabledProjects.isEmpty else {
             presentedError = L10n.text("There are no enabled applications to install.")
             return
         }
 
-        installAllProjectIDs = enabledProjectIDs
-        installAllTargetDeviceUDIDs = Set(installableDevices.map(\.udid))
+        installAllTargets = Dictionary(uniqueKeysWithValues: enabledProjects.map { project in
+            (project.id, Set(selectedInstallableDevices(for: project).map(\.udid)))
+        })
         completedInstallAllTargets = []
         addActivity(
             level: .info,
-            title: L10n.format("Install All requested for %d application(s)", enabledProjectIDs.count),
-            details: installableDevices.isEmpty
-                ? L10n.text("Waiting for a selected iPhone or iPad. Choose devices in Settings; the search will continue in the background.")
+            title: L10n.format("Install All requested for %d application(s)", enabledProjects.count),
+            details: installAllTargets.values.contains(where: \.isEmpty)
+                ? L10n.text("Some applications are waiting for a selected compatible iPhone or iPad. Choose devices per application in Settings; the search will continue in the background.")
                 : nil
         )
         restartMonitoring()
@@ -319,7 +368,7 @@ final class AppModel: ObservableObject {
         let now = Date()
 
         for device in devices where device.supportsIOSAppInstallation {
-            for project in enabledProjects {
+            for project in enabledProjects where project.installationEnabled(for: device) {
                 let attemptKey = recordKey(projectID: project.id, deviceUDID: device.udid)
                 if let cooldownUntil = failedAttemptCooldowns[attemptKey], cooldownUntil > now {
                     continue
@@ -343,37 +392,53 @@ final class AppModel: ObservableObject {
 
     private func installAllRequestedProjects(on devices: [ConnectedDevice]) async {
         guard progress == nil else { return }
-        let requestedIDs = installAllProjectIDs
-        for device in devices {
-            for project in projects where requestedIDs.contains(project.id) && project.isEnabled {
+        let requestedIDs = Array(installAllTargets.keys)
+        for projectID in requestedIDs {
+            guard let project = projects.first(where: { $0.id == projectID && $0.isEnabled }) else {
+                installAllTargets[projectID] = nil
+                continue
+            }
+            let targetDeviceUDIDs = installAllTargets[projectID] ?? []
+            for device in devices where targetDeviceUDIDs.contains(device.udid) {
                 let targetKey = recordKey(projectID: project.id, deviceUDID: device.udid)
                 guard !completedInstallAllTargets.contains(targetKey) else { continue }
                 if await install(project: project, on: device, ignoreSchedule: true) {
                     completedInstallAllTargets.insert(targetKey)
                 }
             }
+
+            if !targetDeviceUDIDs.isEmpty,
+               targetDeviceUDIDs.allSatisfy({ deviceUDID in
+                   completedInstallAllTargets.contains(
+                       recordKey(projectID: projectID, deviceUDID: deviceUDID)
+                   )
+               }) {
+                installAllTargets[projectID] = nil
+            }
         }
 
-        installAllProjectIDs = Set(installAllProjectIDs.filter { projectID in
-            guard projects.contains(where: { $0.id == projectID && $0.isEnabled }) else {
-                return false
-            }
-            return installAllTargetDeviceUDIDs.contains { deviceUDID in
-                !completedInstallAllTargets.contains(
-                    recordKey(projectID: projectID, deviceUDID: deviceUDID)
-                )
-            }
-        })
-        if installAllProjectIDs.isEmpty {
-            installAllTargetDeviceUDIDs = []
+        if installAllTargets.isEmpty {
             completedInstallAllTargets = []
             addActivity(level: .success, title: L10n.text("Install All completed successfully"))
         }
     }
 
+    private func preparePendingInstallAllTargets() {
+        for projectID in Array(installAllTargets.keys) where installAllTargets[projectID]?.isEmpty == true {
+            guard let project = projects.first(where: { $0.id == projectID && $0.isEnabled }) else {
+                installAllTargets[projectID] = nil
+                continue
+            }
+            let deviceUDIDs = Set(selectedInstallableDevices(for: project).map(\.udid))
+            if !deviceUDIDs.isEmpty {
+                installAllTargets[projectID] = deviceUDIDs
+            }
+        }
+    }
+
     @discardableResult
     private func install(project: ManagedProject, on device: ConnectedDevice, ignoreSchedule: Bool) async -> Bool {
-        guard device.supportsIOSAppInstallation else { return false }
+        guard project.installationEnabled(for: device) else { return false }
         guard progress == nil else {
             if ignoreSchedule {
                 presentedError = L10n.text("An installation is already in progress. Try again when it finishes.")
@@ -502,6 +567,51 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func refreshUnknownProjectCompatibility() async {
+        let projectIDs = projects
+            .filter { $0.supportedDeviceFamilies == nil }
+            .map(\.id)
+        for projectID in projectIDs {
+            await detectProjectCompatibility(projectID: projectID)
+        }
+    }
+
+    private func refreshProjectCompatibility(projectID: UUID) {
+        Task { @MainActor [weak self] in
+            await self?.detectProjectCompatibility(projectID: projectID)
+        }
+    }
+
+    private func detectProjectCompatibility(projectID: UUID) async {
+        guard let project = projects.first(where: { $0.id == projectID }) else { return }
+        compatibilityRefreshProjectIDs.insert(projectID)
+        defer { compatibilityRefreshProjectIDs.remove(projectID) }
+
+        guard let detectedFamilies = try? await discoveryService.supportedDeviceFamilies(for: project),
+              let index = projects.firstIndex(where: {
+                  $0.id == projectID
+                      && $0.scheme == project.scheme
+                      && $0.configuration == project.configuration
+              })
+        else {
+            return
+        }
+        projects[index].supportedDeviceFamilies = detectedFamilies
+        restartMonitoring()
+    }
+
+    private func resetQueuedTargets(for projectID: UUID) {
+        clearTransientInstallationState(for: projectID)
+        guard installAllTargets[projectID] != nil else { return }
+        installAllTargets[projectID] = []
+    }
+
+    private func clearTransientInstallationState(for projectID: UUID) {
+        let prefix = "\(projectID.uuidString)|"
+        completedInstallAllTargets = Set(completedInstallAllTargets.filter { !$0.hasPrefix(prefix) })
+        failedAttemptCooldowns = failedAttemptCooldowns.filter { !$0.key.hasPrefix(prefix) }
+    }
+
     private func addActivity(
         level: ActivityLevel,
         title: String,
@@ -526,23 +636,36 @@ final class AppModel: ObservableObject {
     }
 
     private func nextMonitoringDelay(now: Date = Date()) -> TimeInterval {
-        if !installAllProjectIDs.isEmpty { return TimeInterval(preferences.pollIntervalSeconds) }
+        if !installAllTargets.isEmpty { return TimeInterval(preferences.pollIntervalSeconds) }
         guard preferences.automationEnabled else { return 60 * 60 }
+        if !failedAttemptCooldowns.isEmpty {
+            return TimeInterval(preferences.pollIntervalSeconds)
+        }
 
         let enabledProjects = projects.filter(\.isEnabled)
         guard !enabledProjects.isEmpty else { return 60 * 60 }
 
         var nextDates: [Date] = []
         for project in enabledProjects {
-            guard let lastInstalledAt = lastInstallation(for: project.id),
-                  let nextDate = SchedulingPolicy.nextInstallationDate(
+            let selectedDevices = selectedInstallableDevices(for: project)
+            let targetDeviceUDIDs: [String?] = selectedDevices.isEmpty
+                ? [nil]
+                : selectedDevices.map { Optional($0.udid) }
+
+            for deviceUDID in targetDeviceUDIDs {
+                guard let lastInstalledAt = lastInstallation(
+                    for: project.id,
+                    deviceUDID: deviceUDID
+                ),
+                let nextDate = SchedulingPolicy.nextInstallationDate(
                     lastInstalledAt: lastInstalledAt,
                     intervalDays: preferences.reinstallAfterDays
-                  )
-            else {
-                return TimeInterval(preferences.pollIntervalSeconds)
+                )
+                else {
+                    return TimeInterval(preferences.pollIntervalSeconds)
+                }
+                nextDates.append(nextDate)
             }
-            nextDates.append(nextDate)
         }
 
         guard let earliestDate = nextDates.min() else { return 60 * 60 }

@@ -42,15 +42,18 @@
 "No connected devices" = "No connected devices";
 "All available iPhone, iPad, and Apple Watch devices reported by Xcode." = "All available iPhone, iPad, and Apple Watch devices reported by Xcode.";
 "Choose which connected iPhone and iPad devices receive application installations." = "Choose which connected iPhone and iPad devices receive application installations.";
+"Choose installation devices separately for each application in the Applications tab." = "Choose installation devices separately for each application in the Applications tab.";
 "Supported" = "Supported";
 "Companion device" = "Companion device";
 "Install apps" = "Install apps";
 "Install on %@" = "Install on %@";
+"Choose per application" = "Choose per application";
 "Automatic installation" = "Automatic installation";
 "Check and install automatically" = "Check and install automatically";
 "Reinstall interval" = "Reinstall interval";
 "%d days" = "%d days";
 "The interval is tracked separately for each application and each iPhone. A newly added application is installed at the next connection." = "The interval is tracked separately for each application and each iPhone. A newly added application is installed at the next connection.";
+"The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection." = "The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection.";
 "Background operation" = "Background operation";
 "Open Dev Reinstaller at login" = "Open Dev Reinstaller at login";
 "The application has no Dock window and remains available from the menu bar." = "The application has no Dock window and remains available from the menu bar.";
@@ -94,7 +97,16 @@
 "There are no enabled applications to install." = "There are no enabled applications to install.";
 "Install All requested for %d application(s)" = "Install All requested for %d application(s)";
 "Waiting for a selected iPhone or iPad. Choose devices in Settings; the search will continue in the background." = "Waiting for a selected iPhone or iPad. Choose devices in Settings; the search will continue in the background.";
+"Some applications are waiting for a selected compatible iPhone or iPad. Choose devices per application in Settings; the search will continue in the background." = "Some applications are waiting for a selected compatible iPhone or iPad. Choose devices per application in Settings; the search will continue in the background.";
 "Install All completed successfully" = "Install All completed successfully";
+"Install on devices" = "Install on devices";
+"Supported devices" = "Supported devices";
+"iPhone only" = "iPhone only";
+"iPad only" = "iPad only";
+"iPhone and iPad" = "iPhone and iPad";
+"iPhone and iPad (not detected by Xcode)" = "iPhone and iPad (not detected by Xcode)";
+"Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application." = "Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application.";
+"No compatible iPhone or iPad is currently connected." = "No compatible iPhone or iPad is currently connected.";
 
 "Activity log" = "Activity log";
 "The latest build, installation, and device events." = "The latest build, installation, and device events.";
@@ -122,6 +134,7 @@
 "Added %@" = "Added %@";
 "Removed %@" = "Removed %@";
 "No selected iPhone or iPad is available. Choose a connected device in Settings." = "No selected iPhone or iPad is available. Choose a connected device in Settings.";
+"No selected compatible device is available for this application. Choose a connected device in Applications settings." = "No selected compatible device is available for this application. Choose a connected device in Applications settings.";
 "Could not change launch at login: %@" = "Could not change launch at login: %@";
 "An installation is already in progress. Try again when it finishes." = "An installation is already in progress. Try again when it finishes.";
 "Starting installation of %@ on %@" = "Starting installation of %@ on %@";

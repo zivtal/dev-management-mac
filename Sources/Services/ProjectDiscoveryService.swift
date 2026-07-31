@@ -98,7 +98,7 @@ final class ProjectDiscoveryService {
         let scriptPath = fileManager.fileExists(atPath: scriptURL.path) ? scriptURL.path : nil
         let displayName = summary.name?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return ProjectDescriptor(
+        var descriptor = ProjectDescriptor(
             displayName: (displayName?.isEmpty == false ? displayName : nil)
                 ?? containerURL.deletingPathExtension().lastPathComponent,
             folderPath: folderURL.standardizedFileURL.path,
@@ -108,5 +108,66 @@ final class ProjectDiscoveryService {
             configurations: configurations,
             installScriptPath: scriptPath
         )
+        descriptor.supportedDeviceFamilies = try? await supportedDeviceFamilies(
+            for: descriptor.makeManagedProject()
+        )
+        return descriptor
+    }
+
+    func supportedDeviceFamilies(for project: ManagedProject) async throws -> Set<MobileDeviceFamily>? {
+        let result = try await processRunner.runAndRequireSuccess(
+            executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
+            arguments: [
+                project.containerKind.xcodebuildFlag, project.containerPath,
+                "-scheme", project.scheme,
+                "-configuration", project.configuration,
+                "-destination", "generic/platform=iOS",
+                "-showBuildSettings", "-json"
+            ],
+            workingDirectory: project.folderURL
+        )
+        return Self.supportedDeviceFamilies(fromBuildSettingsJSON: result.output)
+    }
+
+    static func supportedDeviceFamilies(fromBuildSettingsJSON output: String) -> Set<MobileDeviceFamily>? {
+        guard let data = output.data(using: .utf8),
+              let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
+        else {
+            return nil
+        }
+
+        for entry in entries {
+            guard let settings = entry["buildSettings"] as? [String: Any],
+                  isIOSApplicationBuildSettings(settings),
+                  let rawFamilies = settings["TARGETED_DEVICE_FAMILY"] as? String
+            else {
+                continue
+            }
+
+            let identifiers = rawFamilies
+                .split(whereSeparator: { !$0.isNumber })
+                .compactMap { Int($0) }
+            var families: Set<MobileDeviceFamily> = []
+            if identifiers.contains(1) { families.insert(.iPhone) }
+            if identifiers.contains(2) { families.insert(.iPad) }
+            if !families.isEmpty { return families }
+        }
+        return nil
+    }
+
+    private static func isIOSApplicationBuildSettings(_ settings: [String: Any]) -> Bool {
+        let productType = settings["PRODUCT_TYPE"] as? String
+        guard productType == "com.apple.product-type.application",
+              (settings["SKIP_INSTALL"] as? String) != "YES"
+        else {
+            return false
+        }
+
+        let supportedPlatforms = (settings["SUPPORTED_PLATFORMS"] as? String)?.lowercased() ?? ""
+        let sdkRoot = (settings["SDKROOT"] as? String)?.lowercased() ?? ""
+        let platformName = (settings["PLATFORM_NAME"] as? String)?.lowercased() ?? ""
+        return supportedPlatforms.split(separator: " ").contains("iphoneos")
+            || sdkRoot.hasPrefix("iphoneos")
+            || platformName == "iphoneos"
     }
 }

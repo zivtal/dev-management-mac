@@ -36,7 +36,10 @@ configurable number of days.
 - Optional custom installation through a root-level `install.sh`.
 - iPhone, iPad, and Apple Watch discovery; iOS and iPadOS devices are install
   targets, while Apple Watch is displayed as a companion device.
-- Per-device installation selection in Settings, persisted by device UDID.
+- Per-application device selection in Settings, persisted by application and
+  device UDID.
+- Automatic iPhone/iPad compatibility detection from the selected Xcode
+  scheme's `TARGETED_DEVICE_FAMILY` build setting.
 - USB hot-plug monitoring and manual device refresh.
 - Application version, build number, icon, schedule, and last-install status.
 - A persistent activity log with command output and error details.
@@ -90,8 +93,8 @@ the first launch may require right-clicking the application and selecting
 3. Confirm the detected installation method, scheme, and configuration.
 4. Connect and unlock an iPhone or iPad. For a network connection, first enable
    **Connect via network** in Xcode.
-5. In **Devices**, choose which connected iPhones and iPads should receive
-   installations.
+5. In **Applications**, select the app and choose which of its compatible
+   connected iPhones and iPads should receive installations.
 6. Select **Install now**, **Install All Now**, or leave automation enabled.
 
 A newly added application has no installation record, so it is immediately due
@@ -137,6 +140,10 @@ Settings contains four tabs and is the only ordinary app window.
 - Enable or pause a managed application.
 - Choose `install.sh` or direct Xcode installation when a script exists.
 - Choose the shared scheme and build configuration for direct builds.
+- View whether the selected scheme supports iPhone, iPad, or both. Only
+  compatible connected devices are offered as installation targets.
+- Choose installation devices independently for every app. A compatible new
+  device is selected by default, and exclusions are persisted by app and UDID.
 - Install the selected app immediately or reveal its folder in Finder.
 - Remove one or more entries without deleting their source folders.
 - Queue all enabled applications for immediate installation.
@@ -152,9 +159,7 @@ Settings contains four tabs and is the only ordinary app window.
 
 - Lists every paired available iOS and watchOS device returned by Xcode.
 - Shows name, model, operating-system family, and connection type.
-- Allows each connected iPhone and iPad to be included in or excluded from all
-  automatic and manual installation actions. New devices are included by
-  default, and the choice is persisted by UDID.
+- Directs device selection to each app's detail view in **Applications**.
 - Treats iPhone and iPad as supported installation targets.
 - Shows Apple Watch as a companion device, not an installation target.
 - Supports manual refresh.
@@ -177,7 +182,12 @@ Discovery follows these rules:
    then the first available configuration.
 7. If `install.sh` exists at the selected folder's root, select it by default;
    otherwise select direct Xcode installation.
-8. Enable the application immediately.
+8. Query the selected scheme and configuration with `xcodebuild
+   -showBuildSettings -json` for a generic iOS destination. Read
+   `TARGETED_DEVICE_FAMILY` from the installable iOS application target (`1`
+   for iPhone and `2` for iPad). If compatibility cannot be detected, allow
+   both families rather than blocking installation.
+9. Enable the application immediately.
 
 Adding the same standardized folder path twice is rejected.
 
@@ -272,8 +282,8 @@ other transports are found by CoreDevice during regular or manual discovery.
 - An app/device pair is due when the configured number of 24-hour periods has
   elapsed since its last successful installation.
 - Paused applications are excluded.
-- All due enabled applications are processed for every selected and available
-  iOS/iPadOS device, one installation at a time.
+- Every due enabled application is processed only for the compatible devices
+  selected for that application, one installation at a time.
 - A failed app/device pair receives a five-minute in-memory cooldown before the
   next automatic attempt.
 
