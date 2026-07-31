@@ -7,6 +7,10 @@
 "Automation is paused" = "האוטומציה מושהית";
 "Waiting for an iPhone" = "ממתין ל־iPhone";
 "%d connected device(s)" = "%d מכשירים מחוברים";
+"Show connected devices" = "הצג מכשירים מחוברים";
+"Hide connected devices" = "הסתר מכשירים מחוברים";
+"Installed on one device" = "מותקנת על מכשיר אחד";
+"Installed on %d devices" = "מותקנת על %d מכשירים";
 "Installing %@ on %@" = "מתקין את %@ על %@";
 "No connected iPhone" = "אין iPhone מחובר";
 "Connect by USB or enable Connect via network in Xcode." = "יש לחבר ב־USB או להפעיל Connect via network ב־Xcode.";

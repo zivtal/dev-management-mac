@@ -18,6 +18,16 @@ struct InstallationRecord: Codable, Equatable, Identifiable {
     var installedVersion: String?
 }
 
+extension Sequence where Element == InstallationRecord {
+    func installedDeviceCount(for projectID: UUID) -> Int {
+        Set(
+            lazy
+                .filter { $0.projectID == projectID }
+                .map(\.deviceUDID)
+        ).count
+    }
+}
+
 enum ActivityLevel: String, Codable {
     case info
     case success

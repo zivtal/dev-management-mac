@@ -7,6 +7,10 @@
 "Automation is paused" = "Automation is paused";
 "Waiting for an iPhone" = "Waiting for an iPhone";
 "%d connected device(s)" = "%d connected device(s)";
+"Show connected devices" = "Show connected devices";
+"Hide connected devices" = "Hide connected devices";
+"Installed on one device" = "Installed on one device";
+"Installed on %d devices" = "Installed on %d devices";
 "Installing %@ on %@" = "Installing %@ on %@";
 "No connected iPhone" = "No connected iPhone";
 "Connect by USB or enable Connect via network in Xcode." = "Connect by USB or enable Connect via network in Xcode.";

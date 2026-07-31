@@ -4,6 +4,7 @@ import SwiftUI
 struct MenuBarView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openSettings) private var openSettings
+    @State private var isDeviceListExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -11,7 +12,7 @@ struct MenuBarView: View {
 
             if let progress = model.progress {
                 progressSection(progress)
-            } else {
+            } else if model.connectedDevices.isEmpty || isDeviceListExpanded {
                 deviceSection
             }
 
@@ -21,7 +22,12 @@ struct MenuBarView: View {
             footer
         }
         .padding(14)
-        .frame(width: 480)
+        .frame(width: 500)
+        .onChange(of: model.connectedDevices.isEmpty) { _, isEmpty in
+            if isEmpty {
+                isDeviceListExpanded = false
+            }
+        }
         .alert(
             Text("Something went wrong"),
             isPresented: Binding(
@@ -40,9 +46,27 @@ struct MenuBarView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Dev Reinstaller")
                     .font(.headline)
-                Text(statusText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(statusText)
+                    if model.progress == nil, !model.connectedDevices.isEmpty {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                isDeviceListExpanded.toggle()
+                            }
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.semibold))
+                                .rotationEffect(.degrees(isDeviceListExpanded ? 90 : 0))
+                                .frame(width: 14, height: 14)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(deviceDisclosureActionText)
+                        .accessibilityLabel(deviceDisclosureActionText)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
             Spacer()
             Toggle("Automation", isOn: $model.preferences.automationEnabled)
@@ -110,7 +134,7 @@ struct MenuBarView: View {
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 7) {
                     GridRow {
                         Text("Application")
-                            .frame(width: 145, alignment: .leading)
+                            .frame(width: 160, alignment: .leading)
                         Text("Version")
                             .frame(width: 80, alignment: .leading)
                         Text("Last installed")
@@ -127,15 +151,19 @@ struct MenuBarView: View {
                             HStack(spacing: 6) {
                                 ProjectIconView(project: project, size: 28, showsStatus: true)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(project.displayName)
-                                        .lineLimit(1)
+                                    HStack(spacing: 4) {
+                                        Text(project.displayName)
+                                            .lineLimit(1)
+                                        Spacer(minLength: 2)
+                                        installedDeviceCountLabel(for: project)
+                                    }
                                     Text(scheduleText(for: project))
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
                             }
-                            .frame(width: 145, alignment: .leading)
+                            .frame(width: 160, alignment: .leading)
 
                             Text(project.versionDisplay)
                                 .font(.caption.monospacedDigit())
@@ -235,6 +263,26 @@ struct MenuBarView: View {
         if !model.preferences.automationEnabled { return L10n.text("Automation is paused") }
         if model.connectedDevices.isEmpty { return L10n.text("Waiting for an iPhone") }
         return L10n.format("%d connected device(s)", model.connectedDevices.count)
+    }
+
+    private var deviceDisclosureActionText: String {
+        L10n.text(isDeviceListExpanded ? "Hide connected devices" : "Show connected devices")
+    }
+
+    private func installedDeviceCountLabel(for project: ManagedProject) -> some View {
+        let count = model.installedDeviceCount(for: project.id)
+        let description = count == 1
+            ? L10n.text("Installed on one device")
+            : L10n.format("Installed on %d devices", count)
+        return Label {
+            Text(verbatim: "\(count)")
+        } icon: {
+            Image(systemName: "ipad.and.iphone")
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .help(description)
+        .accessibilityLabel(description)
     }
 
     private func scheduleText(for project: ManagedProject) -> String {

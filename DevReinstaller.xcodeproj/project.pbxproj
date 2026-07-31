@@ -37,6 +37,7 @@
 		E984486315C87025E3188B98 /* DeviceInstallationSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A51EFF776AD5157D68F418 /* DeviceInstallationSelectionTests.swift */; };
 		ECA193D5E5BBA3D6D0C5505D /* ConnectedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = EACABAEA699652729A00DFFA /* ConnectedDevice.swift */; };
 		F611BF341D7DBBB336CF4335 /* ProjectVersionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56D67D5D4BE93B82D44016CC /* ProjectVersionServiceTests.swift */; };
+		F6DB1C8FC0B9ED5795818352 /* InstallationRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9913A21AF2B36F70607E2540 /* InstallationRecordTests.swift */; };
 		FADF81C595986F7A66178955 /* ProjectVersionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05527C94BD5D0E67D23FAF65 /* ProjectVersionService.swift */; };
 		FB476F5BFD8D6374E1DEA810 /* ProjectIconService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E758D180C7E753C87540ABCE /* ProjectIconService.swift */; };
 /* End PBXBuildFile section */
@@ -73,6 +74,7 @@
 		86EF1508F5839D50A2A53C25 /* he */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = he; path = he.lproj/Localizable.strings; sourceTree = "<group>"; };
 		8A4BC8603AFE27442D44B95C /* ManagedProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedProject.swift; sourceTree = "<group>"; };
 		9499FDE93CA6B354EC501BFD /* ProjectsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsSettingsView.swift; sourceTree = "<group>"; };
+		9913A21AF2B36F70607E2540 /* InstallationRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationRecordTests.swift; sourceTree = "<group>"; };
 		A576F19FBCD188C14A10A357 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AC991E75C5DAAE9A81F4CBDD /* ProjectIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIconView.swift; sourceTree = "<group>"; };
 		ACB9C2C9DE14BD54B87F47D9 /* InstallationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationService.swift; sourceTree = "<group>"; };
@@ -138,6 +140,7 @@
 				B9A51EFF776AD5157D68F418 /* DeviceInstallationSelectionTests.swift */,
 				7DC9F3E7962B646B2FE22124 /* DeviceListDecodingTests.swift */,
 				82B2E9627D7A97BAC8E67734 /* InstallationNotificationTextTests.swift */,
+				9913A21AF2B36F70607E2540 /* InstallationRecordTests.swift */,
 				5389932323441FF2DE8770E6 /* ProjectIconServiceTests.swift */,
 				56D67D5D4BE93B82D44016CC /* ProjectVersionServiceTests.swift */,
 				EADD1BE32E8764FE253DE21D /* SchedulingPolicyTests.swift */,
@@ -314,6 +317,7 @@
 				E984486315C87025E3188B98 /* DeviceInstallationSelectionTests.swift in Sources */,
 				96315487EA9A2BC38313B51E /* DeviceListDecodingTests.swift in Sources */,
 				27E4991AB931AEDAAEF3301C /* InstallationNotificationTextTests.swift in Sources */,
+				F6DB1C8FC0B9ED5795818352 /* InstallationRecordTests.swift in Sources */,
 				9E2DB6FD5E0C3E888F841C2E /* ProjectIconServiceTests.swift in Sources */,
 				F611BF341D7DBBB336CF4335 /* ProjectVersionServiceTests.swift in Sources */,
 				277BC7FC1164BDD5BCD003DB /* SchedulingPolicyTests.swift in Sources */,
@@ -448,7 +452,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -462,7 +466,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -508,7 +512,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -528,7 +532,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

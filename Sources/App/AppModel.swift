@@ -360,6 +360,10 @@ final class AppModel: ObservableObject {
             .max()
     }
 
+    func installedDeviceCount(for projectID: UUID) -> Int {
+        installationRecords.installedDeviceCount(for: projectID)
+    }
+
     func nextInstallation(for projectID: UUID) -> Date? {
         SchedulingPolicy.nextInstallationDate(
             lastInstalledAt: lastInstallation(for: projectID),
