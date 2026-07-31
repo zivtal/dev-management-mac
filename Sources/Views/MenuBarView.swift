@@ -22,7 +22,7 @@ struct MenuBarView: View {
             footer
         }
         .padding(14)
-        .frame(width: 500)
+        .frame(width: 550)
         .onChange(of: model.connectedDevices.isEmpty) { _, isEmpty in
             if isEmpty {
                 isDeviceListExpanded = false
@@ -134,7 +134,9 @@ struct MenuBarView: View {
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 7) {
                     GridRow {
                         Text("Application")
-                            .frame(width: 160, alignment: .leading)
+                            .frame(width: 145, alignment: .leading)
+                        Text("Devices")
+                            .frame(width: 60, alignment: .center)
                         Text("Version")
                             .frame(width: 80, alignment: .leading)
                         Text("Last installed")
@@ -144,26 +146,24 @@ struct MenuBarView: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                    Divider().gridCellColumns(4)
+                    Divider().gridCellColumns(5)
 
                     ForEach(model.projects) { project in
                         GridRow {
                             HStack(spacing: 6) {
                                 ProjectIconView(project: project, size: 28, showsStatus: true)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    HStack(spacing: 4) {
-                                        Text(project.displayName)
-                                            .lineLimit(1)
-                                        Spacer(minLength: 2)
-                                        installedDeviceCountLabel(for: project)
-                                    }
+                                    Text(project.displayName)
+                                        .lineLimit(1)
                                     Text(scheduleText(for: project))
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
                             }
-                            .frame(width: 160, alignment: .leading)
+                            .frame(width: 145, alignment: .leading)
+
+                            installedDeviceCountCell(for: project)
 
                             Text(project.versionDisplay)
                                 .font(.caption.monospacedDigit())
@@ -269,20 +269,16 @@ struct MenuBarView: View {
         L10n.text(isDeviceListExpanded ? "Hide connected devices" : "Show connected devices")
     }
 
-    private func installedDeviceCountLabel(for project: ManagedProject) -> some View {
+    private func installedDeviceCountCell(for project: ManagedProject) -> some View {
         let count = model.installedDeviceCount(for: project.id)
         let description = count == 1
             ? L10n.text("Installed on one device")
             : L10n.format("Installed on %d devices", count)
-        return Label {
-            Text(verbatim: "\(count)")
-        } icon: {
-            Image(systemName: "ipad.and.iphone")
-        }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-        .help(description)
-        .accessibilityLabel(description)
+        return Text(verbatim: "\(count)")
+            .font(.caption.monospacedDigit())
+            .frame(width: 60, alignment: .center)
+            .help(description)
+            .accessibilityLabel(description)
     }
 
     private func scheduleText(for project: ManagedProject) -> String {
