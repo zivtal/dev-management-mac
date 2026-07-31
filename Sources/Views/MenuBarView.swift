@@ -24,6 +24,11 @@ struct MenuBarView: View {
         }
         .padding(14)
         .frame(width: 585)
+        .background {
+            MenuBarOpenObserver {
+                model.refreshProjectVersions()
+            }
+        }
         .onChange(of: model.connectedDevices.isEmpty) { _, isEmpty in
             if isEmpty {
                 isDeviceListExpanded = false
@@ -323,5 +328,64 @@ struct MenuBarView: View {
             return L10n.text("Never")
         }
         return date.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+private struct MenuBarOpenObserver: NSViewRepresentable {
+    let onOpen: () -> Void
+
+    func makeNSView(context: Context) -> MenuBarOpenObserverView {
+        let view = MenuBarOpenObserverView()
+        view.onOpen = onOpen
+        return view
+    }
+
+    func updateNSView(_ nsView: MenuBarOpenObserverView, context: Context) {
+        nsView.onOpen = onOpen
+    }
+}
+
+private final class MenuBarOpenObserverView: NSView {
+    var onOpen: (() -> Void)?
+
+    private var didReportCurrentVisibility = false
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self)
+        didReportCurrentVisibility = false
+
+        guard let window else { return }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowOcclusionDidChange),
+            name: NSWindow.didChangeOcclusionStateNotification,
+            object: window
+        )
+
+        if window.isVisible {
+            DispatchQueue.main.async { [weak self, weak window] in
+                guard let self, self.window === window, window?.isVisible == true else { return }
+                self.reportOpening()
+            }
+        }
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func windowOcclusionDidChange() {
+        if window?.isVisible == true {
+            reportOpening()
+        } else {
+            didReportCurrentVisibility = false
+        }
+    }
+
+    private func reportOpening() {
+        guard !didReportCurrentVisibility else { return }
+        didReportCurrentVisibility = true
+        onOpen?()
     }
 }

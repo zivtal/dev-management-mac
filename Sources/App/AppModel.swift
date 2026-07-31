@@ -608,7 +608,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func refreshProjectVersions() {
+    func refreshProjectVersions() {
         var refreshedProjects = projects
         var changed = false
         for index in refreshedProjects.indices {

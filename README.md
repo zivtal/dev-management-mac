@@ -206,8 +206,9 @@ Adding the same standardized folder path twice is rejected.
 
 ### Version and icon discovery
 
-The displayed app version is refreshed during device checks. Development Management
-looks for literal `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` values in:
+The displayed app version is refreshed whenever the menu-bar popover opens and
+during device checks. Development Management looks for literal `MARKETING_VERSION`
+and `CURRENT_PROJECT_VERSION` values in:
 
 1. `.xcconfig` files up to four levels below the source folder, with filenames
    containing `version` preferred.
