@@ -6,6 +6,21 @@ struct AppPreferences: Codable, Equatable {
     var launchAtLogin = true
     var pollIntervalSeconds = 300
     var notificationsEnabled: Bool? = true
+    var excludedDeviceUDIDs: Set<String>?
+
+    func installationEnabled(for deviceUDID: String) -> Bool {
+        excludedDeviceUDIDs?.contains(deviceUDID) != true
+    }
+
+    mutating func setInstallationEnabled(_ enabled: Bool, for deviceUDID: String) {
+        var excludedDeviceUDIDs = excludedDeviceUDIDs ?? []
+        if enabled {
+            excludedDeviceUDIDs.remove(deviceUDID)
+        } else {
+            excludedDeviceUDIDs.insert(deviceUDID)
+        }
+        self.excludedDeviceUDIDs = excludedDeviceUDIDs.isEmpty ? nil : excludedDeviceUDIDs
+    }
 }
 
 struct InstallationRecord: Codable, Equatable, Identifiable {

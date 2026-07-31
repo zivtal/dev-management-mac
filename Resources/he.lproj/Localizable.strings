@@ -41,8 +41,11 @@
 "Installation" = "התקנה";
 "No connected devices" = "אין מכשירים מחוברים";
 "All available iPhone, iPad, and Apple Watch devices reported by Xcode." = "כל מכשירי ה־iPhone, ה־iPad וה־Apple Watch הזמינים ש־Xcode מדווח עליהם.";
+"Choose which connected iPhone and iPad devices receive application installations." = "יש לבחור את מכשירי ה־iPhone וה־iPad המחוברים שעליהם יותקנו האפליקציות.";
 "Supported" = "נתמכת";
 "Companion device" = "מכשיר נלווה";
+"Install apps" = "התקנת אפליקציות";
+"Install on %@" = "התקן על %@";
 "Automatic installation" = "התקנה אוטומטית";
 "Check and install automatically" = "בדוק והתקן אוטומטית";
 "Reinstall interval" = "מרווח התקנה מחדש";
@@ -90,7 +93,7 @@
 "Waiting to install %d application(s)" = "ממתין להתקנת %d אפליקציות";
 "There are no enabled applications to install." = "אין אפליקציות פעילות להתקנה.";
 "Install All requested for %d application(s)" = "התבקשה התקנת כל %d האפליקציות";
-"Waiting for a connected iPhone. The search will continue in the background." = "ממתין ל־iPhone מחובר. החיפוש ימשיך ברקע.";
+"Waiting for a selected iPhone or iPad. Choose devices in Settings; the search will continue in the background." = "ממתין ל־iPhone או ל־iPad שנבחרו. יש לבחור מכשירים בהגדרות; החיפוש ימשיך ברקע.";
 "Install All completed successfully" = "התקנת כל האפליקציות הסתיימה בהצלחה";
 
 "Activity log" = "יומן פעילות";
@@ -118,7 +121,7 @@
 "This folder is already in the application list." = "התיקייה הזו כבר נמצאת ברשימת האפליקציות.";
 "Added %@" = "נוספה האפליקציה %@";
 "Removed %@" = "הוסרה האפליקציה %@";
-"No connected iPhone was found. Connect and unlock the device, and make sure it is paired with Xcode." = "לא נמצא iPhone מחובר. יש לחבר ולפתוח את המכשיר ולוודא שהוא מזווג עם Xcode.";
+"No selected iPhone or iPad is available. Choose a connected device in Settings." = "אין iPhone או iPad שנבחרו וזמינים. יש לבחור מכשיר מחובר בהגדרות.";
 "Could not change launch at login: %@" = "לא ניתן לשנות את ההפעלה בעת כניסה: %@";
 "An installation is already in progress. Try again when it finishes." = "כבר מתבצעת התקנה. אפשר לנסות שוב בסיומה.";
 "Starting installation of %@ on %@" = "מתחיל להתקין את %@ על %@";

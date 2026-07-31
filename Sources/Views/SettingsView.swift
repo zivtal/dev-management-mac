@@ -106,7 +106,7 @@ private struct DevicesSettingsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Connected devices")
                         .font(.title2.bold())
-                    Text("All available iPhone, iPad, and Apple Watch devices reported by Xcode.")
+                    Text("Choose which connected iPhone and iPad devices receive application installations.")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -148,11 +148,21 @@ private struct DevicesSettingsView: View {
                     }
                     .width(min: 90, ideal: 110)
 
-                    TableColumn("Installation") { device in
-                        Text(device.supportsIOSAppInstallation
-                             ? L10n.text("Supported")
-                             : L10n.text("Companion device"))
-                            .foregroundStyle(device.supportsIOSAppInstallation ? .primary : .secondary)
+                    TableColumn("Install apps") { device in
+                        if device.supportsIOSAppInstallation {
+                            Toggle(
+                                L10n.format("Install on %@", device.name),
+                                isOn: Binding(
+                                    get: { model.isDeviceInstallationEnabled(device.udid) },
+                                    set: { model.setDeviceInstallationEnabled($0, deviceUDID: device.udid) }
+                                )
+                            )
+                            .toggleStyle(.checkbox)
+                            .labelsHidden()
+                        } else {
+                            Text("Companion device")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .width(min: 115, ideal: 140)
                 }

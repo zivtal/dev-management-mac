@@ -30,7 +30,9 @@ final class AppModel: ObservableObject {
     @Published var presentedError: String?
 
     var installableDevices: [ConnectedDevice] {
-        connectedDevices.filter(\.supportsIOSAppInstallation)
+        connectedDevices.filter {
+            $0.supportsIOSAppInstallation && preferences.installationEnabled(for: $0.udid)
+        }
     }
 
     private let settingsStore: SettingsStore
@@ -48,6 +50,8 @@ final class AppModel: ObservableObject {
     private var installAllProjectIDs: Set<UUID> = [] {
         didSet { pendingInstallAllCount = installAllProjectIDs.count }
     }
+    private var installAllTargetDeviceUDIDs: Set<String> = []
+    private var completedInstallAllTargets: Set<String> = []
     private var lastDeviceError: String?
     private var didApplyLaunchAtLoginDefault: Bool
 
@@ -137,9 +141,15 @@ final class AppModel: ObservableObject {
             let devices = try await deviceService.availableDevices()
             connectedDevices = devices
             lastDeviceError = nil
-            let appInstallableDevices = devices.filter(\.supportsIOSAppInstallation)
-            if !installAllProjectIDs.isEmpty, let device = appInstallableDevices.first {
-                await installAllRequestedProjects(on: device)
+            let appInstallableDevices = installableDevices
+            if !installAllProjectIDs.isEmpty, !appInstallableDevices.isEmpty {
+                if installAllTargetDeviceUDIDs.isEmpty {
+                    installAllTargetDeviceUDIDs = Set(appInstallableDevices.map(\.udid))
+                }
+                let requestedDevices = appInstallableDevices.filter {
+                    installAllTargetDeviceUDIDs.contains($0.udid)
+                }
+                await installAllRequestedProjects(on: requestedDevices)
             } else if installWhenDue, preferences.automationEnabled {
                 await installDueProjects(on: appInstallableDevices)
             }
@@ -203,16 +213,36 @@ final class AppModel: ObservableObject {
         projectIconURLs[projectID]
     }
 
+    func isDeviceInstallationEnabled(_ deviceUDID: String) -> Bool {
+        preferences.installationEnabled(for: deviceUDID)
+    }
+
+    func setDeviceInstallationEnabled(_ enabled: Bool, deviceUDID: String) {
+        preferences.setInstallationEnabled(enabled, for: deviceUDID)
+        if !enabled {
+            installAllTargetDeviceUDIDs.remove(deviceUDID)
+        }
+        restartMonitoring()
+    }
+
     func installNow(projectID: UUID, deviceUDID: String? = nil) {
         guard let project = projects.first(where: { $0.id == projectID }) else { return }
-        guard let device = deviceUDID.flatMap({ id in installableDevices.first { $0.udid == id } })
-                ?? installableDevices.first
-        else {
-            presentedError = L10n.text("No connected iPhone was found. Connect and unlock the device, and make sure it is paired with Xcode.")
+        let targetDevices: [ConnectedDevice]
+        if let deviceUDID {
+            targetDevices = installableDevices.filter { $0.udid == deviceUDID }
+        } else {
+            targetDevices = installableDevices
+        }
+        guard !targetDevices.isEmpty else {
+            presentedError = L10n.text("No selected iPhone or iPad is available. Choose a connected device in Settings.")
             return
         }
 
-        Task { _ = await install(project: project, on: device, ignoreSchedule: true) }
+        Task {
+            for device in targetDevices {
+                _ = await install(project: project, on: device, ignoreSchedule: true)
+            }
+        }
     }
 
     func installAll() {
@@ -227,11 +257,13 @@ final class AppModel: ObservableObject {
         }
 
         installAllProjectIDs = enabledProjectIDs
+        installAllTargetDeviceUDIDs = Set(installableDevices.map(\.udid))
+        completedInstallAllTargets = []
         addActivity(
             level: .info,
             title: L10n.format("Install All requested for %d application(s)", enabledProjectIDs.count),
             details: installableDevices.isEmpty
-                ? L10n.text("Waiting for a connected iPhone. The search will continue in the background.")
+                ? L10n.text("Waiting for a selected iPhone or iPad. Choose devices in Settings; the search will continue in the background.")
                 : nil
         )
         restartMonitoring()
@@ -309,20 +341,32 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func installAllRequestedProjects(on device: ConnectedDevice) async {
+    private func installAllRequestedProjects(on devices: [ConnectedDevice]) async {
         guard progress == nil else { return }
         let requestedIDs = installAllProjectIDs
-        for project in projects where requestedIDs.contains(project.id) && project.isEnabled {
-            let succeeded = await install(project: project, on: device, ignoreSchedule: true)
-            if succeeded {
-                installAllProjectIDs.remove(project.id)
+        for device in devices {
+            for project in projects where requestedIDs.contains(project.id) && project.isEnabled {
+                let targetKey = recordKey(projectID: project.id, deviceUDID: device.udid)
+                guard !completedInstallAllTargets.contains(targetKey) else { continue }
+                if await install(project: project, on: device, ignoreSchedule: true) {
+                    completedInstallAllTargets.insert(targetKey)
+                }
             }
         }
 
         installAllProjectIDs = Set(installAllProjectIDs.filter { projectID in
-            projects.contains { $0.id == projectID && $0.isEnabled }
+            guard projects.contains(where: { $0.id == projectID && $0.isEnabled }) else {
+                return false
+            }
+            return installAllTargetDeviceUDIDs.contains { deviceUDID in
+                !completedInstallAllTargets.contains(
+                    recordKey(projectID: projectID, deviceUDID: deviceUDID)
+                )
+            }
         })
         if installAllProjectIDs.isEmpty {
+            installAllTargetDeviceUDIDs = []
+            completedInstallAllTargets = []
             addActivity(level: .success, title: L10n.text("Install All completed successfully"))
         }
     }

@@ -41,8 +41,11 @@
 "Installation" = "Installation";
 "No connected devices" = "No connected devices";
 "All available iPhone, iPad, and Apple Watch devices reported by Xcode." = "All available iPhone, iPad, and Apple Watch devices reported by Xcode.";
+"Choose which connected iPhone and iPad devices receive application installations." = "Choose which connected iPhone and iPad devices receive application installations.";
 "Supported" = "Supported";
 "Companion device" = "Companion device";
+"Install apps" = "Install apps";
+"Install on %@" = "Install on %@";
 "Automatic installation" = "Automatic installation";
 "Check and install automatically" = "Check and install automatically";
 "Reinstall interval" = "Reinstall interval";
@@ -90,7 +93,7 @@
 "Waiting to install %d application(s)" = "Waiting to install %d application(s)";
 "There are no enabled applications to install." = "There are no enabled applications to install.";
 "Install All requested for %d application(s)" = "Install All requested for %d application(s)";
-"Waiting for a connected iPhone. The search will continue in the background." = "Waiting for a connected iPhone. The search will continue in the background.";
+"Waiting for a selected iPhone or iPad. Choose devices in Settings; the search will continue in the background." = "Waiting for a selected iPhone or iPad. Choose devices in Settings; the search will continue in the background.";
 "Install All completed successfully" = "Install All completed successfully";
 
 "Activity log" = "Activity log";
@@ -118,7 +121,7 @@
 "This folder is already in the application list." = "This folder is already in the application list.";
 "Added %@" = "Added %@";
 "Removed %@" = "Removed %@";
-"No connected iPhone was found. Connect and unlock the device, and make sure it is paired with Xcode." = "No connected iPhone was found. Connect and unlock the device, and make sure it is paired with Xcode.";
+"No selected iPhone or iPad is available. Choose a connected device in Settings." = "No selected iPhone or iPad is available. Choose a connected device in Settings.";
 "Could not change launch at login: %@" = "Could not change launch at login: %@";
 "An installation is already in progress. Try again when it finishes." = "An installation is already in progress. Try again when it finishes.";
 "Starting installation of %@ on %@" = "Starting installation of %@ on %@";

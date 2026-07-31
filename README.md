@@ -36,6 +36,7 @@ configurable number of days.
 - Optional custom installation through a root-level `install.sh`.
 - iPhone, iPad, and Apple Watch discovery; iOS and iPadOS devices are install
   targets, while Apple Watch is displayed as a companion device.
+- Per-device installation selection in Settings, persisted by device UDID.
 - USB hot-plug monitoring and manual device refresh.
 - Application version, build number, icon, schedule, and last-install status.
 - A persistent activity log with command output and error details.
@@ -89,10 +90,12 @@ the first launch may require right-clicking the application and selecting
 3. Confirm the detected installation method, scheme, and configuration.
 4. Connect and unlock an iPhone or iPad. For a network connection, first enable
    **Connect via network** in Xcode.
-5. Select **Install now**, **Install All Now**, or leave automation enabled.
+5. In **Devices**, choose which connected iPhones and iPads should receive
+   installations.
+6. Select **Install now**, **Install All Now**, or leave automation enabled.
 
 A newly added application has no installation record, so it is immediately due
-for every available iOS or iPadOS device.
+for every selected and available iOS or iPadOS device.
 
 ## Application specification
 
@@ -148,8 +151,10 @@ Settings contains four tabs and is the only ordinary app window.
 #### Devices
 
 - Lists every paired available iOS and watchOS device returned by Xcode.
-- Shows name, model, operating-system family, connection type, and installation
-  support.
+- Shows name, model, operating-system family, and connection type.
+- Allows each connected iPhone and iPad to be included in or excluded from all
+  automatic and manual installation actions. New devices are included by
+  default, and the choice is persisted by UDID.
 - Treats iPhone and iPad as supported installation targets.
 - Shows Apple Watch as a companion device, not an installation target.
 - Supports manual refresh.
@@ -267,8 +272,8 @@ other transports are found by CoreDevice during regular or manual discovery.
 - An app/device pair is due when the configured number of 24-hour periods has
   elapsed since its last successful installation.
 - Paused applications are excluded.
-- All due enabled applications are processed for every available iOS/iPadOS
-  device, one installation at a time.
+- All due enabled applications are processed for every selected and available
+  iOS/iPadOS device, one installation at a time.
 - A failed app/device pair receives a five-minute in-memory cooldown before the
   next automatic attempt.
 
@@ -281,9 +286,10 @@ connection events and **Check now** can still refresh immediately.
 ### Manual operations
 
 - **Install now** ignores the schedule and targets the selected device when one
-  is supplied, otherwise the first available iOS/iPadOS device.
+  is supplied, otherwise every selected and available iOS/iPadOS device.
 - **Install All Now** snapshots all currently enabled applications, ignores
-  their schedules, and installs them on the first available iOS/iPadOS device.
+  their schedules, and installs them on every selected and available
+  iOS/iPadOS device.
 - If no installation target is available, the Install All queue stays active
   in memory and checks every five minutes.
 - Successful items leave the queue. Failed items remain queued for another
@@ -317,6 +323,7 @@ State is encoded as pretty-printed JSON with ISO-8601 dates at:
 Persisted data includes:
 
 - Preferences.
+- Device UDIDs excluded from installation.
 - Managed-project paths and build choices.
 - Per-project, per-device successful installation records and installed
   versions.
@@ -466,6 +473,7 @@ Current unit coverage verifies:
 
 - CoreDevice JSON decoding, paired-device filtering, transport independence,
   device ordering, and Watch exclusion from installation targets.
+- Default, excluded, restored, and legacy-decoded device installation choices.
 - Reinstall threshold behavior and the one-day scheduling minimum.
 - Success-notification content.
 - iPhone app-icon preference over Watch icons.
@@ -568,8 +576,8 @@ launch around this script.
 - Direct installation targets iOS-platform devices; discovered Apple Watch
   devices are informational.
 - One build/install operation runs at a time.
-- Install All targets the first available installable device and its pending
-  queue is not restored after relaunch.
+- Install All targets the selected installable devices available when its queue
+  starts; the pending queue is not restored after relaunch.
 - Failed-attempt cooldowns are not persisted across relaunches.
 - The Activity log retains only the latest 100 entries.
 - The DMG is ad-hoc signed and not notarized for public distribution.

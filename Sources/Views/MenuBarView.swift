@@ -229,7 +229,7 @@ struct MenuBarView: View {
     }
 
     private func lastInstalledText(for project: ManagedProject) -> String {
-        let connectedUDID = model.connectedDevices.count == 1 ? model.connectedDevices.first?.udid : nil
+        let connectedUDID = model.installableDevices.count == 1 ? model.installableDevices.first?.udid : nil
         guard let date = model.lastInstallation(for: project.id, deviceUDID: connectedUDID) else {
             return L10n.text("Never")
         }

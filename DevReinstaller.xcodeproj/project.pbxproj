@@ -34,6 +34,7 @@
 		B910BF9502A894DE3FF1A5C6 /* ProjectDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70652601A75E8C17189CF3C3 /* ProjectDiscoveryService.swift */; };
 		C7D5C1EC615937733F0B43C1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CF48C524D297C92BEF629DC6 /* Assets.xcassets */; };
 		E0C57A331B8F4DEC24C29D01 /* InstallationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACB9C2C9DE14BD54B87F47D9 /* InstallationService.swift */; };
+		E984486315C87025E3188B98 /* DeviceInstallationSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9A51EFF776AD5157D68F418 /* DeviceInstallationSelectionTests.swift */; };
 		ECA193D5E5BBA3D6D0C5505D /* ConnectedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = EACABAEA699652729A00DFFA /* ConnectedDevice.swift */; };
 		F611BF341D7DBBB336CF4335 /* ProjectVersionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56D67D5D4BE93B82D44016CC /* ProjectVersionServiceTests.swift */; };
 		FADF81C595986F7A66178955 /* ProjectVersionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05527C94BD5D0E67D23FAF65 /* ProjectVersionService.swift */; };
@@ -76,6 +77,7 @@
 		AC991E75C5DAAE9A81F4CBDD /* ProjectIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIconView.swift; sourceTree = "<group>"; };
 		ACB9C2C9DE14BD54B87F47D9 /* InstallationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationService.swift; sourceTree = "<group>"; };
 		B31DEE8A7A59735374371C58 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		B9A51EFF776AD5157D68F418 /* DeviceInstallationSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceInstallationSelectionTests.swift; sourceTree = "<group>"; };
 		CF48C524D297C92BEF629DC6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		DB76C0C04F5BE4DCB26643AC /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
 		DE7353553572B820CDE43DE8 /* DeviceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceService.swift; sourceTree = "<group>"; };
@@ -133,6 +135,7 @@
 		5326DA7F97929C9B5A1BCCC0 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				B9A51EFF776AD5157D68F418 /* DeviceInstallationSelectionTests.swift */,
 				7DC9F3E7962B646B2FE22124 /* DeviceListDecodingTests.swift */,
 				82B2E9627D7A97BAC8E67734 /* InstallationNotificationTextTests.swift */,
 				5389932323441FF2DE8770E6 /* ProjectIconServiceTests.swift */,
@@ -308,6 +311,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E984486315C87025E3188B98 /* DeviceInstallationSelectionTests.swift in Sources */,
 				96315487EA9A2BC38313B51E /* DeviceListDecodingTests.swift in Sources */,
 				27E4991AB931AEDAAEF3301C /* InstallationNotificationTextTests.swift in Sources */,
 				9E2DB6FD5E0C3E888F841C2E /* ProjectIconServiceTests.swift in Sources */,
@@ -444,7 +448,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -458,7 +462,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.5;
+				MARKETING_VERSION = 1.0.6;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -504,7 +508,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -524,7 +528,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.5;
+				MARKETING_VERSION = 1.0.6;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
