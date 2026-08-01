@@ -11,6 +11,8 @@
 "Hide connected devices" = "Hide connected devices";
 "Installed on one device" = "Installed on one device";
 "Installed on %d devices" = "Installed on %d devices";
+"One device selected" = "One device selected";
+"%d devices selected" = "%d devices selected";
 "Installing %@ on %@" = "Installing %@ on %@";
 "No connected iPhone" = "No connected iPhone";
 "Connect by USB or enable Connect via network in Xcode." = "Connect by USB or enable Connect via network in Xcode.";

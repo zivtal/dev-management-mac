@@ -93,6 +93,12 @@ struct ManagedProject: Identifiable, Codable, Equatable {
         supports(device) && excludedDeviceUDIDs?.contains(device.udid) != true
     }
 
+    func selectedDeviceCount(in connectedDevices: [ConnectedDevice]) -> Int {
+        connectedDevices.lazy.filter {
+            $0.supportsIOSAppInstallation && isSelectedInstallationTarget($0)
+        }.count
+    }
+
     func installationEnabled(for device: ConnectedDevice) -> Bool {
         isEnabled && isSelectedInstallationTarget(device)
     }

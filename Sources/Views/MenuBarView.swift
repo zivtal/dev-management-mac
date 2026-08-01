@@ -26,7 +26,9 @@ struct MenuBarView: View {
         .frame(width: 585)
         .background {
             MenuBarOpenObserver {
-                model.refreshProjectVersions()
+                Task {
+                    await model.refreshDevices(installWhenDue: false)
+                }
             }
         }
         .onChange(of: model.connectedDevices.isEmpty) { _, isEmpty in
@@ -184,7 +186,7 @@ struct MenuBarView: View {
                             }
                             .frame(width: 160, alignment: .leading)
 
-                            installedDeviceCountCell(for: project)
+                            selectedDeviceCountCell(for: project)
 
                             Text(nextBuildText(for: project))
                                 .font(.caption)
@@ -295,11 +297,11 @@ struct MenuBarView: View {
         L10n.text(isDeviceListExpanded ? "Hide connected devices" : "Show connected devices")
     }
 
-    private func installedDeviceCountCell(for project: ManagedProject) -> some View {
-        let count = model.installedDeviceCount(for: project.id)
+    private func selectedDeviceCountCell(for project: ManagedProject) -> some View {
+        let count = model.selectedDeviceCount(for: project)
         let description = count == 1
-            ? L10n.text("Installed on one device")
-            : L10n.format("Installed on %d devices", count)
+            ? L10n.text("One device selected")
+            : L10n.format("%d devices selected", count)
         return Text(verbatim: "\(count)")
             .font(.caption.monospacedDigit())
             .frame(width: 55, alignment: .center)

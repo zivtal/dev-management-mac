@@ -252,6 +252,10 @@ final class AppModel: ObservableObject {
         compatibleConnectedDevices(for: project).filter(project.installationEnabled)
     }
 
+    func selectedDeviceCount(for project: ManagedProject) -> Int {
+        project.selectedDeviceCount(in: connectedDevices)
+    }
+
     func isDeviceInstallationEnabled(_ deviceUDID: String, for projectID: UUID) -> Bool {
         guard let project = projects.first(where: { $0.id == projectID }),
               let device = connectedDevices.first(where: { $0.udid == deviceUDID })
