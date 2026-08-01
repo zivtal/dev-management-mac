@@ -18,6 +18,19 @@ struct InstalledApplication: Decodable, Equatable {
         case marketingVersion = "version"
         case buildNumber = "bundleVersion"
     }
+
+    var versionDisplay: String? {
+        switch (marketingVersion, buildNumber) {
+        case let (marketingVersion?, buildNumber?) where !buildNumber.isEmpty:
+            return "\(marketingVersion) (\(buildNumber))"
+        case let (marketingVersion?, _):
+            return marketingVersion
+        case let (_, buildNumber?) where !buildNumber.isEmpty:
+            return buildNumber
+        default:
+            return nil
+        }
+    }
 }
 
 struct DeviceAppListEnvelope: Decodable {

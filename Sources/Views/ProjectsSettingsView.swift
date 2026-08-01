@@ -1,4 +1,5 @@
 import AppKit
+import CoreTransferable
 import SwiftUI
 
 struct ProjectsSettingsView: View {
@@ -354,12 +355,15 @@ struct ProjectsSettingsView: View {
 
                 settingsDivider
 
-                Text("Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application.")
+                    Text("Drag devices to set their installation order. The order is saved separately for this application.")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
 
                 settingsDivider
 
@@ -399,21 +403,90 @@ struct ProjectsSettingsView: View {
                 }
             )
         ) {
-            HStack {
-                Label(device.name, systemImage: device.symbolName)
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label(device.name, systemImage: device.symbolName)
+                    Text(lastInstallationText(for: device, project: project))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 Spacer()
-                Text(L10n.format(
-                    "%@ · %@",
-                    device.model ?? device.platformDescription,
-                    device.connectionDescription
-                ))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(L10n.format(
+                        "%@ · %@",
+                        device.model ?? device.platformDescription,
+                        device.connectionDescription
+                    ))
+                    Text(installedDeviceVersionText(for: device, project: project))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Image(systemName: "line.3.horizontal")
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 24, height: 32)
+                    .contentShape(Rectangle())
+                    .draggable(device.udid) {
+                        Label(device.name, systemImage: device.symbolName)
+                            .padding(8)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    .help("Drag to change installation order")
             }
         }
         .toggleStyle(.checkbox)
         .padding(.horizontal, 12)
-        .frame(minHeight: 38)
+        .frame(minHeight: 54)
+        .dropDestination(for: String.self) { deviceUDIDs, location in
+            guard let draggedDeviceUDID = deviceUDIDs.first,
+                  draggedDeviceUDID != device.udid
+            else {
+                return false
+            }
+            model.moveInstallationDevice(
+                draggedDeviceUDID,
+                relativeTo: device.udid,
+                placeAfterDestination: location.y >= 27,
+                for: project.id
+            )
+            return true
+        }
+    }
+
+    private func lastInstallationText(for device: ConnectedDevice, project: ManagedProject) -> String {
+        guard let record = model.lastInstallationRecord(
+            for: project.id,
+            deviceUDID: device.udid
+        ) else {
+            return L10n.text("Not installed yet by Development Management")
+        }
+        return L10n.format(
+            "Last installed: %@ · Version %@",
+            record.installedAt.formatted(date: .abbreviated, time: .shortened),
+            record.installedVersion ?? L10n.text("Unknown")
+        )
+    }
+
+    private func installedDeviceVersionText(
+        for device: ConnectedDevice,
+        project: ManagedProject
+    ) -> String {
+        guard project.bundleIdentifier != nil else {
+            return L10n.text("Installed version is unavailable")
+        }
+        guard model.didCheckInstalledApplications(on: device.udid) else {
+            return model.isRefreshingDevices
+                ? L10n.text("Checking installed version…")
+                : L10n.text("Installed version is unavailable")
+        }
+        guard let version = model.installedApplication(
+            for: project,
+            deviceUDID: device.udid
+        )?.versionDisplay else {
+            return L10n.text("Not installed on this device")
+        }
+        return L10n.format("Installed on device: %@", version)
     }
 
     private func settingsPickerRow<Content: View>(

@@ -22,6 +22,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var installationRecords: [InstallationRecord] { didSet { persist() } }
     @Published private(set) var activity: [ActivityEntry] { didSet { persist() } }
     @Published private(set) var connectedDevices: [ConnectedDevice] = []
+    @Published private(set) var installedApplicationsByDeviceUDID: [String: [String: InstalledApplication]] = [:]
+    @Published private(set) var checkedInstalledApplicationDeviceUDIDs: Set<String> = []
     @Published private(set) var progress: InstallationProgress?
     @Published private(set) var installationLog: InstallationLogSession?
     @Published private(set) var isRefreshingDevices = false
@@ -165,9 +167,15 @@ final class AppModel: ObservableObject {
         do {
             let devices = try await deviceService.availableDevices()
             connectedDevices = devices
-            failedVersionCheckDeviceUDIDs.formIntersection(devices.map(\.udid))
+            let connectedDeviceUDIDs = Set(devices.map(\.udid))
+            installedApplicationsByDeviceUDID = installedApplicationsByDeviceUDID.filter {
+                connectedDeviceUDIDs.contains($0.key)
+            }
+            checkedInstalledApplicationDeviceUDIDs.formIntersection(connectedDeviceUDIDs)
+            failedVersionCheckDeviceUDIDs.formIntersection(connectedDeviceUDIDs)
             lastDeviceError = nil
             let appInstallableDevices = installableDevices
+            await refreshInstalledApplications(on: appInstallableDevices)
             if !installAllTargets.isEmpty {
                 preparePendingInstallAllTargets()
                 await installAllRequestedProjects(on: appInstallableDevices)
@@ -176,6 +184,8 @@ final class AppModel: ObservableObject {
             }
         } catch {
             connectedDevices = []
+            installedApplicationsByDeviceUDID = [:]
+            checkedInstalledApplicationDeviceUDIDs = []
             let message = error.localizedDescription
             if lastDeviceError != message {
                 addActivity(level: .warning, title: L10n.text("Could not check connected devices"), details: message)
@@ -246,7 +256,7 @@ final class AppModel: ObservableObject {
     }
 
     func compatibleConnectedDevices(for project: ManagedProject) -> [ConnectedDevice] {
-        installableDevices.filter(project.supports)
+        project.devicesInInstallationOrder(installableDevices.filter(project.supports))
     }
 
     func selectedInstallableDevices(for project: ManagedProject) -> [ConnectedDevice] {
@@ -274,6 +284,32 @@ final class AppModel: ObservableObject {
             installAllTargets[projectID]?.remove(deviceUDID)
             completedInstallAllTargets.remove(recordKey(projectID: projectID, deviceUDID: deviceUDID))
             failedAttemptCooldowns[recordKey(projectID: projectID, deviceUDID: deviceUDID)] = nil
+        }
+        restartMonitoring()
+    }
+
+    func moveInstallationDevice(
+        _ deviceUDID: String,
+        relativeTo destinationDeviceUDID: String,
+        placeAfterDestination: Bool,
+        for projectID: UUID
+    ) {
+        guard let project = projects.first(where: { $0.id == projectID }),
+              deviceUDID != destinationDeviceUDID
+        else {
+            return
+        }
+
+        var orderedDeviceUDIDs = compatibleConnectedDevices(for: project).map(\.udid)
+        guard let sourceIndex = orderedDeviceUDIDs.firstIndex(of: deviceUDID) else { return }
+        orderedDeviceUDIDs.remove(at: sourceIndex)
+        guard let destinationIndex = orderedDeviceUDIDs.firstIndex(of: destinationDeviceUDID) else {
+            return
+        }
+        let insertionIndex = destinationIndex + (placeAfterDestination ? 1 : 0)
+        orderedDeviceUDIDs.insert(deviceUDID, at: insertionIndex)
+        updateProject(id: projectID) {
+            $0.setInstallationDeviceOrder(orderedDeviceUDIDs)
         }
         restartMonitoring()
     }
@@ -368,8 +404,7 @@ final class AppModel: ObservableObject {
     func setSettingsWindowOpen(_ isOpen: Bool) {
         guard isSettingsWindowOpen != isOpen else { return }
         isSettingsWindowOpen = isOpen
-        guard !isOpen else { return }
-        Task { await refreshDevices(installWhenDue: true) }
+        Task { await refreshDevices(installWhenDue: !isOpen) }
     }
 
     private func applyLaunchAtLoginPreferenceOnStartup() {
@@ -394,6 +429,21 @@ final class AppModel: ObservableObject {
             .max()
     }
 
+    func lastInstallationRecord(for projectID: UUID, deviceUDID: String) -> InstallationRecord? {
+        installationRecords
+            .filter { $0.projectID == projectID && $0.deviceUDID == deviceUDID }
+            .max { $0.installedAt < $1.installedAt }
+    }
+
+    func installedApplication(for project: ManagedProject, deviceUDID: String) -> InstalledApplication? {
+        guard let bundleIdentifier = project.bundleIdentifier else { return nil }
+        return installedApplicationsByDeviceUDID[deviceUDID]?[bundleIdentifier]
+    }
+
+    func didCheckInstalledApplications(on deviceUDID: String) -> Bool {
+        checkedInstalledApplicationDeviceUDIDs.contains(deviceUDID)
+    }
+
     func installedDeviceCount(for projectID: UUID) -> Int {
         installationRecords.installedDeviceCount(for: projectID)
     }
@@ -414,34 +464,11 @@ final class AppModel: ObservableObject {
         let enabledProjects = projects.filter(\.isEnabled)
         let now = Date()
 
-        for device in devices where device.supportsIOSAppInstallation {
-            let deviceProjects = enabledProjects.filter { $0.installationEnabled(for: device) }
-            let projectsNeedingVersionCheck = deviceProjects.filter { project in
-                let lastInstalledAt = installationRecords.first {
-                    $0.projectID == project.id && $0.deviceUDID == device.udid
-                }?.installedAt
-                return !SchedulingPolicy.isDue(
-                    lastInstalledAt: lastInstalledAt,
-                    now: now,
-                    intervalDays: preferences.reinstallAfterDays
-                )
-                    && project.bundleIdentifier != nil
-                    && (project.marketingVersion != nil || project.buildNumber != nil)
-            }
-
-            var installedApplications: [String: InstalledApplication]?
-            if !projectsNeedingVersionCheck.isEmpty {
-                do {
-                    installedApplications = try await deviceService.installedApplications(on: device)
-                    failedVersionCheckDeviceUDIDs.remove(device.udid)
-                } catch {
-                    failedVersionCheckDeviceUDIDs.insert(device.udid)
-                }
-            } else {
-                failedVersionCheckDeviceUDIDs.remove(device.udid)
-            }
-
-            for project in deviceProjects {
+        for project in enabledProjects {
+            let orderedDevices = project.devicesInInstallationOrder(
+                devices.filter { project.installationEnabled(for: $0) }
+            )
+            for device in orderedDevices {
                 let attemptKey = recordKey(projectID: project.id, deviceUDID: device.udid)
                 if let cooldownUntil = failedAttemptCooldowns[attemptKey], cooldownUntil > now {
                     continue
@@ -457,9 +484,9 @@ final class AppModel: ObservableObject {
                 )
                 let installedVersionIsOlder: Bool
                 if let bundleIdentifier = project.bundleIdentifier,
-                   let installedApplications {
+                   checkedInstalledApplicationDeviceUDIDs.contains(device.udid) {
                     installedVersionIsOlder = SchedulingPolicy.installedApplicationIsOlder(
-                        installedApplications[bundleIdentifier],
+                        installedApplicationsByDeviceUDID[device.udid]?[bundleIdentifier],
                         than: ProjectVersion(
                             marketingVersion: project.marketingVersion,
                             buildNumber: project.buildNumber
@@ -479,14 +506,17 @@ final class AppModel: ObservableObject {
 
     private func installAllRequestedProjects(on devices: [ConnectedDevice]) async {
         guard progress == nil else { return }
-        let requestedIDs = Array(installAllTargets.keys)
+        let requestedIDs = projects.map(\.id).filter { installAllTargets[$0] != nil }
         for projectID in requestedIDs {
             guard let project = projects.first(where: { $0.id == projectID && $0.isEnabled }) else {
                 installAllTargets[projectID] = nil
                 continue
             }
             let targetDeviceUDIDs = installAllTargets[projectID] ?? []
-            for device in devices where targetDeviceUDIDs.contains(device.udid) {
+            let orderedDevices = project.devicesInInstallationOrder(
+                devices.filter { targetDeviceUDIDs.contains($0.udid) }
+            )
+            for device in orderedDevices {
                 let targetKey = recordKey(projectID: project.id, deviceUDID: device.udid)
                 guard !completedInstallAllTargets.contains(targetKey) else { continue }
                 if await install(project: project, on: device, ignoreSchedule: true) {
@@ -654,7 +684,8 @@ final class AppModel: ObservableObject {
     }
 
     private func recordSuccessfulInstallation(projectID: UUID, deviceUDID: String) {
-        let installedVersion = projects.first(where: { $0.id == projectID })?.versionDisplay
+        let installedProject = projects.first(where: { $0.id == projectID })
+        let installedVersion = installedProject?.versionDisplay
         if let index = installationRecords.firstIndex(where: {
             $0.projectID == projectID && $0.deviceUDID == deviceUDID
         }) {
@@ -667,6 +698,31 @@ final class AppModel: ObservableObject {
                 installedAt: Date(),
                 installedVersion: installedVersion
             ))
+        }
+        if let installedProject,
+           let bundleIdentifier = installedProject.bundleIdentifier {
+            installedApplicationsByDeviceUDID[deviceUDID, default: [:]][bundleIdentifier] =
+                InstalledApplication(
+                    bundleIdentifier: bundleIdentifier,
+                    marketingVersion: installedProject.marketingVersion,
+                    buildNumber: installedProject.buildNumber
+                )
+            checkedInstalledApplicationDeviceUDIDs.insert(deviceUDID)
+        }
+    }
+
+    private func refreshInstalledApplications(on devices: [ConnectedDevice]) async {
+        for device in devices {
+            do {
+                installedApplicationsByDeviceUDID[device.udid] =
+                    try await deviceService.installedApplications(on: device)
+                checkedInstalledApplicationDeviceUDIDs.insert(device.udid)
+                failedVersionCheckDeviceUDIDs.remove(device.udid)
+            } catch {
+                installedApplicationsByDeviceUDID[device.udid] = nil
+                checkedInstalledApplicationDeviceUDIDs.remove(device.udid)
+                failedVersionCheckDeviceUDIDs.insert(device.udid)
+            }
         }
     }
 

@@ -122,6 +122,14 @@
 "iPhone and iPad" = "iPhone and iPad";
 "iPhone and iPad (not detected by Xcode)" = "iPhone and iPad (not detected by Xcode)";
 "Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application." = "Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application.";
+"Drag devices to set their installation order. The order is saved separately for this application." = "Drag devices to set their installation order. The order is saved separately for this application.";
+"Drag to change installation order" = "Drag to change installation order";
+"Last installed: %@ · Version %@" = "Last installed: %@ · Version %@";
+"Not installed yet by Development Management" = "Not installed yet by Development Management";
+"Checking installed version…" = "Checking installed version…";
+"Installed version is unavailable" = "Installed version is unavailable";
+"Not installed on this device" = "Not installed on this device";
+"Installed on device: %@" = "Installed on device: %@";
 "No compatible iPhone or iPad is currently connected." = "No compatible iPhone or iPad is currently connected.";
 
 "Activity log" = "Activity log";

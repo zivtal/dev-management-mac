@@ -122,6 +122,14 @@
 "iPhone and iPad" = "iPhone ו־iPad";
 "iPhone and iPad (not detected by Xcode)" = "iPhone ו־iPad (לא זוהה על ידי Xcode)";
 "Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application." = "מוצגים רק מכשירים שנתמכים על ידי ה־scheme שנבחר ב־Xcode. הבחירה נשמרת בנפרד לאפליקציה הזו.";
+"Drag devices to set their installation order. The order is saved separately for this application." = "יש לגרור מכשירים כדי לקבוע את סדר ההתקנה. הסדר נשמר בנפרד לאפליקציה הזו.";
+"Drag to change installation order" = "גרירה לשינוי סדר ההתקנה";
+"Last installed: %@ · Version %@" = "הותקן לאחרונה: %@ · גרסה %@";
+"Not installed yet by Development Management" = "טרם הותקן על ידי Development Management";
+"Checking installed version…" = "בודק את הגרסה המותקנת…";
+"Installed version is unavailable" = "הגרסה המותקנת אינה זמינה";
+"Not installed on this device" = "האפליקציה אינה מותקנת במכשיר";
+"Installed on device: %@" = "מותקנת במכשיר: %@";
 "No compatible iPhone or iPad is currently connected." = "אין כרגע iPhone או iPad תואמים מחוברים.";
 
 "Activity log" = "יומן פעילות";

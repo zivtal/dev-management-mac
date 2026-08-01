@@ -101,5 +101,28 @@ final class DeviceListDecodingTests: XCTestCase {
                 buildNumber: "42"
             )
         )
+        XCTAssertEqual(
+            envelope.applicationsByBundleIdentifier["com.example.Sample"]?.versionDisplay,
+            "2.4.1 (42)"
+        )
+    }
+
+    func testInstalledApplicationVersionDisplayHandlesPartialCoreDeviceData() {
+        XCTAssertEqual(
+            InstalledApplication(
+                bundleIdentifier: "com.example.MarketingOnly",
+                marketingVersion: "3.1",
+                buildNumber: nil
+            ).versionDisplay,
+            "3.1"
+        )
+        XCTAssertEqual(
+            InstalledApplication(
+                bundleIdentifier: "com.example.BuildOnly",
+                marketingVersion: nil,
+                buildNumber: "99"
+            ).versionDisplay,
+            "99"
+        )
     }
 }

@@ -69,6 +69,63 @@ final class DeviceInstallationSelectionTests: XCTestCase {
         XCTAssertTrue(project.installationEnabled(for: iPhone))
     }
 
+    func testDevicesUseTheInstallationOrderSavedForEachProject() {
+        var firstProject = makeProject(families: [.iPhone, .iPad])
+        let secondProject = makeProject(families: [.iPhone, .iPad])
+        firstProject.setInstallationDeviceOrder([iPad.udid, iPhone.udid])
+
+        XCTAssertEqual(
+            firstProject.devicesInInstallationOrder([iPhone, iPad]).map(\.udid),
+            [iPad.udid, iPhone.udid]
+        )
+        XCTAssertEqual(
+            secondProject.devicesInInstallationOrder([iPhone, iPad]).map(\.udid),
+            [iPhone.udid, iPad.udid]
+        )
+    }
+
+    func testNewlyConnectedDevicesFollowTheSavedInstallationOrder() {
+        var project = makeProject(families: [.iPhone, .iPad])
+        let newlyConnectedPhone = ConnectedDevice(
+            udid: "PHONE-2",
+            name: "Another iPhone",
+            model: "iPhone 16",
+            platform: "iOS",
+            transportType: "wired",
+            isInstallReady: true
+        )
+        project.setInstallationDeviceOrder([iPad.udid, iPhone.udid])
+
+        XCTAssertEqual(
+            project.devicesInInstallationOrder([newlyConnectedPhone, iPhone, iPad]).map(\.udid),
+            [iPad.udid, iPhone.udid, newlyConnectedPhone.udid]
+        )
+    }
+
+    func testReorderingConnectedDevicesPreservesDisconnectedDevicePosition() {
+        var project = makeProject(families: [.iPhone, .iPad])
+        project.installationDeviceOrder = ["OFFLINE-PHONE", iPhone.udid, iPad.udid]
+
+        project.setInstallationDeviceOrder([iPad.udid, iPhone.udid])
+
+        XCTAssertEqual(
+            project.installationDeviceOrder,
+            ["OFFLINE-PHONE", iPad.udid, iPhone.udid]
+        )
+    }
+
+    func testInstallationDeviceOrderSurvivesPersistence() throws {
+        var project = makeProject(families: [.iPhone, .iPad])
+        project.setInstallationDeviceOrder([iPad.udid, iPhone.udid])
+
+        let restoredProject = try JSONDecoder().decode(
+            ManagedProject.self,
+            from: JSONEncoder().encode(project)
+        )
+
+        XCTAssertEqual(restoredProject.installationDeviceOrder, [iPad.udid, iPhone.udid])
+    }
+
     func testProjectCompatibilityCoversEveryIPhoneAndIPadCombination() {
         let iPhoneOnly = makeProject(families: [.iPhone])
         let iPadOnly = makeProject(families: [.iPad])

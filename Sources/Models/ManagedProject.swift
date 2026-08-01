@@ -46,6 +46,7 @@ struct ManagedProject: Identifiable, Codable, Equatable {
     var supportedDeviceFamilies: Set<MobileDeviceFamily>? = nil
     var bundleIdentifier: String? = nil
     var excludedDeviceUDIDs: Set<String>? = nil
+    var installationDeviceOrder: [String]? = nil
     var signingTeamID: String? = nil
 
     var folderURL: URL { URL(fileURLWithPath: folderPath, isDirectory: true) }
@@ -112,6 +113,51 @@ struct ManagedProject: Identifiable, Codable, Equatable {
             exclusions.insert(deviceUDID)
         }
         excludedDeviceUDIDs = exclusions.isEmpty ? nil : exclusions
+    }
+
+    func devicesInInstallationOrder(_ devices: [ConnectedDevice]) -> [ConnectedDevice] {
+        guard let installationDeviceOrder, !installationDeviceOrder.isEmpty else {
+            return devices
+        }
+
+        var positions: [String: Int] = [:]
+        for deviceUDID in installationDeviceOrder where positions[deviceUDID] == nil {
+            positions[deviceUDID] = positions.count
+        }
+
+        return devices.enumerated()
+            .sorted { lhs, rhs in
+                let lhsPosition = positions[lhs.element.udid] ?? Int.max
+                let rhsPosition = positions[rhs.element.udid] ?? Int.max
+                return lhsPosition == rhsPosition ? lhs.offset < rhs.offset : lhsPosition < rhsPosition
+            }
+            .map(\.element)
+    }
+
+    mutating func setInstallationDeviceOrder(_ connectedDeviceUDIDs: [String]) {
+        var seenConnectedDeviceUDIDs: Set<String> = []
+        let uniqueConnectedDeviceUDIDs = connectedDeviceUDIDs.filter {
+            seenConnectedDeviceUDIDs.insert($0).inserted
+        }
+        let connectedDeviceSet = Set(uniqueConnectedDeviceUDIDs)
+        var reorderedConnectedDevices = uniqueConnectedDeviceUDIDs.makeIterator()
+        var seenSavedDeviceUDIDs: Set<String> = []
+        var updatedOrder: [String] = []
+
+        for savedDeviceUDID in installationDeviceOrder ?? []
+        where seenSavedDeviceUDIDs.insert(savedDeviceUDID).inserted {
+            if connectedDeviceSet.contains(savedDeviceUDID) {
+                if let reorderedDeviceUDID = reorderedConnectedDevices.next() {
+                    updatedOrder.append(reorderedDeviceUDID)
+                }
+            } else {
+                updatedOrder.append(savedDeviceUDID)
+            }
+        }
+        while let reorderedDeviceUDID = reorderedConnectedDevices.next() {
+            updatedOrder.append(reorderedDeviceUDID)
+        }
+        installationDeviceOrder = updatedOrder.isEmpty ? nil : updatedOrder
     }
 
     func configurationMatchingScheme(_ selectedScheme: String) -> String? {
