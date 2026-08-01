@@ -1,8 +1,88 @@
 import Foundation
 
-enum InstallationEvent {
+enum InstallationEvent: Sendable {
     case phase(InstallationProgress.Phase)
     case output(String)
+}
+
+struct InstallationEventBatch: Equatable, Sendable {
+    private(set) var phase: InstallationProgress.Phase?
+    private(set) var output = ""
+
+    var isEmpty: Bool {
+        phase == nil && output.isEmpty
+    }
+
+    mutating func append(_ event: InstallationEvent) {
+        switch event {
+        case .phase(let phase):
+            self.phase = phase
+        case .output(let output):
+            self.output.append(output)
+        }
+    }
+}
+
+final class InstallationEventCoalescer: @unchecked Sendable {
+    typealias DeliveryHandler = @Sendable (InstallationEventBatch) -> Void
+
+    private let lock = NSLock()
+    private let deliveryInterval: TimeInterval
+    private let deliveryHandler: DeliveryHandler
+    private var pendingBatch = InstallationEventBatch()
+    private var isDeliveryScheduled = false
+    private var isFinished = false
+
+    init(
+        deliveryInterval: TimeInterval = 0.2,
+        deliveryHandler: @escaping DeliveryHandler
+    ) {
+        self.deliveryInterval = deliveryInterval
+        self.deliveryHandler = deliveryHandler
+    }
+
+    func receive(_ event: InstallationEvent) {
+        lock.lock()
+        guard !isFinished else {
+            lock.unlock()
+            return
+        }
+        pendingBatch.append(event)
+        let shouldScheduleDelivery = !isDeliveryScheduled
+        isDeliveryScheduled = true
+        lock.unlock()
+
+        guard shouldScheduleDelivery else { return }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + deliveryInterval) { [weak self] in
+            self?.deliverPendingEvents()
+        }
+    }
+
+    func finish() -> InstallationEventBatch {
+        lock.lock()
+        defer { lock.unlock() }
+        isFinished = true
+        isDeliveryScheduled = false
+        let batch = pendingBatch
+        pendingBatch = InstallationEventBatch()
+        return batch
+    }
+
+    private func deliverPendingEvents() {
+        lock.lock()
+        guard !isFinished else {
+            isDeliveryScheduled = false
+            lock.unlock()
+            return
+        }
+        let batch = pendingBatch
+        pendingBatch = InstallationEventBatch()
+        isDeliveryScheduled = false
+        lock.unlock()
+
+        guard !batch.isEmpty else { return }
+        deliveryHandler(batch)
+    }
 }
 
 struct InstallationOutcome {

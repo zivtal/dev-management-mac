@@ -80,7 +80,7 @@ struct PersistedState: Codable, Equatable {
 }
 
 struct InstallationProgress: Equatable {
-    enum Phase: Equatable {
+    enum Phase: Equatable, Sendable {
         case preparing
         case building
         case installing
@@ -101,6 +101,8 @@ struct InstallationProgress: Equatable {
 }
 
 struct InstallationLogSession: Equatable, Identifiable {
+    private static let outputLimit = 30_000
+
     enum State: Equatable {
         case inProgress
         case succeeded
@@ -138,6 +140,14 @@ struct InstallationLogSession: Equatable, Identifiable {
     mutating func append(_ text: String) {
         guard !text.isEmpty else { return }
         output.append(text)
+        output = Self.limitedOutput(output)
+        revision += 1
+    }
+
+    mutating func replaceOutput(with text: String) {
+        let replacement = Self.limitedOutput(text)
+        guard output != replacement else { return }
+        output = replacement
         revision += 1
     }
 
@@ -158,6 +168,11 @@ struct InstallationLogSession: Equatable, Identifiable {
         case .failed:
             L10n.text("Installation failed")
         }
+    }
+
+    private static func limitedOutput(_ output: String) -> String {
+        guard output.count > outputLimit else { return output }
+        return "…\n" + String(output.suffix(outputLimit))
     }
 }
 

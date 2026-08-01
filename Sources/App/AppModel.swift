@@ -514,16 +514,21 @@ final class AppModel: ObservableObject {
             deviceUDID: device.udid
         )
 
+        let eventCoalescer = InstallationEventCoalescer { [weak self] batch in
+            Task { @MainActor [weak self] in
+                self?.handleInstallationEvents(batch, installationLogID: installationLogID)
+            }
+        }
+
         do {
             let outcome = try await installationService.install(
                 project: project,
                 on: device,
-                eventHandler: { [weak self] event in
-                    Task { @MainActor [weak self] in
-                        self?.handleInstallationEvent(event, installationLogID: installationLogID)
-                    }
-                }
+                eventHandler: { eventCoalescer.receive($0) }
             )
+            handleInstallationEvents(eventCoalescer.finish(), installationLogID: installationLogID)
+            replaceInstallationLogOutput(outcome.log, installationLogID: installationLogID)
+            finishInstallationLog(id: installationLogID, state: .succeeded)
             recordSuccessfulInstallation(projectID: project.id, deviceUDID: device.udid)
             if preferences.notificationsEnabled != false {
                 let iconURL = await projectIconService.iconURL(for: project)
@@ -542,42 +547,52 @@ final class AppModel: ObservableObject {
                 projectID: project.id,
                 deviceUDID: device.udid
             )
-            finishInstallationLog(id: installationLogID, state: .succeeded)
             progress = nil
             return true
         } catch {
+            handleInstallationEvents(eventCoalescer.finish(), installationLogID: installationLogID)
+            let errorOutput = Self.trimmedError(error.localizedDescription)
+            replaceInstallationLogOutput(errorOutput, installationLogID: installationLogID)
+            finishInstallationLog(
+                id: installationLogID,
+                state: .failed,
+                fallbackError: errorOutput
+            )
             failedAttemptCooldowns[recordKey(projectID: project.id, deviceUDID: device.udid)] =
                 Date().addingTimeInterval(5 * 60)
             addActivity(
                 level: .error,
                 title: L10n.format("Installation of %@ failed", project.displayName),
-                details: Self.trimmedError(error.localizedDescription),
+                details: errorOutput,
                 projectID: project.id,
                 deviceUDID: device.udid
-            )
-            finishInstallationLog(
-                id: installationLogID,
-                state: .failed,
-                fallbackError: error.localizedDescription
             )
             progress = nil
             return false
         }
     }
 
-    private func handleInstallationEvent(_ event: InstallationEvent, installationLogID: UUID) {
+    private func handleInstallationEvents(_ batch: InstallationEventBatch, installationLogID: UUID) {
+        guard !batch.isEmpty else { return }
         guard var current = progress else { return }
         guard var log = installationLog, log.id == installationLogID else { return }
-        switch event {
-        case .phase(let phase):
+        guard log.state == .inProgress else { return }
+        if let phase = batch.phase {
             current.phase = phase
             log.phase = phase
-        case .output(let output):
-            log.append(output)
+        }
+        if !batch.output.isEmpty {
+            log.append(batch.output)
             current.latestOutput = log.latestOutputLine
         }
         installationLog = log
         progress = current
+    }
+
+    private func replaceInstallationLogOutput(_ output: String, installationLogID: UUID) {
+        guard var log = installationLog, log.id == installationLogID else { return }
+        log.replaceOutput(with: output)
+        installationLog = log
     }
 
     private func finishInstallationLog(

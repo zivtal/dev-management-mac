@@ -21,4 +21,38 @@ final class InstallationLogTests: XCTestCase {
         XCTAssertEqual(log.output, "")
         XCTAssertEqual(log.revision, 0)
     }
+
+    func testLongLiveLogKeepsOnlyRecentOutput() {
+        var log = InstallationLogSession(projectName: "TripFlow", deviceName: "iPhone")
+
+        log.append(String(repeating: "A", count: 31_000))
+        log.append("latest output")
+
+        XCTAssertTrue(log.output.hasPrefix("…\n"))
+        XCTAssertTrue(log.output.hasSuffix("latest output"))
+        XCTAssertEqual(log.output.count, 30_002)
+    }
+
+    func testInstallationEventBatchKeepsLatestPhaseAndCombinesOutput() {
+        var batch = InstallationEventBatch()
+
+        batch.append(.phase(.building))
+        batch.append(.output("Compile Swift\n"))
+        batch.append(.output("Link TripFlow\n"))
+        batch.append(.phase(.installing))
+
+        XCTAssertEqual(batch.phase, .installing)
+        XCTAssertEqual(batch.output, "Compile Swift\nLink TripFlow\n")
+    }
+
+    func testInstallationEventCoalescerFlushesBurstAsOneBatch() {
+        let coalescer = InstallationEventCoalescer(deliveryInterval: 5) { _ in }
+
+        for index in 0..<100 {
+            coalescer.receive(.output("line \(index)\n"))
+        }
+        let batch = coalescer.finish()
+
+        XCTAssertEqual(batch.output.components(separatedBy: .newlines).count - 1, 100)
+    }
 }
