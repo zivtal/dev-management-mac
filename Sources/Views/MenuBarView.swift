@@ -6,6 +6,7 @@ struct MenuBarView: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.dismiss) private var dismiss
     @State private var isDeviceListExpanded = false
+    @State private var showsCancelInstallationConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -27,7 +28,7 @@ struct MenuBarView: View {
         .background {
             MenuBarOpenObserver {
                 Task {
-                    await model.refreshDevices(installWhenDue: false)
+                    await model.refreshDevices(installWhenDue: true)
                 }
             }
         }
@@ -107,9 +108,7 @@ struct MenuBarView: View {
                     Text(progress.phaseTitle)
                         .font(.subheadline.weight(.medium))
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    Color.clear.frame(width: 22, height: 22)
                 }
                 Text(L10n.format("Installing %@ on %@", progress.projectName, progress.deviceName))
                     .font(.caption)
@@ -128,6 +127,35 @@ struct MenuBarView: View {
         .buttonStyle(.plain)
         .help("Show installation log")
         .accessibilityLabel("Show installation log")
+        .overlay(alignment: .topTrailing) {
+            Button {
+                showsCancelInstallationConfirmation = true
+            } label: {
+                if model.isCancellingInstallation {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.borderless)
+            .help("Cancel installation")
+            .accessibilityLabel("Cancel installation")
+            .disabled(model.isCancellingInstallation)
+            .padding(9)
+            .alert(
+                "Cancel installation?",
+                isPresented: $showsCancelInstallationConfirmation
+            ) {
+                Button("Keep Installing", role: .cancel) {}
+                Button("Cancel Installation", role: .destructive) {
+                    model.cancelActiveInstallation()
+                }
+            } message: {
+                Text("Are you sure you want to cancel the current installation?")
+            }
+        }
     }
 
     private var deviceSection: some View {

@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var checkedInstalledApplicationDeviceUDIDs: Set<String> = []
     @Published private(set) var progress: InstallationProgress?
     @Published private(set) var installationLog: InstallationLogSession?
+    @Published private(set) var isCancellingInstallation = false
     @Published private(set) var isRefreshingDevices = false
     @Published private(set) var isDiscoveringProject = false
     @Published private(set) var compatibilityRefreshProjectIDs: Set<UUID> = []
@@ -51,6 +52,8 @@ final class AppModel: ObservableObject {
     private let projectIconService: ProjectIconService
     private let developerTeamService: DeveloperTeamService
     private var monitoringTask: Task<Void, Never>?
+    private var activeInstallationTask: Task<InstallationOutcome, Error>?
+    private var installationCancellationGeneration = 0
     private var isLoading = true
     private var failedAttemptCooldowns: [String: Date] = [:]
     private var failedVersionCheckDeviceUDIDs: Set<String> = []
@@ -126,6 +129,7 @@ final class AppModel: ObservableObject {
 
     deinit {
         monitoringTask?.cancel()
+        activeInstallationTask?.cancel()
     }
 
     func startMonitoring() {
@@ -358,11 +362,22 @@ final class AppModel: ObservableObject {
             return
         }
 
+        let cancellationGeneration = installationCancellationGeneration
         Task {
             for device in targetDevices {
+                guard cancellationGeneration == installationCancellationGeneration else { return }
                 _ = await install(project: project, on: device, ignoreSchedule: true)
             }
         }
+    }
+
+    func cancelActiveInstallation() {
+        guard progress != nil, let activeInstallationTask else { return }
+        installationCancellationGeneration &+= 1
+        isCancellingInstallation = true
+        installAllTargets = [:]
+        completedInstallAllTargets = []
+        activeInstallationTask.cancel()
     }
 
     func installAll() {
@@ -463,12 +478,14 @@ final class AppModel: ObservableObject {
         guard progress == nil else { return }
         let enabledProjects = projects.filter(\.isEnabled)
         let now = Date()
+        let cancellationGeneration = installationCancellationGeneration
 
         for project in enabledProjects {
             let orderedDevices = project.devicesInInstallationOrder(
                 devices.filter { project.installationEnabled(for: $0) }
             )
             for device in orderedDevices {
+                guard cancellationGeneration == installationCancellationGeneration else { return }
                 let attemptKey = recordKey(projectID: project.id, deviceUDID: device.udid)
                 if let cooldownUntil = failedAttemptCooldowns[attemptKey], cooldownUntil > now {
                     continue
@@ -506,8 +523,10 @@ final class AppModel: ObservableObject {
 
     private func installAllRequestedProjects(on devices: [ConnectedDevice]) async {
         guard progress == nil else { return }
+        let cancellationGeneration = installationCancellationGeneration
         let requestedIDs = projects.map(\.id).filter { installAllTargets[$0] != nil }
         for projectID in requestedIDs {
+            guard cancellationGeneration == installationCancellationGeneration else { return }
             guard let project = projects.first(where: { $0.id == projectID && $0.isEnabled }) else {
                 installAllTargets[projectID] = nil
                 continue
@@ -517,6 +536,7 @@ final class AppModel: ObservableObject {
                 devices.filter { targetDeviceUDIDs.contains($0.udid) }
             )
             for device in orderedDevices {
+                guard cancellationGeneration == installationCancellationGeneration else { return }
                 let targetKey = recordKey(projectID: project.id, deviceUDID: device.udid)
                 guard !completedInstallAllTargets.contains(targetKey) else { continue }
                 if await install(project: project, on: device, ignoreSchedule: true) {
@@ -534,7 +554,8 @@ final class AppModel: ObservableObject {
             }
         }
 
-        if installAllTargets.isEmpty {
+        if installAllTargets.isEmpty,
+           cancellationGeneration == installationCancellationGeneration {
             completedInstallAllTargets = []
             addActivity(level: .success, title: L10n.text("Install All completed successfully"))
         }
@@ -569,6 +590,7 @@ final class AppModel: ObservableObject {
         }
 
         let installationLogID = UUID()
+        isCancellingInstallation = false
         progress = InstallationProgress(
             projectName: project.displayName,
             deviceName: device.name,
@@ -593,12 +615,18 @@ final class AppModel: ObservableObject {
             }
         }
 
-        do {
-            let outcome = try await installationService.install(
+        let installationTask = Task {
+            try await installationService.install(
                 project: project,
                 on: device,
                 eventHandler: { eventCoalescer.receive($0) }
             )
+        }
+        activeInstallationTask = installationTask
+
+        do {
+            let outcome = try await installationTask.value
+            activeInstallationTask = nil
             handleInstallationEvents(eventCoalescer.finish(), installationLogID: installationLogID)
             replaceInstallationLogOutput(outcome.log, installationLogID: installationLogID)
             finishInstallationLog(id: installationLogID, state: .succeeded)
@@ -621,9 +649,32 @@ final class AppModel: ObservableObject {
                 deviceUDID: device.udid
             )
             progress = nil
+            isCancellingInstallation = false
             return true
         } catch {
+            activeInstallationTask = nil
             handleInstallationEvents(eventCoalescer.finish(), installationLogID: installationLogID)
+            if installationTask.isCancelled || error is CancellationError {
+                let cancellationText = L10n.text("Installation canceled by user.")
+                appendInstallationLogOutput(
+                    "\n\n\(cancellationText)\n",
+                    installationLogID: installationLogID
+                )
+                finishInstallationLog(id: installationLogID, state: .cancelled)
+                failedAttemptCooldowns[
+                    recordKey(projectID: project.id, deviceUDID: device.udid)
+                ] = nil
+                addActivity(
+                    level: .warning,
+                    title: L10n.format("Installation of %@ was canceled", project.displayName),
+                    details: cancellationText,
+                    projectID: project.id,
+                    deviceUDID: device.udid
+                )
+                progress = nil
+                isCancellingInstallation = false
+                return false
+            }
             let errorOutput = Self.trimmedError(error.localizedDescription)
             replaceInstallationLogOutput(errorOutput, installationLogID: installationLogID)
             finishInstallationLog(
@@ -641,6 +692,7 @@ final class AppModel: ObservableObject {
                 deviceUDID: device.udid
             )
             progress = nil
+            isCancellingInstallation = false
             return false
         }
     }
@@ -665,6 +717,12 @@ final class AppModel: ObservableObject {
     private func replaceInstallationLogOutput(_ output: String, installationLogID: UUID) {
         guard var log = installationLog, log.id == installationLogID else { return }
         log.replaceOutput(with: output)
+        installationLog = log
+    }
+
+    private func appendInstallationLogOutput(_ output: String, installationLogID: UUID) {
+        guard var log = installationLog, log.id == installationLogID else { return }
+        log.append(output)
         installationLog = log
     }
 

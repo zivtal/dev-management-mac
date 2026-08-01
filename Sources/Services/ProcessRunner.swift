@@ -32,53 +32,73 @@ final class ProcessRunner {
         additionalEnvironment: [String: String] = [:],
         onOutput: OutputHandler? = nil
     ) async throws -> CommandResult {
-        try await withCheckedThrowingContinuation { continuation in
-            let process = Process()
-            let outputPipe = Pipe()
-            let buffer = ThreadSafeTextBuffer()
+        let cancellationController = ProcessCancellationController()
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            let result = try await withCheckedThrowingContinuation { continuation in
+                let process = Process()
+                let outputPipe = Pipe()
+                let buffer = ThreadSafeTextBuffer()
 
-            process.executableURL = executable
-            process.arguments = arguments
-            process.currentDirectoryURL = workingDirectory
-            process.standardOutput = outputPipe
-            process.standardError = outputPipe
+                process.executableURL = executable
+                process.arguments = arguments
+                process.currentDirectoryURL = workingDirectory
+                process.standardOutput = outputPipe
+                process.standardError = outputPipe
 
-            var environment = ProcessInfo.processInfo.environment
-            let commonToolPaths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
-            let existingPath = environment["PATH"] ?? ""
-            environment["PATH"] = (commonToolPaths + [existingPath])
-                .filter { !$0.isEmpty }
-                .joined(separator: ":")
-            additionalEnvironment.forEach { environment[$0.key] = $0.value }
-            process.environment = environment
+                var environment = ProcessInfo.processInfo.environment
+                let commonToolPaths = [
+                    "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin",
+                    "/bin", "/usr/sbin", "/sbin"
+                ]
+                let existingPath = environment["PATH"] ?? ""
+                environment["PATH"] = (commonToolPaths + [existingPath])
+                    .filter { !$0.isEmpty }
+                    .joined(separator: ":")
+                additionalEnvironment.forEach { environment[$0.key] = $0.value }
+                process.environment = environment
 
-            outputPipe.fileHandleForReading.readabilityHandler = { handle in
-                let data = handle.availableData
-                guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-                buffer.append(text)
-                onOutput?(text)
-            }
-
-            process.terminationHandler = { finishedProcess in
-                outputPipe.fileHandleForReading.readabilityHandler = nil
-                let remainingData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                if let remainingText = String(data: remainingData, encoding: .utf8), !remainingText.isEmpty {
-                    buffer.append(remainingText)
-                    onOutput?(remainingText)
+                outputPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let data = handle.availableData
+                    guard !data.isEmpty,
+                          let text = String(data: data, encoding: .utf8)
+                    else {
+                        return
+                    }
+                    buffer.append(text)
+                    onOutput?(text)
                 }
 
-                continuation.resume(returning: CommandResult(
-                    terminationStatus: finishedProcess.terminationStatus,
-                    output: buffer.value
-                ))
-            }
+                process.terminationHandler = { finishedProcess in
+                    cancellationController.finished(finishedProcess)
+                    outputPipe.fileHandleForReading.readabilityHandler = nil
+                    let remainingData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    if let remainingText = String(data: remainingData, encoding: .utf8),
+                       !remainingText.isEmpty {
+                        buffer.append(remainingText)
+                        onOutput?(remainingText)
+                    }
 
-            do {
-                try process.run()
-            } catch {
-                outputPipe.fileHandleForReading.readabilityHandler = nil
-                continuation.resume(throwing: ProcessRunnerError.couldNotStart(error.localizedDescription))
+                    continuation.resume(returning: CommandResult(
+                        terminationStatus: finishedProcess.terminationStatus,
+                        output: buffer.value
+                    ))
+                }
+
+                do {
+                    try process.run()
+                    cancellationController.started(process)
+                } catch {
+                    outputPipe.fileHandleForReading.readabilityHandler = nil
+                    continuation.resume(
+                        throwing: ProcessRunnerError.couldNotStart(error.localizedDescription)
+                    )
+                }
             }
+            try Task.checkCancellation()
+            return result
+        } onCancel: {
+            cancellationController.cancel()
         }
     }
 
@@ -105,6 +125,52 @@ final class ProcessRunner {
             )
         }
         return result
+    }
+}
+
+private final class ProcessCancellationController: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancellationWasRequested = false
+
+    func started(_ process: Process) {
+        lock.lock()
+        if cancellationWasRequested {
+            lock.unlock()
+            stop(process)
+        } else {
+            self.process = process
+            lock.unlock()
+        }
+    }
+
+    func finished(_ process: Process) {
+        lock.lock()
+        if self.process === process {
+            self.process = nil
+        }
+        lock.unlock()
+    }
+
+    func cancel() {
+        lock.lock()
+        cancellationWasRequested = true
+        let process = process
+        lock.unlock()
+
+        if let process {
+            stop(process)
+        }
+    }
+
+    private func stop(_ process: Process) {
+        guard process.isRunning else { return }
+        process.interrupt()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5) {
+            if process.isRunning {
+                process.terminate()
+            }
+        }
     }
 }
 

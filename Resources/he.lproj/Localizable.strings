@@ -149,6 +149,14 @@
 "Copy Log" = "העתקת היומן";
 "Installation completed successfully" = "ההתקנה הושלמה בהצלחה";
 "Installation failed" = "ההתקנה נכשלה";
+"Installation canceled" = "ההתקנה בוטלה";
+"Installation canceled by user." = "ההתקנה בוטלה על ידי המשתמש.";
+"Installation of %@ was canceled" = "ההתקנה של %@ בוטלה";
+"Cancel installation" = "ביטול ההתקנה";
+"Cancel installation?" = "לבטל את ההתקנה?";
+"Keep Installing" = "להמשיך בהתקנה";
+"Cancel Installation" = "ביטול ההתקנה";
+"Are you sure you want to cancel the current installation?" = "האם לבטל את ההתקנה הנוכחית?";
 "Installing on iPhone…" = "מתקין על ה־iPhone…";
 "Could not start the command: %@" = "לא ניתן להפעיל את הפקודה: %@";
 "The %@ command failed (code %d)." = "הפקודה %@ נכשלה (קוד %d).";

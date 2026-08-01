@@ -107,6 +107,7 @@ struct InstallationLogSession: Equatable, Identifiable {
         case inProgress
         case succeeded
         case failed
+        case cancelled
     }
 
     let id: UUID
@@ -167,6 +168,8 @@ struct InstallationLogSession: Equatable, Identifiable {
             L10n.text("Installation completed successfully")
         case .failed:
             L10n.text("Installation failed")
+        case .cancelled:
+            L10n.text("Installation canceled")
         }
     }
 

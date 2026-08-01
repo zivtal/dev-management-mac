@@ -149,6 +149,14 @@
 "Copy Log" = "Copy Log";
 "Installation completed successfully" = "Installation completed successfully";
 "Installation failed" = "Installation failed";
+"Installation canceled" = "Installation canceled";
+"Installation canceled by user." = "Installation canceled by user.";
+"Installation of %@ was canceled" = "Installation of %@ was canceled";
+"Cancel installation" = "Cancel installation";
+"Cancel installation?" = "Cancel installation?";
+"Keep Installing" = "Keep Installing";
+"Cancel Installation" = "Cancel Installation";
+"Are you sure you want to cancel the current installation?" = "Are you sure you want to cancel the current installation?";
 "Installing on iPhone…" = "Installing on iPhone…";
 "Could not start the command: %@" = "Could not start the command: %@";
 "The %@ command failed (code %d)." = "The %@ command failed (code %d).";

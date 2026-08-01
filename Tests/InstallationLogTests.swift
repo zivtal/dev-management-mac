@@ -55,4 +55,35 @@ final class InstallationLogTests: XCTestCase {
 
         XCTAssertEqual(batch.output.components(separatedBy: .newlines).count - 1, 100)
     }
+
+    func testCancelledInstallationLogHasCancelledStatus() {
+        var log = InstallationLogSession(projectName: "TripFlow", deviceName: "iPhone")
+
+        log.state = .cancelled
+
+        XCTAssertEqual(log.statusTitle, L10n.text("Installation canceled"))
+    }
+}
+
+final class ProcessRunnerCancellationTests: XCTestCase {
+    func testCancellingTaskStopsRunningCommand() async throws {
+        let task = Task {
+            try await ProcessRunner().runAndRequireSuccess(
+                executable: URL(fileURLWithPath: "/bin/sleep"),
+                arguments: ["30"]
+            )
+        }
+
+        try await Task.sleep(for: .milliseconds(100))
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("A canceled command should not complete successfully")
+        } catch is CancellationError {
+            // Expected: ProcessRunner propagates task cancellation after stopping the process.
+        } catch {
+            XCTFail("Expected CancellationError, received \(error)")
+        }
+    }
 }

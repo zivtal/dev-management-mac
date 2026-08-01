@@ -122,6 +122,9 @@ private struct InstallationLogView: View {
         case .failed:
             Image(systemName: "xmark.octagon.fill")
                 .foregroundStyle(.red)
+        case .cancelled:
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(.orange)
         }
     }
 
