@@ -1,5 +1,10 @@
 import Foundation
 
+struct ProjectApplicationMetadata: Equatable {
+    let supportedDeviceFamilies: Set<MobileDeviceFamily>?
+    let bundleIdentifier: String?
+}
+
 enum ProjectDiscoveryError: LocalizedError {
     case folderDoesNotExist
     case noXcodeContainer
@@ -108,13 +113,18 @@ final class ProjectDiscoveryService {
             configurations: configurations,
             installScriptPath: scriptPath
         )
-        descriptor.supportedDeviceFamilies = try? await supportedDeviceFamilies(
-            for: descriptor.makeManagedProject()
-        )
+        if let metadata = try? await applicationMetadata(for: descriptor.makeManagedProject()) {
+            descriptor.supportedDeviceFamilies = metadata.supportedDeviceFamilies
+            descriptor.bundleIdentifier = metadata.bundleIdentifier
+        }
         return descriptor
     }
 
     func supportedDeviceFamilies(for project: ManagedProject) async throws -> Set<MobileDeviceFamily>? {
+        try await applicationMetadata(for: project).supportedDeviceFamilies
+    }
+
+    func applicationMetadata(for project: ManagedProject) async throws -> ProjectApplicationMetadata {
         let result = try await processRunner.runAndRequireSuccess(
             executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
             arguments: [
@@ -126,15 +136,18 @@ final class ProjectDiscoveryService {
             ],
             workingDirectory: project.folderURL
         )
-        return Self.supportedDeviceFamilies(fromBuildSettingsJSON: result.output)
+        guard let metadata = Self.applicationMetadata(fromBuildSettingsJSON: result.output) else {
+            throw ProjectDiscoveryError.malformedXcodeResponse
+        }
+        return metadata
     }
 
     static func supportedDeviceFamilies(fromBuildSettingsJSON output: String) -> Set<MobileDeviceFamily>? {
-        guard let data = output.data(using: .utf8),
-              let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-        else {
-            return nil
-        }
+        applicationMetadata(fromBuildSettingsJSON: output)?.supportedDeviceFamilies
+    }
+
+    static func applicationMetadata(fromBuildSettingsJSON output: String) -> ProjectApplicationMetadata? {
+        guard let entries = buildSettingsEntries(from: output) else { return nil }
 
         for entry in entries {
             guard let settings = entry["buildSettings"] as? [String: Any],
@@ -150,7 +163,36 @@ final class ProjectDiscoveryService {
             var families: Set<MobileDeviceFamily> = []
             if identifiers.contains(1) { families.insert(.iPhone) }
             if identifiers.contains(2) { families.insert(.iPad) }
-            if !families.isEmpty { return families }
+            let rawBundleIdentifier = settings["PRODUCT_BUNDLE_IDENTIFIER"] as? String
+            let bundleIdentifier = rawBundleIdentifier?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return ProjectApplicationMetadata(
+                supportedDeviceFamilies: families.isEmpty ? nil : families,
+                bundleIdentifier: bundleIdentifier?.isEmpty == false
+                    && bundleIdentifier?.contains("$(") == false
+                        ? bundleIdentifier
+                        : nil
+            )
+        }
+        return nil
+    }
+
+    private static func buildSettingsEntries(from output: String) -> [[String: Any]]? {
+        if let data = output.data(using: .utf8),
+           let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            return entries
+        }
+
+        guard let finalBracket = output.lastIndex(of: "]") else { return nil }
+        var searchStart = output.startIndex
+        while searchStart < finalBracket,
+              let openingBracket = output[searchStart...].firstIndex(of: "[") {
+            let candidate = String(output[openingBracket...finalBracket])
+            if let data = candidate.data(using: .utf8),
+               let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                return entries
+            }
+            searchStart = output.index(after: openingBracket)
         }
         return nil
     }

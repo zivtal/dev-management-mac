@@ -148,6 +148,32 @@ final class DeviceInstallationSelectionTests: XCTestCase {
         )
     }
 
+    func testBuildSettingsDetectApplicationBundleIdentifier() {
+        XCTAssertEqual(
+            ProjectDiscoveryService.applicationMetadata(
+                fromBuildSettingsJSON: buildSettingsJSON(targetedDeviceFamily: "1, 2")
+            )?.bundleIdentifier,
+            "com.example.Sample"
+        )
+    }
+
+    func testBuildSettingsIgnoreXcodeWarningsAroundJSON() {
+        let output = """
+        2026-08-01 [MT] warning: Supported platforms for the buildables is empty.
+        \(buildSettingsJSON(targetedDeviceFamily: "1, 2"))
+        """
+
+        XCTAssertEqual(
+            ProjectDiscoveryService.applicationMetadata(
+                fromBuildSettingsJSON: output
+            ),
+            ProjectApplicationMetadata(
+                supportedDeviceFamilies: [.iPhone, .iPad],
+                bundleIdentifier: "com.example.Sample"
+            )
+        )
+    }
+
     func testBuildSettingsIgnoreWatchApplicationBeforeIOSApplication() {
         let json = #"""
         [
@@ -162,6 +188,7 @@ final class DeviceInstallationSelectionTests: XCTestCase {
           {
             "buildSettings": {
               "PRODUCT_TYPE": "com.apple.product-type.application",
+              "PRODUCT_BUNDLE_IDENTIFIER": "com.example.Sample",
               "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
               "TARGETED_DEVICE_FAMILY": "1,2",
               "WRAPPER_EXTENSION": "app"
@@ -202,6 +229,7 @@ final class DeviceInstallationSelectionTests: XCTestCase {
           {
             "buildSettings": {
               "PRODUCT_TYPE": "com.apple.product-type.application",
+              "PRODUCT_BUNDLE_IDENTIFIER": "com.example.Sample",
               "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
               "TARGETED_DEVICE_FAMILY": "\#(targetedDeviceFamily)",
               "WRAPPER_EXTENSION": "app"

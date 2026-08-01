@@ -28,6 +28,8 @@ configurable number of days.
 ## Features
 
 - Automatic reinstall interval from 1 to 30 days; the default is 3 days.
+- Automatic installed-version checks that immediately update a connected
+  selected device when its app is missing or older than the source version.
 - Immediate install for one application or all enabled applications.
 - Background `Install All Now` queue that waits for a device if necessary.
 - Project and workspace discovery with shared scheme and configuration
@@ -44,6 +46,8 @@ configurable number of days.
 - Automatic iPhone/iPad compatibility detection from the selected Xcode
   scheme's `TARGETED_DEVICE_FAMILY` build setting.
 - USB hot-plug monitoring and manual device refresh.
+- Background monitoring starts with the menu-bar app; opening its popover or
+  Settings is not required for automatic checks.
 - Application version, build number, icon, schedule, and last-install status.
 - A live, copyable installation log opened by clicking the progress card.
 - A persistent activity log with command output and error details.
@@ -199,7 +203,9 @@ Discovery follows these rules:
    -showBuildSettings -json` for a generic iOS destination. Read
    `TARGETED_DEVICE_FAMILY` from the installable iOS application target (`1`
    for iPhone and `2` for iPad). If compatibility cannot be detected, allow
-   both families rather than blocking installation.
+   both families rather than blocking installation. Persist the resolved
+   `PRODUCT_BUNDLE_IDENTIFIER` so the installed app can be identified on each
+   device.
 9. Enable the application immediately.
 
 Adding the same standardized folder path twice is rejected.
@@ -304,6 +310,15 @@ other transports are found by CoreDevice during regular or manual discovery.
 - An app/device pair with no record is due immediately.
 - An app/device pair is due when the configured number of 24-hour periods has
   elapsed since its last successful installation.
+- On each automatic device check, CoreDevice reports the developer apps
+  installed on that device. A selected app is due immediately when its bundle
+  identifier is missing or its marketing/build version is older than the
+  current source version, even if its time-based reinstall date is later.
+- A device version newer than the source version is not downgraded. When the
+  source version cannot be determined, only the time-based schedule applies.
+- If Xcode cannot temporarily resolve a managed app's bundle identifier, the
+  metadata lookup stays pending and retries at the five-minute discovery
+  interval instead of sleeping until the next scheduled reinstall date.
 - Paused applications are excluded.
 - Every due enabled application is processed only for the compatible devices
   selected for that application, one installation at a time.

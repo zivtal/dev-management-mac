@@ -8,6 +8,33 @@ enum DeviceServiceError: LocalizedError {
     }
 }
 
+struct InstalledApplication: Decodable, Equatable {
+    let bundleIdentifier: String
+    let marketingVersion: String?
+    let buildNumber: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case bundleIdentifier
+        case marketingVersion = "version"
+        case buildNumber = "bundleVersion"
+    }
+}
+
+struct DeviceAppListEnvelope: Decodable {
+    struct Result: Decodable {
+        let apps: [InstalledApplication]
+    }
+
+    let result: Result
+
+    var applicationsByBundleIdentifier: [String: InstalledApplication] {
+        Dictionary(
+            result.apps.map { ($0.bundleIdentifier, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+}
+
 final class DeviceService {
     private let processRunner: ProcessRunner
     private let fileManager: FileManager
@@ -42,5 +69,32 @@ final class DeviceService {
         let data = try Data(contentsOf: jsonURL)
         let envelope = try JSONDecoder().decode(DeviceListEnvelope.self, from: data)
         return envelope.availableAppleDevices
+    }
+
+    func installedApplications(on device: ConnectedDevice) async throws -> [String: InstalledApplication] {
+        let temporaryDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent("DevManagement-Apps-\(UUID().uuidString)", isDirectory: true)
+        let jsonURL = temporaryDirectory.appendingPathComponent("apps.json")
+
+        try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: temporaryDirectory) }
+
+        _ = try await processRunner.runAndRequireSuccess(
+            executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
+            arguments: [
+                "devicectl", "device", "info", "apps",
+                "--device", device.udid,
+                "--timeout", "20",
+                "--json-output", jsonURL.path
+            ]
+        )
+
+        guard fileManager.fileExists(atPath: jsonURL.path) else {
+            throw DeviceServiceError.invalidResponse
+        }
+
+        let data = try Data(contentsOf: jsonURL)
+        let envelope = try JSONDecoder().decode(DeviceAppListEnvelope.self, from: data)
+        return envelope.applicationsByBundleIdentifier
     }
 }

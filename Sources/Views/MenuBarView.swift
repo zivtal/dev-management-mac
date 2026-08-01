@@ -92,7 +92,13 @@ struct MenuBarView: View {
     @ViewBuilder
     private func progressSection(_ progress: InstallationProgress) -> some View {
         Button {
-            InstallationLogWindowPresenter.shared.show(model: model)
+            let menuWindow = NSApplication.shared.keyWindow
+            dismiss()
+            menuWindow?.orderOut(nil)
+            Task { @MainActor in
+                await Task.yield()
+                InstallationLogWindowPresenter.shared.show(model: model)
+            }
         } label: {
             VStack(alignment: .leading, spacing: 7) {
                 HStack {

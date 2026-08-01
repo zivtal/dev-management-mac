@@ -51,6 +51,7 @@ final class AppModel: ObservableObject {
     private var monitoringTask: Task<Void, Never>?
     private var isLoading = true
     private var failedAttemptCooldowns: [String: Date] = [:]
+    private var failedVersionCheckDeviceUDIDs: Set<String> = []
     private var installAllTargets: [UUID: Set<String>] = [:] {
         didSet { pendingInstallAllCount = installAllTargets.count }
     }
@@ -112,10 +113,8 @@ final class AppModel: ObservableObject {
         Task { @MainActor [weak self] in
             await self?.refreshProjectIcons()
         }
-        Task { @MainActor [weak self] in
-            await self?.refreshUnknownProjectCompatibility()
-        }
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            startMonitoring()
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(500))
                 self?.applyLaunchAtLoginPreferenceOnStartup()
@@ -160,11 +159,13 @@ final class AppModel: ObservableObject {
         isRefreshingDevices = true
         defer { isRefreshingDevices = false }
 
+        await refreshUnknownProjectMetadata(restartMonitoringAfterUpdate: false)
         refreshProjectVersions()
 
         do {
             let devices = try await deviceService.availableDevices()
             connectedDevices = devices
+            failedVersionCheckDeviceUDIDs.formIntersection(devices.map(\.udid))
             lastDeviceError = nil
             let appInstallableDevices = installableDevices
             if !installAllTargets.isEmpty {
@@ -288,6 +289,7 @@ final class AppModel: ObservableObject {
                 $0.configuration = matchingConfiguration
             }
             $0.supportedDeviceFamilies = nil
+            $0.bundleIdentifier = nil
         }
         resetQueuedTargets(for: projectID)
         refreshProjectCompatibility(projectID: projectID)
@@ -297,6 +299,7 @@ final class AppModel: ObservableObject {
         updateProject(id: projectID) {
             $0.configuration = configuration
             $0.supportedDeviceFamilies = nil
+            $0.bundleIdentifier = nil
         }
         resetQueuedTargets(for: projectID)
         refreshProjectCompatibility(projectID: projectID)
@@ -412,7 +415,33 @@ final class AppModel: ObservableObject {
         let now = Date()
 
         for device in devices where device.supportsIOSAppInstallation {
-            for project in enabledProjects where project.installationEnabled(for: device) {
+            let deviceProjects = enabledProjects.filter { $0.installationEnabled(for: device) }
+            let projectsNeedingVersionCheck = deviceProjects.filter { project in
+                let lastInstalledAt = installationRecords.first {
+                    $0.projectID == project.id && $0.deviceUDID == device.udid
+                }?.installedAt
+                return !SchedulingPolicy.isDue(
+                    lastInstalledAt: lastInstalledAt,
+                    now: now,
+                    intervalDays: preferences.reinstallAfterDays
+                )
+                    && project.bundleIdentifier != nil
+                    && (project.marketingVersion != nil || project.buildNumber != nil)
+            }
+
+            var installedApplications: [String: InstalledApplication]?
+            if !projectsNeedingVersionCheck.isEmpty {
+                do {
+                    installedApplications = try await deviceService.installedApplications(on: device)
+                    failedVersionCheckDeviceUDIDs.remove(device.udid)
+                } catch {
+                    failedVersionCheckDeviceUDIDs.insert(device.udid)
+                }
+            } else {
+                failedVersionCheckDeviceUDIDs.remove(device.udid)
+            }
+
+            for project in deviceProjects {
                 let attemptKey = recordKey(projectID: project.id, deviceUDID: device.udid)
                 if let cooldownUntil = failedAttemptCooldowns[attemptKey], cooldownUntil > now {
                     continue
@@ -421,11 +450,25 @@ final class AppModel: ObservableObject {
                 let lastInstalledAt = installationRecords.first {
                     $0.projectID == project.id && $0.deviceUDID == device.udid
                 }?.installedAt
-                guard SchedulingPolicy.isDue(
+                let scheduleIsDue = SchedulingPolicy.isDue(
                     lastInstalledAt: lastInstalledAt,
                     now: now,
                     intervalDays: preferences.reinstallAfterDays
-                ) else {
+                )
+                let installedVersionIsOlder: Bool
+                if let bundleIdentifier = project.bundleIdentifier,
+                   let installedApplications {
+                    installedVersionIsOlder = SchedulingPolicy.installedApplicationIsOlder(
+                        installedApplications[bundleIdentifier],
+                        than: ProjectVersion(
+                            marketingVersion: project.marketingVersion,
+                            buildNumber: project.buildNumber
+                        )
+                    )
+                } else {
+                    installedVersionIsOlder = false
+                }
+                guard scheduleIsDue || installedVersionIsOlder else {
                     continue
                 }
 
@@ -652,27 +695,37 @@ final class AppModel: ObservableObject {
         projectIconURLs[project.id] = await projectIconService.iconURL(for: project)
     }
 
-    private func refreshUnknownProjectCompatibility() async {
+    private func refreshUnknownProjectMetadata(restartMonitoringAfterUpdate: Bool) async {
         let projectIDs = projects
-            .filter { $0.supportedDeviceFamilies == nil }
+            .filter { $0.supportedDeviceFamilies == nil || $0.bundleIdentifier == nil }
             .map(\.id)
         for projectID in projectIDs {
-            await detectProjectCompatibility(projectID: projectID)
+            await detectProjectCompatibility(
+                projectID: projectID,
+                restartMonitoringAfterUpdate: restartMonitoringAfterUpdate
+            )
         }
     }
 
     private func refreshProjectCompatibility(projectID: UUID) {
         Task { @MainActor [weak self] in
-            await self?.detectProjectCompatibility(projectID: projectID)
+            await self?.detectProjectCompatibility(
+                projectID: projectID,
+                restartMonitoringAfterUpdate: true
+            )
         }
     }
 
-    private func detectProjectCompatibility(projectID: UUID) async {
+    private func detectProjectCompatibility(
+        projectID: UUID,
+        restartMonitoringAfterUpdate: Bool
+    ) async {
         guard let project = projects.first(where: { $0.id == projectID }) else { return }
+        guard !compatibilityRefreshProjectIDs.contains(projectID) else { return }
         compatibilityRefreshProjectIDs.insert(projectID)
         defer { compatibilityRefreshProjectIDs.remove(projectID) }
 
-        guard let detectedFamilies = try? await discoveryService.supportedDeviceFamilies(for: project),
+        guard let metadata = try? await discoveryService.applicationMetadata(for: project),
               let index = projects.firstIndex(where: {
                   $0.id == projectID
                       && $0.scheme == project.scheme
@@ -681,8 +734,11 @@ final class AppModel: ObservableObject {
         else {
             return
         }
-        projects[index].supportedDeviceFamilies = detectedFamilies
-        restartMonitoring()
+        projects[index].supportedDeviceFamilies = metadata.supportedDeviceFamilies
+        projects[index].bundleIdentifier = metadata.bundleIdentifier
+        if restartMonitoringAfterUpdate {
+            restartMonitoring()
+        }
     }
 
     private func resetQueuedTargets(for projectID: UUID) {
@@ -723,12 +779,15 @@ final class AppModel: ObservableObject {
     private func nextMonitoringDelay(now: Date = Date()) -> TimeInterval {
         if !installAllTargets.isEmpty { return TimeInterval(preferences.pollIntervalSeconds) }
         guard preferences.automationEnabled else { return 60 * 60 }
-        if !failedAttemptCooldowns.isEmpty {
+        if !failedAttemptCooldowns.isEmpty || !failedVersionCheckDeviceUDIDs.isEmpty {
             return TimeInterval(preferences.pollIntervalSeconds)
         }
 
         let enabledProjects = projects.filter(\.isEnabled)
         guard !enabledProjects.isEmpty else { return 60 * 60 }
+        if enabledProjects.contains(where: { $0.bundleIdentifier == nil }) {
+            return TimeInterval(preferences.pollIntervalSeconds)
+        }
 
         var nextDates: [Date] = []
         for project in enabledProjects {

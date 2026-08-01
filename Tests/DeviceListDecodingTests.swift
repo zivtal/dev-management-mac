@@ -71,4 +71,35 @@ final class DeviceListDecodingTests: XCTestCase {
                 .supportsIOSAppInstallation
         )
     }
+
+    func testDecodesInstalledApplicationVersionsByBundleIdentifier() throws {
+        let json = #"""
+        {
+          "result": {
+            "apps": [
+              {
+                "bundleIdentifier": "com.example.Sample",
+                "bundleVersion": "42",
+                "name": "Sample",
+                "version": "2.4.1"
+              }
+            ]
+          }
+        }
+        """#
+
+        let envelope = try JSONDecoder().decode(
+            DeviceAppListEnvelope.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertEqual(
+            envelope.applicationsByBundleIdentifier["com.example.Sample"],
+            InstalledApplication(
+                bundleIdentifier: "com.example.Sample",
+                marketingVersion: "2.4.1",
+                buildNumber: "42"
+            )
+        )
+    }
 }
