@@ -52,6 +52,8 @@ private struct SettingsWindowConfigurator: NSViewRepresentable {
 }
 
 private final class SettingsWindowSizingView: NSView {
+    private static let verticalScreenInset: CGFloat = 96
+
     private weak var configuredWindow: NSWindow?
 
     override func viewDidMoveToWindow() {
@@ -62,7 +64,10 @@ private final class SettingsWindowSizingView: NSView {
         DispatchQueue.main.async { [weak window] in
             guard let window, let screen = window.screen ?? NSScreen.main else { return }
             let visibleFrame = screen.visibleFrame
-            let targetHeight = max(window.frame.height, visibleFrame.height * 0.8)
+            let targetHeight = max(
+                window.frame.height,
+                visibleFrame.height - Self.verticalScreenInset
+            )
             let targetWidth = max(window.frame.width, min(900, visibleFrame.width * 0.8))
             let targetSize = NSSize(
                 width: min(targetWidth, visibleFrame.width),

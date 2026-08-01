@@ -157,9 +157,9 @@ Settings contains four tabs and is the only ordinary app window.
 - Remove one or more entries without deleting their source folders.
 - Queue all enabled applications for immediate installation.
 - Keep application build controls and device-selection guidance fixed and
-  visible. The Settings window opens at no less than 80% of the available
-  screen height, while only the compatible-device rows scroll when their list
-  exceeds the available space.
+  visible. The Settings window opens at the available screen height minus 96
+  points, while only the compatible-device rows scroll when their list exceeds
+  the available space.
 
 #### Activity
 
