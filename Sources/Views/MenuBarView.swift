@@ -37,6 +37,16 @@ struct MenuBarView: View {
                 isDeviceListExpanded = false
             }
         }
+        .onChange(of: model.progress) { _, progress in
+            if progress == nil {
+                showsCancelInstallationConfirmation = false
+            }
+        }
+        .overlay {
+            if showsCancelInstallationConfirmation {
+                cancelInstallationConfirmation
+            }
+        }
         .alert(
             Text("Something went wrong"),
             isPresented: Binding(
@@ -92,42 +102,43 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private func progressSection(_ progress: InstallationProgress) -> some View {
-        Button {
-            let menuWindow = NSApplication.shared.keyWindow
-            dismiss()
-            menuWindow?.orderOut(nil)
-            Task { @MainActor in
-                await Task.yield()
-                InstallationLogWindowPresenter.shared.show(model: model)
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(progress.phaseTitle)
-                        .font(.subheadline.weight(.medium))
-                    Spacer()
-                    Color.clear.frame(width: 22, height: 22)
+        ZStack(alignment: .topTrailing) {
+            Button {
+                let menuWindow = NSApplication.shared.keyWindow
+                dismiss()
+                menuWindow?.orderOut(nil)
+                Task { @MainActor in
+                    await Task.yield()
+                    InstallationLogWindowPresenter.shared.show(model: model)
                 }
-                Text(L10n.format("Installing %@ on %@", progress.projectName, progress.deviceName))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if !progress.latestOutput.isEmpty {
-                    Text(progress.latestOutput)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(2)
+            } label: {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(progress.phaseTitle)
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Color.clear.frame(width: 22, height: 22)
+                    }
+                    Text(L10n.format("Installing %@ on %@", progress.projectName, progress.deviceName))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if !progress.latestOutput.isEmpty {
+                        Text(progress.latestOutput)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(2)
+                    }
                 }
+                .contentShape(Rectangle())
+                .padding(10)
+                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
             }
-            .contentShape(Rectangle())
-            .padding(10)
-            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
-        }
-        .buttonStyle(.plain)
-        .help("Show installation log")
-        .accessibilityLabel("Show installation log")
-        .overlay(alignment: .topTrailing) {
+            .buttonStyle(.plain)
+            .help("Show installation log")
+            .accessibilityLabel("Show installation log")
+
             Button {
                 showsCancelInstallationConfirmation = true
             } label: {
@@ -144,18 +155,49 @@ struct MenuBarView: View {
             .accessibilityLabel("Cancel installation")
             .disabled(model.isCancellingInstallation)
             .padding(9)
-            .alert(
-                "Cancel installation?",
-                isPresented: $showsCancelInstallationConfirmation
-            ) {
-                Button("Keep Installing", role: .cancel) {}
-                Button("Cancel Installation", role: .destructive) {
-                    model.cancelActiveInstallation()
-                }
-            } message: {
-                Text("Are you sure you want to cancel the current installation?")
-            }
         }
+    }
+
+    private var cancelInstallationConfirmation: some View {
+        ZStack {
+            Color.black.opacity(0.38)
+                .contentShape(Rectangle())
+
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Cancel installation?")
+                        .font(.headline)
+                    Text("Are you sure you want to cancel the current installation?")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack {
+                    Button("Cancel Installation", role: .destructive) {
+                        showsCancelInstallationConfirmation = false
+                        model.cancelActiveInstallation()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+
+                    Button("Keep Installing", role: .cancel) {
+                        showsCancelInstallationConfirmation = false
+                    }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(20)
+            .frame(width: 360)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(.separator.opacity(0.7), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private var deviceSection: some View {
