@@ -46,7 +46,7 @@ final class DirectXcodeInstallationTests: XCTestCase {
         XCTAssertTrue(arguments.contains("PROVISIONING_PROFILE_SPECIFIER="))
     }
 
-    func testProjectDefaultDoesNotOverrideSigningSettings() {
+    func testAutomaticSigningDoesNotOverrideArgumentsBeforeResolution() {
         let arguments = InstallationService.xcodeArguments(
             project: makeProject(),
             device: makeDevice(),
@@ -93,6 +93,124 @@ final class DirectXcodeInstallationTests: XCTestCase {
         XCTAssertEqual(
             teams.first(where: { $0.id == "N55JCPASEL" })?.displayName,
             "Hitbook Inc — Ziv Tal (N55JCPASEL)"
+        )
+    }
+
+    func testDeveloperTeamsIncludeValidProvisioningProfilesWithoutLocalIdentity() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let teams = DeveloperTeamService.teams(
+            from: [],
+            provisioningProfiles: [
+                makeProvisioningProfile(
+                    teamID: "52HV33827A",
+                    teamName: "Ziv Tal",
+                    bundleIdentifier: "com.zivtal.tripflow",
+                    expirationDate: Date(timeIntervalSince1970: 2_000)
+                ),
+                makeProvisioningProfile(
+                    teamID: "EXPIRED",
+                    teamName: "Expired Team",
+                    bundleIdentifier: "com.example.old",
+                    expirationDate: Date(timeIntervalSince1970: 500)
+                )
+            ],
+            now: now
+        )
+
+        XCTAssertEqual(teams, [
+            DeveloperTeam(id: "52HV33827A", organizationName: "Ziv Tal", accountName: nil)
+        ])
+    }
+
+    func testMatchingProvisioningProfileNamespaceRecommendsTeam() {
+        let profiles = [
+            makeProvisioningProfile(
+                teamID: "52HV33827A",
+                teamName: "Ziv Tal",
+                bundleIdentifier: "com.zivtal.tripflow"
+            ),
+            makeProvisioningProfile(
+                teamID: "N55JCPASEL",
+                teamName: "Hitbook Inc",
+                bundleIdentifier: "com.hitbook.app"
+            )
+        ]
+
+        XCTAssertEqual(
+            DeveloperTeamService.recommendedTeamID(
+                for: "com.zivtal.HomeCapital",
+                provisioningProfiles: profiles
+            ),
+            "52HV33827A"
+        )
+    }
+
+    func testExactProvisioningProfileOutranksNamespaceMatch() {
+        let profiles = [
+            makeProvisioningProfile(
+                teamID: "NAMESPACE",
+                teamName: nil,
+                bundleIdentifier: "com.zivtal.tripflow"
+            ),
+            makeProvisioningProfile(
+                teamID: "EXACT",
+                teamName: nil,
+                bundleIdentifier: "com.zivtal.HomeCapital"
+            )
+        ]
+
+        XCTAssertEqual(
+            DeveloperTeamService.recommendedTeamID(
+                for: "com.zivtal.HomeCapital",
+                provisioningProfiles: profiles
+            ),
+            "EXACT"
+        )
+    }
+
+    func testAmbiguousProvisioningProfileNamespaceDoesNotRecommendTeam() {
+        let profiles = [
+            makeProvisioningProfile(
+                teamID: "TEAM1",
+                teamName: nil,
+                bundleIdentifier: "com.example.first"
+            ),
+            makeProvisioningProfile(
+                teamID: "TEAM2",
+                teamName: nil,
+                bundleIdentifier: "com.example.second"
+            )
+        ]
+
+        XCTAssertNil(DeveloperTeamService.recommendedTeamID(
+            for: "com.example.new",
+            provisioningProfiles: profiles
+        ))
+    }
+
+    func testProvisioningProfilePropertyListIsParsed() throws {
+        let expirationDate = Date(timeIntervalSince1970: 2_000)
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "TeamIdentifier": ["52HV33827A"],
+                "TeamName": "Ziv Tal",
+                "ExpirationDate": expirationDate,
+                "Entitlements": [
+                    "application-identifier": "52HV33827A.com.zivtal.HomeCapital"
+                ]
+            ],
+            format: .xml,
+            options: 0
+        )
+
+        XCTAssertEqual(
+            DeveloperTeamService.provisioningProfileRecord(fromPropertyListData: data),
+            makeProvisioningProfile(
+                teamID: "52HV33827A",
+                teamName: "Ziv Tal",
+                bundleIdentifier: "com.zivtal.HomeCapital",
+                expirationDate: expirationDate
+            )
         )
     }
 
@@ -147,6 +265,20 @@ final class DirectXcodeInstallationTests: XCTestCase {
             platform: "iOS",
             transportType: "wired",
             isInstallReady: true
+        )
+    }
+
+    private func makeProvisioningProfile(
+        teamID: String,
+        teamName: String?,
+        bundleIdentifier: String,
+        expirationDate: Date? = Date.distantFuture
+    ) -> ProvisioningProfileRecord {
+        ProvisioningProfileRecord(
+            teamID: teamID,
+            teamName: teamName,
+            bundleIdentifier: bundleIdentifier,
+            expirationDate: expirationDate
         )
     }
 }

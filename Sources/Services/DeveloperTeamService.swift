@@ -7,16 +7,63 @@ struct SigningCertificateRecord: Equatable {
     let organizationName: String?
 }
 
+struct ProvisioningProfileRecord: Equatable {
+    let teamID: String
+    let teamName: String?
+    let bundleIdentifier: String?
+    let expirationDate: Date?
+}
+
 final class DeveloperTeamService {
     func availableTeams() -> [DeveloperTeam] {
-        Self.teams(from: signingCertificateRecords())
+        Self.teams(
+            from: signingCertificateRecords(),
+            provisioningProfiles: provisioningProfileRecords()
+        )
+    }
+
+    func recommendedTeamID(for bundleIdentifier: String?) -> String? {
+        let certificateRecords = signingCertificateRecords()
+        let provisioningProfiles = provisioningProfileRecords()
+        if let matchingTeamID = Self.recommendedTeamID(
+            for: bundleIdentifier,
+            provisioningProfiles: provisioningProfiles
+        ) {
+            return matchingTeamID
+        }
+
+        let availableTeams = Self.teams(
+            from: certificateRecords,
+            provisioningProfiles: provisioningProfiles
+        )
+        return availableTeams.count == 1 ? availableTeams[0].id : nil
     }
 
     static func teams(from records: [SigningCertificateRecord]) -> [DeveloperTeam] {
+        teams(from: records, provisioningProfiles: [])
+    }
+
+    static func teams(
+        from certificateRecords: [SigningCertificateRecord],
+        provisioningProfiles: [ProvisioningProfileRecord],
+        now: Date = Date()
+    ) -> [DeveloperTeam] {
         let validPrefixes = ["Apple Development:", "iPhone Developer:"]
         var teamsByID: [String: DeveloperTeam] = [:]
 
-        for record in records where validPrefixes.contains(where: record.commonName.hasPrefix) {
+        for profile in provisioningProfiles where profile.expirationDate.map({ $0 > now }) != false {
+            let teamID = profile.teamID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !teamID.isEmpty else { continue }
+            if teamsByID[teamID]?.organizationName?.isEmpty != false {
+                teamsByID[teamID] = DeveloperTeam(
+                    id: teamID,
+                    organizationName: profile.teamName,
+                    accountName: nil
+                )
+            }
+        }
+
+        for record in certificateRecords where validPrefixes.contains(where: record.commonName.hasPrefix) {
             let teamID = record.organizationalUnit.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !teamID.isEmpty else { continue }
 
@@ -28,11 +75,15 @@ final class DeveloperTeamService {
             )
 
             if let existing = teamsByID[teamID] {
-                let existingHasOrganization = existing.organizationName?.isEmpty == false
-                let candidateHasOrganization = candidate.organizationName?.isEmpty == false
-                if !existingHasOrganization && candidateHasOrganization {
-                    teamsByID[teamID] = candidate
-                }
+                teamsByID[teamID] = DeveloperTeam(
+                    id: teamID,
+                    organizationName: candidate.organizationName?.isEmpty == false
+                        ? candidate.organizationName
+                        : existing.organizationName,
+                    accountName: candidate.accountName?.isEmpty == false
+                        ? candidate.accountName
+                        : existing.accountName
+                )
             } else {
                 teamsByID[teamID] = candidate
             }
@@ -41,6 +92,75 @@ final class DeveloperTeamService {
         return teamsByID.values.sorted {
             $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
         }
+    }
+
+    static func recommendedTeamID(
+        for bundleIdentifier: String?,
+        provisioningProfiles: [ProvisioningProfileRecord],
+        now: Date = Date()
+    ) -> String? {
+        guard let bundleIdentifier = normalizedBundleIdentifier(bundleIdentifier) else { return nil }
+        let requestedComponents = bundleIdentifier.split(separator: ".").map(String.init)
+        var bestScoresByTeamID: [String: Int] = [:]
+
+        for profile in provisioningProfiles where profile.expirationDate.map({ $0 > now }) != false {
+            guard let profileBundleIdentifier = normalizedBundleIdentifier(profile.bundleIdentifier) else {
+                continue
+            }
+            let isWildcard = profileBundleIdentifier.hasSuffix(".*")
+            let comparableProfileIdentifier = isWildcard
+                ? String(profileBundleIdentifier.dropLast(2))
+                : profileBundleIdentifier
+            let profileComponents = comparableProfileIdentifier.split(separator: ".").map(String.init)
+            let commonComponentCount = zip(requestedComponents, profileComponents)
+                .prefix { $0.0 == $0.1 }
+                .count
+            guard commonComponentCount >= 2 else { continue }
+
+            let score: Int
+            if comparableProfileIdentifier.caseInsensitiveCompare(bundleIdentifier) == .orderedSame {
+                score = 10_000 + commonComponentCount
+            } else if isWildcard, commonComponentCount == profileComponents.count {
+                score = 5_000 + commonComponentCount
+            } else {
+                score = commonComponentCount
+            }
+            bestScoresByTeamID[profile.teamID] = max(bestScoresByTeamID[profile.teamID] ?? 0, score)
+        }
+
+        guard let bestScore = bestScoresByTeamID.values.max() else { return nil }
+        let matchingTeamIDs = bestScoresByTeamID.compactMap { teamID, score in
+            score == bestScore ? teamID : nil
+        }
+        return matchingTeamIDs.count == 1 ? matchingTeamIDs[0] : nil
+    }
+
+    static func provisioningProfileRecord(fromPropertyListData data: Data) -> ProvisioningProfileRecord? {
+        guard let propertyList = try? PropertyListSerialization.propertyList(from: data, format: nil),
+              let dictionary = propertyList as? [String: Any],
+              let teamID = (dictionary["TeamIdentifier"] as? [String])?.first?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !teamID.isEmpty
+        else {
+            return nil
+        }
+
+        let entitlements = dictionary["Entitlements"] as? [String: Any]
+        let applicationIdentifier = entitlements?["application-identifier"] as? String
+        let identifierPrefix = "\(teamID)."
+        let bundleIdentifier: String?
+        if let applicationIdentifier, applicationIdentifier.hasPrefix(identifierPrefix) {
+            bundleIdentifier = String(applicationIdentifier.dropFirst(identifierPrefix.count))
+        } else {
+            bundleIdentifier = applicationIdentifier
+        }
+
+        return ProvisioningProfileRecord(
+            teamID: teamID,
+            teamName: dictionary["TeamName"] as? String,
+            bundleIdentifier: bundleIdentifier,
+            expirationDate: dictionary["ExpirationDate"] as? Date
+        )
     }
 
     private static func accountName(fromCertificateCommonName commonName: String) -> String? {
@@ -87,6 +207,77 @@ final class DeveloperTeamService {
                 organizationName: subjectValue(kSecOIDOrganizationName, certificate: certificate)
             )
         }
+    }
+
+    private func provisioningProfileRecords() -> [ProvisioningProfileRecord] {
+        let homeDirectory = fileManagerHomeDirectory
+        let directories = [
+            homeDirectory.appendingPathComponent(
+                "Library/Developer/Xcode/UserData/Provisioning Profiles",
+                isDirectory: true
+            ),
+            homeDirectory.appendingPathComponent(
+                "Library/MobileDevice/Provisioning Profiles",
+                isDirectory: true
+            )
+        ]
+        var seenURLs: Set<URL> = []
+
+        return directories.flatMap { directory in
+            (try? FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )) ?? []
+        }
+        .filter { ["mobileprovision", "provisionprofile"].contains($0.pathExtension.lowercased()) }
+        .filter { seenURLs.insert($0.standardizedFileURL).inserted }
+        .compactMap { profileURL in
+            guard let data = try? Data(contentsOf: profileURL),
+                  let propertyListData = decodedProvisioningProfileContent(data)
+            else {
+                return nil
+            }
+            return Self.provisioningProfileRecord(fromPropertyListData: propertyListData)
+        }
+    }
+
+    private var fileManagerHomeDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+    }
+
+    private func decodedProvisioningProfileContent(_ data: Data) -> Data? {
+        var decoder: CMSDecoder?
+        guard CMSDecoderCreate(&decoder) == errSecSuccess, let decoder else { return nil }
+
+        let updateStatus = data.withUnsafeBytes { bytes in
+            guard let baseAddress = bytes.baseAddress else { return errSecParam }
+            return CMSDecoderUpdateMessage(decoder, baseAddress, data.count)
+        }
+        guard updateStatus == errSecSuccess,
+              CMSDecoderFinalizeMessage(decoder) == errSecSuccess
+        else {
+            return nil
+        }
+
+        var content: CFData?
+        guard CMSDecoderCopyContent(decoder, &content) == errSecSuccess,
+              let content
+        else {
+            return nil
+        }
+        return content as Data
+    }
+
+    private static func normalizedBundleIdentifier(_ bundleIdentifier: String?) -> String? {
+        guard let value = bundleIdentifier?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !value.isEmpty
+        else {
+            return nil
+        }
+        return value
     }
 
     private func commonName(of certificate: SecCertificate) -> String? {

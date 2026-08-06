@@ -205,7 +205,7 @@ Discovery follows these rules:
    for iPhone and `2` for iPad). If compatibility cannot be detected, allow
    both families rather than blocking installation. Persist the resolved
    `PRODUCT_BUNDLE_IDENTIFIER` so the installed app can be identified on each
-   device.
+   device, and remember whether the project resolves a `DEVELOPMENT_TEAM`.
 9. Enable the application immediately.
 
 Adding the same standardized folder path twice is rejected.
@@ -242,10 +242,14 @@ selected project/workspace, scheme, configuration, and device, Development Manag
    destination timeout.
 3. Passes `-allowProvisioningUpdates` and
    `-allowProvisioningDeviceRegistration`.
-4. When a signing team is selected for the managed application, overrides
-   `DEVELOPMENT_TEAM` for that build and uses Xcode automatic signing without
-   modifying the source project. Available teams come from valid local Apple
-   Development identities and can be refreshed in Settings.
+4. Uses the project's resolved signing team when it has one. Otherwise,
+   automatically selects a unique team whose valid Xcode provisioning profiles
+   match the application's bundle-ID namespace. A team selected explicitly for
+   the managed application overrides `DEVELOPMENT_TEAM` and enables Xcode
+   automatic signing without modifying the source project. Available teams come
+   from local Apple Development identities and valid Xcode provisioning profiles
+   and can be refreshed in Settings. If no unique match exists, Settings requires
+   an explicit per-application selection before the build starts.
 5. Resolves the built application with `xcodebuild -showBuildSettings -json`,
    with a Derived Data scan as fallback.
 6. Runs `xcrun devicectl device install app --device <device-udid>

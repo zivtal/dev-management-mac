@@ -226,8 +226,18 @@ final class DeviceInstallationSelectionTests: XCTestCase {
             ),
             ProjectApplicationMetadata(
                 supportedDeviceFamilies: [.iPhone, .iPad],
-                bundleIdentifier: "com.example.Sample"
+                bundleIdentifier: "com.example.Sample",
+                projectSigningTeamID: ""
             )
+        )
+    }
+
+    func testBuildSettingsTreatMissingDevelopmentTeamAsEmpty() {
+        XCTAssertEqual(
+            ProjectDiscoveryService.applicationMetadata(
+                fromBuildSettingsJSON: buildSettingsJSON(targetedDeviceFamily: "1, 2")
+            )?.projectSigningTeamID,
+            ""
         )
     }
 

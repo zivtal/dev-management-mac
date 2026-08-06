@@ -92,6 +92,7 @@ struct InstallationOutcome {
 enum InstallationServiceError: LocalizedError {
     case missingInstallScript
     case missingProjectContainer
+    case missingDevelopmentTeam
     case noBuiltApplication
 
     var errorDescription: String? {
@@ -100,6 +101,8 @@ enum InstallationServiceError: LocalizedError {
             L10n.text("install.sh was not found. Switch to Direct Xcode build in Settings.")
         case .missingProjectContainer:
             L10n.text("The saved Xcode project or workspace no longer exists.")
+        case .missingDevelopmentTeam:
+            L10n.text("The Xcode project does not specify a development team, and no matching team could be selected automatically. Choose a signing team for this application in Settings.")
         case .noBuiltApplication:
             L10n.text("The build finished, but no .app product was found to install.")
         }
@@ -111,10 +114,16 @@ final class InstallationService {
 
     private let processRunner: ProcessRunner
     private let fileManager: FileManager
+    private let developerTeamService: DeveloperTeamService
 
-    init(processRunner: ProcessRunner = ProcessRunner(), fileManager: FileManager = .default) {
+    init(
+        processRunner: ProcessRunner = ProcessRunner(),
+        fileManager: FileManager = .default,
+        developerTeamService: DeveloperTeamService = DeveloperTeamService()
+    ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
+        self.developerTeamService = developerTeamService
     }
 
     func install(
@@ -168,6 +177,15 @@ final class InstallationService {
             throw InstallationServiceError.missingProjectContainer
         }
 
+        let buildProject = try await projectResolvingAutomaticSigning(project)
+        if project.signingTeamID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false,
+           let inferredTeamID = buildProject.signingTeamID {
+            eventHandler(.output(L10n.format(
+                "Using signing team %@ selected from matching Xcode provisioning profiles.\n",
+                inferredTeamID
+            )))
+        }
+
         let temporaryDirectory = fileManager.temporaryDirectory
             .appendingPathComponent("DevManagement-Build-\(UUID().uuidString)", isDirectory: true)
         let derivedDataURL = temporaryDirectory.appendingPathComponent("DerivedData", isDirectory: true)
@@ -175,7 +193,7 @@ final class InstallationService {
         defer { try? fileManager.removeItem(at: temporaryDirectory) }
 
         let commonArguments = Self.xcodeArguments(
-            project: project,
+            project: buildProject,
             device: device,
             derivedDataURL: derivedDataURL
         )
@@ -193,7 +211,7 @@ final class InstallationService {
         )
 
         let appURL = try await locateBuiltApplication(
-            project: project,
+            project: buildProject,
             commonArguments: commonArguments,
             derivedDataURL: derivedDataURL
         )
@@ -214,6 +232,53 @@ final class InstallationService {
         return InstallationOutcome(log: Self.trimmedLog(
             buildResult.output + "\n\n" + installResult.output
         ))
+    }
+
+    private func projectResolvingAutomaticSigning(_ project: ManagedProject) async throws -> ManagedProject {
+        if let selectedTeamID = project.signingTeamID?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !selectedTeamID.isEmpty {
+            return project
+        }
+
+        var resolvedProject = project
+        if resolvedProject.projectSigningTeamID == nil || resolvedProject.bundleIdentifier == nil,
+           let metadata = await currentApplicationMetadata(for: resolvedProject) {
+            resolvedProject.projectSigningTeamID = metadata.projectSigningTeamID
+            resolvedProject.bundleIdentifier = metadata.bundleIdentifier
+        }
+
+        guard let projectTeamID = resolvedProject.projectSigningTeamID else {
+            return resolvedProject
+        }
+        guard projectTeamID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return resolvedProject
+        }
+        guard let recommendedTeamID = developerTeamService.recommendedTeamID(
+            for: resolvedProject.bundleIdentifier
+        ) else {
+            throw InstallationServiceError.missingDevelopmentTeam
+        }
+
+        resolvedProject.signingTeamID = recommendedTeamID
+        return resolvedProject
+    }
+
+    private func currentApplicationMetadata(for project: ManagedProject) async -> ProjectApplicationMetadata? {
+        let result = try? await processRunner.runAndRequireSuccess(
+            executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
+            arguments: [
+                project.containerKind.xcodebuildFlag, project.containerPath,
+                "-scheme", project.scheme,
+                "-configuration", project.configuration,
+                "-destination", "generic/platform=iOS",
+                "-showBuildSettings", "-json"
+            ],
+            workingDirectory: project.folderURL
+        )
+        return result.flatMap {
+            ProjectDiscoveryService.applicationMetadata(fromBuildSettingsJSON: $0.output)
+        }
     }
 
     static func xcodeArguments(

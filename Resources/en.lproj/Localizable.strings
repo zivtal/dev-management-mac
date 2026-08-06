@@ -96,11 +96,13 @@
 "Scheme" = "Scheme";
 "Configuration" = "Configuration";
 "Signing team" = "Signing team";
-"Project default" = "Project default";
+"Automatic" = "Automatic";
 "Refresh signing teams" = "Refresh signing teams";
 "Team %@" = "Team %@";
 "No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh." = "No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh.";
-"Choosing a team uses Xcode automatic signing for this application without changing the project files." = "Choosing a team uses Xcode automatic signing for this application without changing the project files.";
+"Automatic uses the project's signing team when available, or a unique matching team from Xcode provisioning profiles. Choosing a team here overrides it without changing project files." = "Automatic uses the project's signing team when available, or a unique matching team from Xcode provisioning profiles. Choosing a team here overrides it without changing project files.";
+"The Xcode project does not specify a development team, and no matching team could be selected automatically. Choose a signing team for this application in Settings." = "The Xcode project does not specify a development team, and no matching team could be selected automatically. Choose a signing team for this application in Settings.";
+"Using signing team %@ selected from matching Xcode provisioning profiles.\n" = "Using signing team %@ selected from matching Xcode provisioning profiles.\n";
 "Show in Finder" = "Show in Finder";
 "Choose an iOS application folder" = "Choose an iOS application folder";
 "Add" = "Add";

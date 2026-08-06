@@ -330,6 +330,7 @@ final class AppModel: ObservableObject {
             }
             $0.supportedDeviceFamilies = nil
             $0.bundleIdentifier = nil
+            $0.projectSigningTeamID = nil
         }
         resetQueuedTargets(for: projectID)
         refreshProjectCompatibility(projectID: projectID)
@@ -340,6 +341,7 @@ final class AppModel: ObservableObject {
             $0.configuration = configuration
             $0.supportedDeviceFamilies = nil
             $0.bundleIdentifier = nil
+            $0.projectSigningTeamID = nil
         }
         resetQueuedTargets(for: projectID)
         refreshProjectCompatibility(projectID: projectID)
@@ -811,7 +813,11 @@ final class AppModel: ObservableObject {
 
     private func refreshUnknownProjectMetadata(restartMonitoringAfterUpdate: Bool) async {
         let projectIDs = projects
-            .filter { $0.supportedDeviceFamilies == nil || $0.bundleIdentifier == nil }
+            .filter {
+                $0.supportedDeviceFamilies == nil
+                    || $0.bundleIdentifier == nil
+                    || $0.projectSigningTeamID == nil
+            }
             .map(\.id)
         for projectID in projectIDs {
             await detectProjectCompatibility(
@@ -850,6 +856,7 @@ final class AppModel: ObservableObject {
         }
         projects[index].supportedDeviceFamilies = metadata.supportedDeviceFamilies
         projects[index].bundleIdentifier = metadata.bundleIdentifier
+        projects[index].projectSigningTeamID = metadata.projectSigningTeamID
         if restartMonitoringAfterUpdate {
             restartMonitoring()
         }

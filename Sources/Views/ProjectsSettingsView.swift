@@ -285,7 +285,7 @@ struct ProjectsSettingsView: View {
                                 }
                             )
                         ) {
-                            Text("Project default").tag("")
+                            Text("Automatic").tag("")
                             ForEach(model.developerTeams) { team in
                                 Text(team.displayName).tag(team.id)
                             }
@@ -516,7 +516,7 @@ struct ProjectsSettingsView: View {
         if model.developerTeams.isEmpty {
             return L10n.text("No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh.")
         }
-        return L10n.text("Choosing a team uses Xcode automatic signing for this application without changing the project files.")
+        return L10n.text("Automatic uses the project's signing team when available, or a unique matching team from Xcode provisioning profiles. Choosing a team here overrides it without changing project files.")
     }
 
     private var selectedProject: ManagedProject? {

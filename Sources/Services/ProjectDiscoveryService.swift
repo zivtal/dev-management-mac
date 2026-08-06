@@ -3,6 +3,7 @@ import Foundation
 struct ProjectApplicationMetadata: Equatable {
     let supportedDeviceFamilies: Set<MobileDeviceFamily>?
     let bundleIdentifier: String?
+    let projectSigningTeamID: String?
 }
 
 enum ProjectDiscoveryError: LocalizedError {
@@ -116,6 +117,7 @@ final class ProjectDiscoveryService {
         if let metadata = try? await applicationMetadata(for: descriptor.makeManagedProject()) {
             descriptor.supportedDeviceFamilies = metadata.supportedDeviceFamilies
             descriptor.bundleIdentifier = metadata.bundleIdentifier
+            descriptor.projectSigningTeamID = metadata.projectSigningTeamID
         }
         return descriptor
     }
@@ -166,12 +168,15 @@ final class ProjectDiscoveryService {
             let rawBundleIdentifier = settings["PRODUCT_BUNDLE_IDENTIFIER"] as? String
             let bundleIdentifier = rawBundleIdentifier?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            let projectSigningTeamID = (settings["DEVELOPMENT_TEAM"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return ProjectApplicationMetadata(
                 supportedDeviceFamilies: families.isEmpty ? nil : families,
                 bundleIdentifier: bundleIdentifier?.isEmpty == false
                     && bundleIdentifier?.contains("$(") == false
                         ? bundleIdentifier
-                        : nil
+                        : nil,
+                projectSigningTeamID: projectSigningTeamID
             )
         }
         return nil

@@ -96,11 +96,13 @@
 "Scheme" = "Scheme";
 "Configuration" = "Configuration";
 "Signing team" = "צוות חתימה";
-"Project default" = "ברירת המחדל של הפרויקט";
+"Automatic" = "אוטומטי";
 "Refresh signing teams" = "רענן צוותי חתימה";
 "Team %@" = "צוות %@";
 "No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh." = "לא נמצאו צוותי חתימה של Apple Development. יש להוסיף את החשבון והתעודה ב־Xcode ואז לרענן.";
-"Choosing a team uses Xcode automatic signing for this application without changing the project files." = "בחירת צוות מפעילה חתימה אוטומטית של Xcode לאפליקציה הזו בלי לשנות את קובצי הפרויקט.";
+"Automatic uses the project's signing team when available, or a unique matching team from Xcode provisioning profiles. Choosing a team here overrides it without changing project files." = "המצב האוטומטי משתמש בצוות החתימה של הפרויקט כשהוא קיים, או בצוות תואם יחיד מפרופילי ההקצאה של Xcode. בחירת צוות כאן עוקפת זאת בלי לשנות את קובצי הפרויקט.";
+"The Xcode project does not specify a development team, and no matching team could be selected automatically. Choose a signing team for this application in Settings." = "לא הוגדר צוות פיתוח בפרויקט Xcode ולא ניתן היה לבחור צוות תואם באופן אוטומטי. יש לבחור צוות חתימה לאפליקציה הזו בהגדרות.";
+"Using signing team %@ selected from matching Xcode provisioning profiles.\n" = "נעשה שימוש בצוות החתימה %@ שנבחר מפרופילי הקצאה תואמים של Xcode.\n";
 "Show in Finder" = "הצג ב־Finder";
 "Choose an iOS application folder" = "בחירת תיקיית אפליקציית iOS";
 "Add" = "הוסף";

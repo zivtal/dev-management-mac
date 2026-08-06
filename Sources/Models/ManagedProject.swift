@@ -48,6 +48,7 @@ struct ManagedProject: Identifiable, Codable, Equatable {
     var excludedDeviceUDIDs: Set<String>? = nil
     var installationDeviceOrder: [String]? = nil
     var signingTeamID: String? = nil
+    var projectSigningTeamID: String? = nil
 
     var folderURL: URL { URL(fileURLWithPath: folderPath, isDirectory: true) }
     var containerURL: URL { URL(fileURLWithPath: containerPath) }
@@ -183,6 +184,7 @@ struct ProjectDescriptor: Equatable {
     let installScriptPath: String?
     var supportedDeviceFamilies: Set<MobileDeviceFamily>? = nil
     var bundleIdentifier: String? = nil
+    var projectSigningTeamID: String? = nil
 
     func makeManagedProject() -> ManagedProject {
         let preferredScheme = Self.preferredScheme(in: schemes, projectName: displayName)
@@ -208,7 +210,8 @@ struct ProjectDescriptor: Equatable {
             marketingVersion: nil,
             buildNumber: nil,
             supportedDeviceFamilies: supportedDeviceFamilies,
-            bundleIdentifier: bundleIdentifier
+            bundleIdentifier: bundleIdentifier,
+            projectSigningTeamID: projectSigningTeamID
         )
     }
 
