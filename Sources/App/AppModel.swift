@@ -41,6 +41,28 @@ final class AppModel: ObservableObject {
         connectedDevices.filter(\.supportsIOSAppInstallation)
     }
 
+    var hasMacOSProjects: Bool {
+        projects.contains(where: \.isMacOSApplication)
+    }
+
+    var hasIOSProjects: Bool {
+        projects.contains { !$0.isMacOSApplication }
+    }
+
+    private struct ProjectInstallationTarget {
+        let identifier: String
+        let name: String
+        let device: ConnectedDevice?
+    }
+
+    private var localMacInstallationTarget: ProjectInstallationTarget {
+        ProjectInstallationTarget(
+            identifier: ManagedProject.localMacInstallationTargetID,
+            name: L10n.text("This Mac"),
+            device: nil
+        )
+    }
+
     private let settingsStore: SettingsStore
     private let deviceService: DeviceService
     private let discoveryService: ProjectDiscoveryService
@@ -195,6 +217,12 @@ final class AppModel: ObservableObject {
                 addActivity(level: .warning, title: L10n.text("Could not check connected devices"), details: message)
                 lastDeviceError = message
             }
+            if !installAllTargets.isEmpty {
+                preparePendingInstallAllTargets()
+                await installAllRequestedProjects(on: [])
+            } else if installWhenDue, preferences.automationEnabled, !isSettingsWindowOpen {
+                await installDueProjects(on: [])
+            }
         }
     }
 
@@ -268,7 +296,12 @@ final class AppModel: ObservableObject {
     }
 
     func selectedDeviceCount(for project: ManagedProject) -> Int {
-        project.selectedDeviceCount(in: connectedDevices)
+        if project.isMacOSApplication { return 1 }
+        return project.selectedDeviceCount(in: connectedDevices)
+    }
+
+    func hasAvailableInstallationTarget(for project: ManagedProject) -> Bool {
+        project.isMacOSApplication || !selectedInstallableDevices(for: project).isEmpty
     }
 
     func isDeviceInstallationEnabled(_ deviceUDID: String, for projectID: UUID) -> Bool {
@@ -331,6 +364,7 @@ final class AppModel: ObservableObject {
             $0.supportedDeviceFamilies = nil
             $0.bundleIdentifier = nil
             $0.projectSigningTeamID = nil
+            $0.applicationPlatform = nil
         }
         resetQueuedTargets(for: projectID)
         refreshProjectCompatibility(projectID: projectID)
@@ -342,6 +376,7 @@ final class AppModel: ObservableObject {
             $0.supportedDeviceFamilies = nil
             $0.bundleIdentifier = nil
             $0.projectSigningTeamID = nil
+            $0.applicationPlatform = nil
         }
         resetQueuedTargets(for: projectID)
         refreshProjectCompatibility(projectID: projectID)
@@ -353,6 +388,19 @@ final class AppModel: ObservableObject {
             presentedError = L10n.text("This application is paused. Resume it in Settings before installing.")
             return
         }
+        if project.isMacOSApplication {
+            let cancellationGeneration = installationCancellationGeneration
+            Task {
+                guard cancellationGeneration == installationCancellationGeneration else { return }
+                _ = await install(
+                    project: project,
+                    target: localMacInstallationTarget,
+                    ignoreSchedule: true
+                )
+            }
+            return
+        }
+
         let targetDevices: [ConnectedDevice]
         if let deviceUDID {
             targetDevices = selectedInstallableDevices(for: project).filter { $0.udid == deviceUDID }
@@ -368,7 +416,15 @@ final class AppModel: ObservableObject {
         Task {
             for device in targetDevices {
                 guard cancellationGeneration == installationCancellationGeneration else { return }
-                _ = await install(project: project, on: device, ignoreSchedule: true)
+                _ = await install(
+                    project: project,
+                    target: ProjectInstallationTarget(
+                        identifier: device.udid,
+                        name: device.name,
+                        device: device
+                    ),
+                    ignoreSchedule: true
+                )
             }
         }
     }
@@ -394,7 +450,10 @@ final class AppModel: ObservableObject {
         }
 
         installAllTargets = Dictionary(uniqueKeysWithValues: enabledProjects.map { project in
-            (project.id, Set(selectedInstallableDevices(for: project).map(\.udid)))
+            let targetIdentifiers = project.isMacOSApplication
+                ? [ManagedProject.localMacInstallationTargetID]
+                : selectedInstallableDevices(for: project).map(\.udid)
+            return (project.id, Set(targetIdentifiers))
         })
         completedInstallAllTargets = []
         addActivity(
@@ -483,6 +542,30 @@ final class AppModel: ObservableObject {
         let cancellationGeneration = installationCancellationGeneration
 
         for project in enabledProjects {
+            if project.isMacOSApplication {
+                let target = localMacInstallationTarget
+                let attemptKey = recordKey(
+                    projectID: project.id,
+                    deviceUDID: target.identifier
+                )
+                if let cooldownUntil = failedAttemptCooldowns[attemptKey], cooldownUntil > now {
+                    continue
+                }
+                let lastInstalledAt = installationRecords.first {
+                    $0.projectID == project.id && $0.deviceUDID == target.identifier
+                }?.installedAt
+                guard SchedulingPolicy.isDue(
+                    lastInstalledAt: lastInstalledAt,
+                    now: now,
+                    intervalDays: preferences.reinstallAfterDays
+                ) else {
+                    continue
+                }
+                guard cancellationGeneration == installationCancellationGeneration else { return }
+                _ = await install(project: project, target: target, ignoreSchedule: false)
+                continue
+            }
+
             let orderedDevices = project.devicesInInstallationOrder(
                 devices.filter { project.installationEnabled(for: $0) }
             )
@@ -518,7 +601,15 @@ final class AppModel: ObservableObject {
                     continue
                 }
 
-                _ = await install(project: project, on: device, ignoreSchedule: false)
+                _ = await install(
+                    project: project,
+                    target: ProjectInstallationTarget(
+                        identifier: device.udid,
+                        name: device.name,
+                        device: device
+                    ),
+                    ignoreSchedule: false
+                )
             }
         }
     }
@@ -534,14 +625,23 @@ final class AppModel: ObservableObject {
                 continue
             }
             let targetDeviceUDIDs = installAllTargets[projectID] ?? []
-            let orderedDevices = project.devicesInInstallationOrder(
-                devices.filter { targetDeviceUDIDs.contains($0.udid) }
-            )
-            for device in orderedDevices {
+            let targets: [ProjectInstallationTarget]
+            if project.isMacOSApplication {
+                targets = targetDeviceUDIDs.contains(ManagedProject.localMacInstallationTargetID)
+                    ? [localMacInstallationTarget]
+                    : []
+            } else {
+                targets = project.devicesInInstallationOrder(
+                    devices.filter { targetDeviceUDIDs.contains($0.udid) }
+                ).map {
+                    ProjectInstallationTarget(identifier: $0.udid, name: $0.name, device: $0)
+                }
+            }
+            for target in targets {
                 guard cancellationGeneration == installationCancellationGeneration else { return }
-                let targetKey = recordKey(projectID: project.id, deviceUDID: device.udid)
+                let targetKey = recordKey(projectID: project.id, deviceUDID: target.identifier)
                 guard !completedInstallAllTargets.contains(targetKey) else { continue }
-                if await install(project: project, on: device, ignoreSchedule: true) {
+                if await install(project: project, target: target, ignoreSchedule: true) {
                     completedInstallAllTargets.insert(targetKey)
                 }
             }
@@ -569,9 +669,11 @@ final class AppModel: ObservableObject {
                 installAllTargets[projectID] = nil
                 continue
             }
-            let deviceUDIDs = Set(selectedInstallableDevices(for: project).map(\.udid))
-            if !deviceUDIDs.isEmpty {
-                installAllTargets[projectID] = deviceUDIDs
+            let targetIdentifiers = project.isMacOSApplication
+                ? Set([ManagedProject.localMacInstallationTargetID])
+                : Set(selectedInstallableDevices(for: project).map(\.udid))
+            if !targetIdentifiers.isEmpty {
+                installAllTargets[projectID] = targetIdentifiers
             }
         }
     }
@@ -579,11 +681,15 @@ final class AppModel: ObservableObject {
     @discardableResult
     private func install(
         project requestedProject: ManagedProject,
-        on device: ConnectedDevice,
+        target: ProjectInstallationTarget,
         ignoreSchedule: Bool
     ) async -> Bool {
         guard let project = projects.first(where: { $0.id == requestedProject.id }) else { return false }
-        guard project.installationEnabled(for: device) else { return false }
+        if let device = target.device {
+            guard !project.isMacOSApplication, project.installationEnabled(for: device) else { return false }
+        } else {
+            guard project.isMacOSApplication, project.isEnabled else { return false }
+        }
         guard progress == nil else {
             if ignoreSchedule {
                 presentedError = L10n.text("An installation is already in progress. Try again when it finishes.")
@@ -595,20 +701,20 @@ final class AppModel: ObservableObject {
         isCancellingInstallation = false
         progress = InstallationProgress(
             projectName: project.displayName,
-            deviceName: device.name,
+            deviceName: target.name,
             phase: .preparing,
             latestOutput: ""
         )
         installationLog = InstallationLogSession(
             id: installationLogID,
             projectName: project.displayName,
-            deviceName: device.name
+            deviceName: target.name
         )
         addActivity(
             level: .info,
-            title: L10n.format("Starting installation of %@ on %@", project.displayName, device.name),
+            title: L10n.format("Starting installation of %@ on %@", project.displayName, target.name),
             projectID: project.id,
-            deviceUDID: device.udid
+            deviceUDID: target.identifier
         )
 
         let eventCoalescer = InstallationEventCoalescer { [weak self] batch in
@@ -617,10 +723,16 @@ final class AppModel: ObservableObject {
             }
         }
 
-        let installationTask = Task {
-            try await installationService.install(
+        let installationTask = Task { () -> InstallationOutcome in
+            if let device = target.device {
+                return try await installationService.install(
+                    project: project,
+                    on: device,
+                    eventHandler: { eventCoalescer.receive($0) }
+                )
+            }
+            return try await installationService.install(
                 project: project,
-                on: device,
                 eventHandler: { eventCoalescer.receive($0) }
             )
         }
@@ -632,23 +744,32 @@ final class AppModel: ObservableObject {
             handleInstallationEvents(eventCoalescer.finish(), installationLogID: installationLogID)
             replaceInstallationLogOutput(outcome.log, installationLogID: installationLogID)
             finishInstallationLog(id: installationLogID, state: .succeeded)
-            recordSuccessfulInstallation(projectID: project.id, deviceUDID: device.udid)
+            recordSuccessfulInstallation(projectID: project.id, deviceUDID: target.identifier)
             if preferences.notificationsEnabled != false {
                 let iconURL = await projectIconService.iconURL(for: project)
                 projectIconURLs[project.id] = iconURL
-                notificationService.notifySuccessfulInstallation(
-                    project: project,
-                    device: device,
-                    applicationIconURL: iconURL
-                )
+                if let device = target.device {
+                    notificationService.notifySuccessfulInstallation(
+                        project: project,
+                        device: device,
+                        applicationIconURL: iconURL
+                    )
+                } else {
+                    notificationService.notifySuccessfulMacOSInstallation(
+                        project: project,
+                        applicationIconURL: iconURL
+                    )
+                }
             }
-            failedAttemptCooldowns[recordKey(projectID: project.id, deviceUDID: device.udid)] = nil
+            failedAttemptCooldowns[
+                recordKey(projectID: project.id, deviceUDID: target.identifier)
+            ] = nil
             addActivity(
                 level: .success,
-                title: L10n.format("%@ was installed successfully on %@", project.displayName, device.name),
+                title: L10n.format("%@ was installed successfully on %@", project.displayName, target.name),
                 details: outcome.log,
                 projectID: project.id,
-                deviceUDID: device.udid
+                deviceUDID: target.identifier
             )
             progress = nil
             isCancellingInstallation = false
@@ -664,14 +785,14 @@ final class AppModel: ObservableObject {
                 )
                 finishInstallationLog(id: installationLogID, state: .cancelled)
                 failedAttemptCooldowns[
-                    recordKey(projectID: project.id, deviceUDID: device.udid)
+                    recordKey(projectID: project.id, deviceUDID: target.identifier)
                 ] = nil
                 addActivity(
                     level: .warning,
                     title: L10n.format("Installation of %@ was canceled", project.displayName),
                     details: cancellationText,
                     projectID: project.id,
-                    deviceUDID: device.udid
+                    deviceUDID: target.identifier
                 )
                 progress = nil
                 isCancellingInstallation = false
@@ -684,14 +805,14 @@ final class AppModel: ObservableObject {
                 state: .failed,
                 fallbackError: errorOutput
             )
-            failedAttemptCooldowns[recordKey(projectID: project.id, deviceUDID: device.udid)] =
+            failedAttemptCooldowns[recordKey(projectID: project.id, deviceUDID: target.identifier)] =
                 Date().addingTimeInterval(5 * 60)
             addActivity(
                 level: .error,
                 title: L10n.format("Installation of %@ failed", project.displayName),
                 details: errorOutput,
                 projectID: project.id,
-                deviceUDID: device.udid
+                deviceUDID: target.identifier
             )
             progress = nil
             isCancellingInstallation = false
@@ -759,7 +880,8 @@ final class AppModel: ObservableObject {
                 installedVersion: installedVersion
             ))
         }
-        if let installedProject,
+        if deviceUDID != ManagedProject.localMacInstallationTargetID,
+           let installedProject,
            let bundleIdentifier = installedProject.bundleIdentifier {
             installedApplicationsByDeviceUDID[deviceUDID, default: [:]][bundleIdentifier] =
                 InstalledApplication(
@@ -814,7 +936,9 @@ final class AppModel: ObservableObject {
     private func refreshUnknownProjectMetadata(restartMonitoringAfterUpdate: Bool) async {
         let projectIDs = projects
             .filter {
-                $0.supportedDeviceFamilies == nil
+                $0.applicationPlatform == nil
+                    || ($0.effectiveApplicationPlatform == .iOS
+                        && $0.supportedDeviceFamilies == nil)
                     || $0.bundleIdentifier == nil
                     || $0.projectSigningTeamID == nil
             }
@@ -857,6 +981,7 @@ final class AppModel: ObservableObject {
         projects[index].supportedDeviceFamilies = metadata.supportedDeviceFamilies
         projects[index].bundleIdentifier = metadata.bundleIdentifier
         projects[index].projectSigningTeamID = metadata.projectSigningTeamID
+        projects[index].applicationPlatform = metadata.applicationPlatform
         if restartMonitoringAfterUpdate {
             restartMonitoring()
         }
@@ -912,10 +1037,15 @@ final class AppModel: ObservableObject {
 
         var nextDates: [Date] = []
         for project in enabledProjects {
-            let selectedDevices = selectedInstallableDevices(for: project)
-            let targetDeviceUDIDs: [String?] = selectedDevices.isEmpty
-                ? [nil]
-                : selectedDevices.map { Optional($0.udid) }
+            let targetDeviceUDIDs: [String?]
+            if project.isMacOSApplication {
+                targetDeviceUDIDs = [ManagedProject.localMacInstallationTargetID]
+            } else {
+                let selectedDevices = selectedInstallableDevices(for: project)
+                targetDeviceUDIDs = selectedDevices.isEmpty
+                    ? [nil]
+                    : selectedDevices.map { Optional($0.udid) }
+            }
 
             for deviceUDID in targetDeviceUDIDs {
                 guard let lastInstalledAt = lastInstallation(

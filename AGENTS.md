@@ -24,6 +24,9 @@ an `LSUIElement` accessory app: no Dock icon and no ordinary main window.
   available, including USB and local-network/Wi-Fi connections.
 - Device targeting is configured separately for each managed application. Show
   only connected iPhone and iPad families supported by the selected Xcode scheme.
+- A managed macOS application targets the local Mac. Direct installation builds
+  the selected scheme, creates and verifies a DMG, stops an existing running copy,
+  atomically replaces it in `/Applications`, and launches the new copy.
 - Pausing an application preserves its device selections but blocks automatic,
   manual, and Install All work until it is resumed. Work already in progress may
   finish.

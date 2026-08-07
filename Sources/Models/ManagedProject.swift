@@ -28,7 +28,23 @@ enum InstallMethod: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum ApplicationPlatform: String, Codable, CaseIterable, Identifiable {
+    case iOS
+    case macOS
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .iOS: "iOS / iPadOS"
+        case .macOS: "macOS"
+        }
+    }
+}
+
 struct ManagedProject: Identifiable, Codable, Equatable {
+    static let localMacInstallationTargetID = "local-mac"
+
     var id: UUID
     var displayName: String
     var folderPath: String
@@ -49,9 +65,29 @@ struct ManagedProject: Identifiable, Codable, Equatable {
     var installationDeviceOrder: [String]? = nil
     var signingTeamID: String? = nil
     var projectSigningTeamID: String? = nil
+    var applicationPlatform: ApplicationPlatform? = nil
 
     var folderURL: URL { URL(fileURLWithPath: folderPath, isDirectory: true) }
     var containerURL: URL { URL(fileURLWithPath: containerPath) }
+
+    var effectiveApplicationPlatform: ApplicationPlatform {
+        applicationPlatform ?? .iOS
+    }
+
+    var isMacOSApplication: Bool {
+        effectiveApplicationPlatform == .macOS
+    }
+
+    var macOSDMGURL: URL {
+        let invalidCharacters = CharacterSet(charactersIn: "/:")
+        let safeName = displayName
+            .components(separatedBy: invalidCharacters)
+            .filter { !$0.isEmpty }
+            .joined(separator: "-")
+        return folderURL
+            .appendingPathComponent("dist", isDirectory: true)
+            .appendingPathComponent("\(safeName.isEmpty ? scheme : safeName).dmg")
+    }
 
     var versionDisplay: String {
         switch (marketingVersion, buildNumber) {
@@ -88,6 +124,7 @@ struct ManagedProject: Identifiable, Codable, Equatable {
     }
 
     func supports(_ device: ConnectedDevice) -> Bool {
+        guard !isMacOSApplication else { return false }
         guard let family = device.mobileDeviceFamily else { return false }
         return effectiveSupportedDeviceFamilies.contains(family)
     }
@@ -185,6 +222,7 @@ struct ProjectDescriptor: Equatable {
     var supportedDeviceFamilies: Set<MobileDeviceFamily>? = nil
     var bundleIdentifier: String? = nil
     var projectSigningTeamID: String? = nil
+    var applicationPlatform: ApplicationPlatform? = nil
 
     func makeManagedProject() -> ManagedProject {
         let preferredScheme = Self.preferredScheme(in: schemes, projectName: displayName)
@@ -211,7 +249,8 @@ struct ProjectDescriptor: Equatable {
             buildNumber: nil,
             supportedDeviceFamilies: supportedDeviceFamilies,
             bundleIdentifier: bundleIdentifier,
-            projectSigningTeamID: projectSigningTeamID
+            projectSigningTeamID: projectSigningTeamID,
+            applicationPlatform: applicationPlatform
         )
     }
 

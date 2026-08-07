@@ -1,9 +1,9 @@
 # Development Management
 
 Development Management is a native macOS menu-bar utility that periodically rebuilds
-and reinstalls locally developed iOS applications on paired iPhones and iPads.
-It is intended for development-signed apps whose installed builds need to be
-renewed before their signing period expires.
+and reinstalls locally developed iOS applications on paired iPhones and iPads, and
+macOS applications on the local Mac. It supports development-signed mobile apps
+whose installed builds need renewal as well as repeatable local Mac deployments.
 
 The app does not try to inspect a provisioning profile's expiration date.
 Instead, it records each successful installation and reinstalls after a
@@ -35,6 +35,8 @@ configurable number of days.
 - Project and workspace discovery with shared scheme and configuration
   selection.
 - Direct `xcodebuild` build, signing, provisioning, and CoreDevice installation.
+- Direct macOS build, verified DMG creation, running-process shutdown, atomic
+  replacement in `/Applications`, and relaunch.
 - Optional custom installation through a root-level `install.sh`.
 - iPhone, iPad, and Apple Watch discovery; iOS and iPadOS devices are install
   targets, while Apple Watch is displayed as a companion device.
@@ -97,7 +99,7 @@ the first launch may require right-clicking the application and selecting
 ## Getting started
 
 1. Open the menu-bar popover and select **Settings…**.
-2. In **Applications**, select **+** and choose an iOS source folder.
+2. In **Applications**, select **+** and choose an iOS or macOS source folder.
 3. Confirm the detected installation method, scheme, and configuration.
 4. Connect and unlock an iPhone or iPad. For a network connection, first enable
    **Connect via network** in Xcode.
@@ -153,6 +155,8 @@ Settings contains four tabs and is the only ordinary app window.
   an installation already in progress is allowed to finish.
 - Choose `install.sh` or direct Xcode installation when a script exists.
 - Choose the shared scheme and build configuration for direct builds.
+- View the detected platform. macOS schemes target this Mac and show their DMG
+  output path; iOS schemes provide the compatible-device selector.
 - View whether the selected scheme supports iPhone, iPad, or both. Only
   compatible connected devices are offered as installation targets.
 - Choose installation devices independently for every app. A compatible new
@@ -200,12 +204,11 @@ Discovery follows these rules:
 7. Select direct Xcode installation by default. If `install.sh` exists at the
    selected folder's root, keep it available as an optional installation method.
 8. Query the selected scheme and configuration with `xcodebuild
-   -showBuildSettings -json` for a generic iOS destination. Read
-   `TARGETED_DEVICE_FAMILY` from the installable iOS application target (`1`
-   for iPhone and `2` for iPad). If compatibility cannot be detected, allow
-   both families rather than blocking installation. Persist the resolved
-   `PRODUCT_BUNDLE_IDENTIFIER` so the installed app can be identified on each
-   device, and remember whether the project resolves a `DEVELOPMENT_TEAM`.
+   -showBuildSettings -json`, trying generic iOS and macOS destinations. Persist
+   the detected application platform, `PRODUCT_BUNDLE_IDENTIFIER`, and whether
+   the project resolves a `DEVELOPMENT_TEAM`. For iOS, read
+   `TARGETED_DEVICE_FAMILY` (`1` for iPhone and `2` for iPad); if compatibility
+   cannot be detected, allow both families rather than blocking installation.
 9. Enable the application immediately.
 
 Adding the same standardized folder path twice is rejected.
@@ -259,6 +262,19 @@ selected project/workspace, scheme, configuration, and device, Development Manag
 The build uses the source tree's current contents and the developer account and
 signing configuration available to Xcode.
 
+For a macOS scheme, direct installation instead:
+
+1. Builds for `generic/platform=macOS` in temporary Derived Data.
+2. Stages the built `.app` with an Applications shortcut and creates a compressed
+   DMG at `<project>/dist/<application>.dmg`.
+3. Verifies the DMG, mounts it read-only, and stages its app in `/Applications`.
+4. Gracefully stops an existing running copy, forcing it to terminate only when
+   it does not exit within three seconds.
+5. Replaces the installed bundle, restoring the old bundle if the final move
+   fails, detaches the DMG, and launches the new copy.
+
+Development Management refuses to use this path to replace its own running app.
+
 Successful-installation notifications may show the installed application's
 icon as an attachment. Development Management always creates a temporary copy first,
 because macOS moves notification attachment files into its own data store; files
@@ -273,6 +289,7 @@ Script contract:
 
 - Working directory: the selected project folder.
 - Environment variable: `IOS_DEVICE_UDID`, containing the target device UDID.
+- For a macOS target, `MACOS_INSTALL_TARGET=local` is supplied instead.
 - Standard output and standard error are merged into the activity log and live
   progress display.
 - Exit status `0` means the complete build-and-install operation succeeded.
@@ -310,7 +327,7 @@ other transports are found by CoreDevice during regular or manual discovery.
 - Automation is enabled by default.
 - The default interval is 3 days and the configurable range is 1–30 days.
 - A successful installation record is stored separately for each application
-  UUID and device UDID.
+  UUID and target: a device UDID or the local Mac.
 - An app/device pair with no record is due immediately.
 - An app/device pair is due when the configured number of 24-hour periods has
   elapsed since its last successful installation.
@@ -337,11 +354,11 @@ connection events and **Check now** can still refresh immediately.
 
 ### Manual operations
 
-- **Install now** ignores the schedule and targets the selected device when one
-  is supplied, otherwise every selected and available iOS/iPadOS device.
+- **Install now** ignores the schedule and targets this Mac for a macOS app; for
+  iOS it targets the supplied device or every selected available device.
 - **Install All Now** snapshots all currently enabled applications, ignores
-  their schedules, and installs each one only on its selected, compatible, and
-  available iOS/iPadOS devices. Paused applications are excluded.
+  their schedules, installs macOS apps on this Mac, and installs iOS apps only
+  on their selected compatible available devices. Paused applications are excluded.
 - If no installation target is available, the Install All queue stays active
   in memory and checks every five minutes.
 - Successful items leave the queue. Failed items remain queued for another

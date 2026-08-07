@@ -6,6 +6,8 @@
 "Installation in progress" = "מתבצעת התקנה";
 "Automation is paused" = "האוטומציה מושהית";
 "Waiting for an iPhone" = "ממתין ל־iPhone";
+"This Mac is ready" = "ה־Mac הזה מוכן";
+"This Mac is ready; waiting for an iPhone" = "ה־Mac הזה מוכן; ממתין ל־iPhone";
 "%d connected device(s)" = "%d מכשירים מחוברים";
 "Show connected devices" = "הצג מכשירים מחוברים";
 "Hide connected devices" = "הסתר מכשירים מחוברים";
@@ -76,10 +78,12 @@
 "Each notification includes the application, device name and model, and connection type." = "כל התראה כוללת את שם האפליקציה, שם ודגם המכשיר וסוג החיבור.";
 "%@ reinstalled successfully" = "%@ הותקנה מחדש בהצלחה";
 "%@ — %@: %@ was reinstalled via %@." = "%@ — %@: %@ הותקנה מחדש דרך %@.";
+"%@ was rebuilt, installed in Applications, and relaunched on this Mac." = "%@ נבנתה מחדש, הותקנה בתיקיית Applications והופעלה מחדש ב־Mac הזה.";
 "iPhone" = "iPhone";
 
 "Managed applications" = "אפליקציות מנוהלות";
 "Add the source folder of each iOS application. An install script is optional." = "יש להוסיף את תיקיית המקור של כל אפליקציית iOS. סקריפט התקנה הוא אופציונלי.";
+"Add the source folder of each iOS or macOS application. An install script is optional." = "יש להוסיף את תיקיית המקור של כל אפליקציית iOS או macOS. סקריפט התקנה הוא אופציונלי.";
 "Add application…" = "הוסף אפליקציה…";
 "No applications" = "אין אפליקציות";
 "Choose a folder containing an Xcode project or workspace." = "יש לבחור תיקייה שמכילה פרויקט או workspace של Xcode.";
@@ -95,16 +99,19 @@
 "Installation method" = "שיטת התקנה";
 "Scheme" = "Scheme";
 "Configuration" = "Configuration";
+"Platform" = "פלטפורמה";
 "Signing team" = "צוות חתימה";
 "Automatic" = "אוטומטי";
 "Refresh signing teams" = "רענן צוותי חתימה";
 "Team %@" = "צוות %@";
 "No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh." = "לא נמצאו צוותי חתימה של Apple Development. יש להוסיף את החשבון והתעודה ב־Xcode ואז לרענן.";
 "Automatic uses the project's signing team when available, or a unique matching team from Xcode provisioning profiles. Choosing a team here overrides it without changing project files." = "המצב האוטומטי משתמש בצוות החתימה של הפרויקט כשהוא קיים, או בצוות תואם יחיד מפרופילי ההקצאה של Xcode. בחירת צוות כאן עוקפת זאת בלי לשנות את קובצי הפרויקט.";
+"Automatic uses the macOS project's signing settings. Choosing a team here overrides it without changing project files." = "המצב האוטומטי משתמש בהגדרות החתימה של פרויקט macOS. בחירת צוות כאן עוקפת אותן בלי לשנות את קובצי הפרויקט.";
 "The Xcode project does not specify a development team, and no matching team could be selected automatically. Choose a signing team for this application in Settings." = "לא הוגדר צוות פיתוח בפרויקט Xcode ולא ניתן היה לבחור צוות תואם באופן אוטומטי. יש לבחור צוות חתימה לאפליקציה הזו בהגדרות.";
 "Using signing team %@ selected from matching Xcode provisioning profiles.\n" = "נעשה שימוש בצוות החתימה %@ שנבחר מפרופילי הקצאה תואמים של Xcode.\n";
 "Show in Finder" = "הצג ב־Finder";
 "Choose an iOS application folder" = "בחירת תיקיית אפליקציית iOS";
+"Choose an iOS or macOS application folder" = "בחירת תיקיית אפליקציית iOS או macOS";
 "Add" = "הוסף";
 "install.sh (optional)" = "install.sh (אופציונלי)";
 "Direct Xcode build" = "בנייה ישירה עם Xcode";
@@ -133,6 +140,12 @@
 "Not installed on this device" = "האפליקציה אינה מותקנת במכשיר";
 "Installed on device: %@" = "מותקנת במכשיר: %@";
 "No compatible iPhone or iPad is currently connected." = "אין כרגע iPhone או iPad תואמים מחוברים.";
+"Install on this Mac" = "התקנה ב־Mac הזה";
+"This Mac" = "ה־Mac הזה";
+"Installs on this Mac" = "מותקנת ב־Mac הזה";
+"Development Management builds the selected macOS scheme, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build." = "Development Management בונה את ה־scheme שנבחר ל־macOS, יוצרת ומאמתת קובץ DMG, עוצרת את האפליקציה הקיימת אם היא פועלת, מחליפה אותה בתיקיית Applications ומפעילה את הבנייה החדשה.";
+"DMG output: %@" = "פלט DMG: %@";
+"The selected install.sh runs locally with MACOS_INSTALL_TARGET=local." = "הקובץ install.sh שנבחר פועל מקומית עם MACOS_INSTALL_TARGET=local.";
 
 "Activity log" = "יומן פעילות";
 "The latest build, installation, and device events." = "אירועי הבנייה, ההתקנה והמכשירים האחרונים.";
@@ -143,6 +156,10 @@
 
 "Preparing installation…" = "מכין התקנה…";
 "Building the application…" = "בונה את האפליקציה…";
+"Creating the DMG…" = "יוצר קובץ DMG…";
+"Stopping the running application…" = "עוצר את האפליקציה הפעילה…";
+"Installing the application…" = "מתקין את האפליקציה…";
+"Launching the application…" = "מפעיל את האפליקציה…";
 "Show installation log" = "הצגת יומן ההתקנה";
 "Installation Log" = "יומן ההתקנה";
 "No installation log" = "אין יומן התקנה";
@@ -171,6 +188,11 @@
 "install.sh was not found. Switch to Direct Xcode build in Settings." = "install.sh לא נמצא. אפשר לעבור לבנייה ישירה עם Xcode בהגדרות.";
 "The saved Xcode project or workspace no longer exists." = "פרויקט ה־Xcode או ה־workspace השמור כבר אינו קיים.";
 "The build finished, but no .app product was found to install." = "הבנייה הסתיימה, אך לא נמצא תוצר ‎.app להתקנה.";
+"Could not stop the running %@ application." = "לא ניתן לעצור את האפליקציה הפעילה %@.";
+"Development Management cannot replace itself. Choose a different macOS application." = "Development Management אינה יכולה להחליף את עצמה. יש לבחור אפליקציית macOS אחרת.";
+"Created and verified DMG at %@.\n" = "קובץ DMG נוצר ואומת ב־%@.\n";
+"Created and verified DMG at %@." = "קובץ DMG נוצר ואומת ב־%@.";
+"Installed and launched %@." = "%@ הותקנה והופעלה.";
 "Could not check connected devices" = "לא ניתן לבדוק מכשירים מחוברים";
 "This folder is already in the application list." = "התיקייה הזו כבר נמצאת ברשימת האפליקציות.";
 "Added %@" = "נוספה האפליקציה %@";

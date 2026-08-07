@@ -14,7 +14,8 @@ struct MenuBarView: View {
 
             if let progress = model.progress {
                 progressSection(progress)
-            } else if model.connectedDevices.isEmpty || isDeviceListExpanded {
+            } else if isDeviceListExpanded
+                        || (model.connectedDevices.isEmpty && model.hasIOSProjects) {
                 deviceSection
             }
 
@@ -297,7 +298,7 @@ struct MenuBarView: View {
                                 .help("Install now")
                                 .disabled(
                                     !project.isEnabled
-                                        || model.selectedInstallableDevices(for: project).isEmpty
+                                        || !model.hasAvailableInstallationTarget(for: project)
                                         || model.progress != nil
                                 )
                             }
@@ -365,6 +366,12 @@ struct MenuBarView: View {
     private var statusText: String {
         if model.progress != nil { return L10n.text("Installation in progress") }
         if !model.preferences.automationEnabled { return L10n.text("Automation is paused") }
+        if model.connectedDevices.isEmpty, model.hasMacOSProjects, model.hasIOSProjects {
+            return L10n.text("This Mac is ready; waiting for an iPhone")
+        }
+        if model.connectedDevices.isEmpty, model.hasMacOSProjects {
+            return L10n.text("This Mac is ready")
+        }
         if model.connectedDevices.isEmpty { return L10n.text("Waiting for an iPhone") }
         return L10n.format("%d connected device(s)", model.connectedDevices.count)
     }
@@ -374,6 +381,13 @@ struct MenuBarView: View {
     }
 
     private func selectedDeviceCountCell(for project: ManagedProject) -> some View {
+        if project.isMacOSApplication {
+            return Text("Mac")
+                .font(.caption)
+                .frame(width: 55, alignment: .center)
+                .help(L10n.text("Installs on this Mac"))
+                .accessibilityLabel(L10n.text("Installs on this Mac"))
+        }
         let count = model.selectedDeviceCount(for: project)
         let description = count == 1
             ? L10n.text("One device selected")
@@ -401,7 +415,9 @@ struct MenuBarView: View {
     }
 
     private func lastInstalledText(for project: ManagedProject) -> String {
-        let connectedUDID = model.installableDevices.count == 1 ? model.installableDevices.first?.udid : nil
+        let connectedUDID = project.isMacOSApplication
+            ? ManagedProject.localMacInstallationTargetID
+            : (model.installableDevices.count == 1 ? model.installableDevices.first?.udid : nil)
         guard let date = model.lastInstallation(for: project.id, deviceUDID: connectedUDID) else {
             return L10n.text("Never")
         }

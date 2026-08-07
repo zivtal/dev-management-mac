@@ -20,6 +20,10 @@ enum InstallationNotificationText {
             device.connectionDescription
         )
     }
+
+    static func macOSBody(project: ManagedProject) -> String {
+        L10n.format("%@ was rebuilt, installed in Applications, and relaunched on this Mac.", project.displayName)
+    }
 }
 
 final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
@@ -44,9 +48,35 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         device: ConnectedDevice,
         applicationIconURL: URL?
     ) {
+        deliverSuccessfulInstallationNotification(
+            identifier: "install-success-\(project.id.uuidString)-\(device.udid)-\(UUID().uuidString)",
+            title: InstallationNotificationText.title(project: project),
+            body: InstallationNotificationText.body(project: project, device: device),
+            applicationIconURL: applicationIconURL
+        )
+    }
+
+    func notifySuccessfulMacOSInstallation(
+        project: ManagedProject,
+        applicationIconURL: URL?
+    ) {
+        deliverSuccessfulInstallationNotification(
+            identifier: "install-success-\(project.id.uuidString)-mac-\(UUID().uuidString)",
+            title: InstallationNotificationText.title(project: project),
+            body: InstallationNotificationText.macOSBody(project: project),
+            applicationIconURL: applicationIconURL
+        )
+    }
+
+    private func deliverSuccessfulInstallationNotification(
+        identifier: String,
+        title: String,
+        body: String,
+        applicationIconURL: URL?
+    ) {
         let content = UNMutableNotificationContent()
-        content.title = InstallationNotificationText.title(project: project)
-        content.body = InstallationNotificationText.body(project: project, device: device)
+        content.title = title
+        content.body = body
         content.sound = .default
         var attachmentDirectoryURL: URL?
         if let applicationIconURL {
@@ -71,7 +101,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         }
 
         let request = UNNotificationRequest(
-            identifier: "install-success-\(project.id.uuidString)-\(device.udid)-\(UUID().uuidString)",
+            identifier: identifier,
             content: content,
             trigger: nil
         )

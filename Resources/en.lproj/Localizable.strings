@@ -6,6 +6,8 @@
 "Installation in progress" = "Installation in progress";
 "Automation is paused" = "Automation is paused";
 "Waiting for an iPhone" = "Waiting for an iPhone";
+"This Mac is ready" = "This Mac is ready";
+"This Mac is ready; waiting for an iPhone" = "This Mac is ready; waiting for an iPhone";
 "%d connected device(s)" = "%d connected device(s)";
 "Show connected devices" = "Show connected devices";
 "Hide connected devices" = "Hide connected devices";
@@ -76,10 +78,12 @@
 "Each notification includes the application, device name and model, and connection type." = "Each notification includes the application, device name and model, and connection type.";
 "%@ reinstalled successfully" = "%@ reinstalled successfully";
 "%@ — %@: %@ was reinstalled via %@." = "%@ — %@: %@ was reinstalled via %@.";
+"%@ was rebuilt, installed in Applications, and relaunched on this Mac." = "%@ was rebuilt, installed in Applications, and relaunched on this Mac.";
 "iPhone" = "iPhone";
 
 "Managed applications" = "Managed applications";
 "Add the source folder of each iOS application. An install script is optional." = "Add the source folder of each iOS application. An install script is optional.";
+"Add the source folder of each iOS or macOS application. An install script is optional." = "Add the source folder of each iOS or macOS application. An install script is optional.";
 "Add application…" = "Add application…";
 "No applications" = "No applications";
 "Choose a folder containing an Xcode project or workspace." = "Choose a folder containing an Xcode project or workspace.";
@@ -95,16 +99,19 @@
 "Installation method" = "Installation method";
 "Scheme" = "Scheme";
 "Configuration" = "Configuration";
+"Platform" = "Platform";
 "Signing team" = "Signing team";
 "Automatic" = "Automatic";
 "Refresh signing teams" = "Refresh signing teams";
 "Team %@" = "Team %@";
 "No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh." = "No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh.";
 "Automatic uses the project's signing team when available, or a unique matching team from Xcode provisioning profiles. Choosing a team here overrides it without changing project files." = "Automatic uses the project's signing team when available, or a unique matching team from Xcode provisioning profiles. Choosing a team here overrides it without changing project files.";
+"Automatic uses the macOS project's signing settings. Choosing a team here overrides it without changing project files." = "Automatic uses the macOS project's signing settings. Choosing a team here overrides it without changing project files.";
 "The Xcode project does not specify a development team, and no matching team could be selected automatically. Choose a signing team for this application in Settings." = "The Xcode project does not specify a development team, and no matching team could be selected automatically. Choose a signing team for this application in Settings.";
 "Using signing team %@ selected from matching Xcode provisioning profiles.\n" = "Using signing team %@ selected from matching Xcode provisioning profiles.\n";
 "Show in Finder" = "Show in Finder";
 "Choose an iOS application folder" = "Choose an iOS application folder";
+"Choose an iOS or macOS application folder" = "Choose an iOS or macOS application folder";
 "Add" = "Add";
 "install.sh (optional)" = "install.sh (optional)";
 "Direct Xcode build" = "Direct Xcode build";
@@ -133,6 +140,12 @@
 "Not installed on this device" = "Not installed on this device";
 "Installed on device: %@" = "Installed on device: %@";
 "No compatible iPhone or iPad is currently connected." = "No compatible iPhone or iPad is currently connected.";
+"Install on this Mac" = "Install on this Mac";
+"This Mac" = "This Mac";
+"Installs on this Mac" = "Installs on this Mac";
+"Development Management builds the selected macOS scheme, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build." = "Development Management builds the selected macOS scheme, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build.";
+"DMG output: %@" = "DMG output: %@";
+"The selected install.sh runs locally with MACOS_INSTALL_TARGET=local." = "The selected install.sh runs locally with MACOS_INSTALL_TARGET=local.";
 
 "Activity log" = "Activity log";
 "The latest build, installation, and device events." = "The latest build, installation, and device events.";
@@ -143,6 +156,10 @@
 
 "Preparing installation…" = "Preparing installation…";
 "Building the application…" = "Building the application…";
+"Creating the DMG…" = "Creating the DMG…";
+"Stopping the running application…" = "Stopping the running application…";
+"Installing the application…" = "Installing the application…";
+"Launching the application…" = "Launching the application…";
 "Show installation log" = "Show installation log";
 "Installation Log" = "Installation Log";
 "No installation log" = "No installation log";
@@ -171,6 +188,11 @@
 "install.sh was not found. Switch to Direct Xcode build in Settings." = "install.sh was not found. Switch to Direct Xcode build in Settings.";
 "The saved Xcode project or workspace no longer exists." = "The saved Xcode project or workspace no longer exists.";
 "The build finished, but no .app product was found to install." = "The build finished, but no .app product was found to install.";
+"Could not stop the running %@ application." = "Could not stop the running %@ application.";
+"Development Management cannot replace itself. Choose a different macOS application." = "Development Management cannot replace itself. Choose a different macOS application.";
+"Created and verified DMG at %@.\n" = "Created and verified DMG at %@.\n";
+"Created and verified DMG at %@." = "Created and verified DMG at %@.";
+"Installed and launched %@." = "Installed and launched %@.";
 "Could not check connected devices" = "Could not check connected devices";
 "This folder is already in the application list." = "This folder is already in the application list.";
 "Added %@" = "Added %@";

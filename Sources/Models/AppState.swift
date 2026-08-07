@@ -83,7 +83,10 @@ struct InstallationProgress: Equatable {
     enum Phase: Equatable, Sendable {
         case preparing
         case building
+        case packaging
+        case stopping
         case installing
+        case launching
     }
 
     let projectName: String
@@ -95,7 +98,10 @@ struct InstallationProgress: Equatable {
         switch phase {
         case .preparing: L10n.text("Preparing installation…")
         case .building: L10n.text("Building the application…")
-        case .installing: L10n.text("Installing on iPhone…")
+        case .packaging: L10n.text("Creating the DMG…")
+        case .stopping: L10n.text("Stopping the running application…")
+        case .installing: L10n.text("Installing the application…")
+        case .launching: L10n.text("Launching the application…")
         }
     }
 }
@@ -186,8 +192,14 @@ private extension InstallationProgress.Phase {
             L10n.text("Preparing installation…")
         case .building:
             L10n.text("Building the application…")
+        case .packaging:
+            L10n.text("Creating the DMG…")
+        case .stopping:
+            L10n.text("Stopping the running application…")
         case .installing:
-            L10n.text("Installing on iPhone…")
+            L10n.text("Installing the application…")
+        case .launching:
+            L10n.text("Launching the application…")
         }
     }
 }

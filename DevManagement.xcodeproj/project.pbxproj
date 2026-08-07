@@ -21,6 +21,7 @@
 		333B2C5902BEB7FA416E5E91 /* ProjectVersionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16304D3C5216A6E329FC687D /* ProjectVersionService.swift */; };
 		3A03B76E9DB0978F003F953F /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB755CA878595D122931F826 /* IOKit.framework */; };
 		586865366583D21C8E8EF961 /* USBConnectionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE52232D5DB1CF4FF3954EE /* USBConnectionMonitor.swift */; };
+		5ABA067966EE5ADBBB2DFBEC /* MacOSInstallationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D085DB26020DCCCA468F3EA7 /* MacOSInstallationTests.swift */; };
 		5FBF32C8DE8C0A0D70999AA2 /* DeveloperTeamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20FE1B7E5F176778282E80E /* DeveloperTeamService.swift */; };
 		614EB1AC385AB547B28CACE4 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92BA78CBDD2A9BB9E2A7417E /* SettingsView.swift */; };
 		642ACDD0B44BC448AD2549B4 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22ABD6C88F410A71DC9F716 /* Localization.swift */; };
@@ -94,6 +95,7 @@
 		C5F0C23D0229DDD555E4235A /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		C70F5F43D187C2F2650E2E67 /* SchedulingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulingPolicy.swift; sourceTree = "<group>"; };
 		CCC55BBF92D1B08B76423F98 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
+		D085DB26020DCCCA468F3EA7 /* MacOSInstallationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacOSInstallationTests.swift; sourceTree = "<group>"; };
 		D190FC0A3C788DB8CD0DA91D /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		D4E551EDA5AB8441BCD618FA /* ProjectsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsSettingsView.swift; sourceTree = "<group>"; };
 		DB755CA878595D122931F826 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
@@ -219,6 +221,7 @@
 				3BBE583F20FCC937D9A94803 /* InstallationLogTests.swift */,
 				86BBDE915B650D7851ACEB46 /* InstallationNotificationTextTests.swift */,
 				7CA05D3B928C1D38506053D4 /* InstallationRecordTests.swift */,
+				D085DB26020DCCCA468F3EA7 /* MacOSInstallationTests.swift */,
 				A59E1559E63A3643555DC751 /* ProjectIconServiceTests.swift */,
 				456F7738EAE617528B0F3D42 /* ProjectVersionServiceTests.swift */,
 				7EB3B7AB29B4412F47C54292 /* SchedulingPolicyTests.swift */,
@@ -371,6 +374,7 @@
 				22C28BAC53CFCD66B2E32B71 /* InstallationLogTests.swift in Sources */,
 				E102DDBCE6CBE4913170B88D /* InstallationNotificationTextTests.swift in Sources */,
 				FE79B7C7E59A6F6747FDC37A /* InstallationRecordTests.swift in Sources */,
+				5ABA067966EE5ADBBB2DFBEC /* MacOSInstallationTests.swift in Sources */,
 				30BE0C471F8EE7AA7B72A601 /* ProjectIconServiceTests.swift in Sources */,
 				121804B98A7161635E126A7F /* ProjectVersionServiceTests.swift in Sources */,
 				9632C4EDAFFF50F0AA2F4FEE /* SchedulingPolicyTests.swift in Sources */,
@@ -494,7 +498,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 29;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -514,7 +518,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.7;
+				MARKETING_VERSION = 1.2.8;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -561,7 +565,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 28;
+				CURRENT_PROJECT_VERSION = 29;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -575,7 +579,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2.7;
+				MARKETING_VERSION = 1.2.8;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

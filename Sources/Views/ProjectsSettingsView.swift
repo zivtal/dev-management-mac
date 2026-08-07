@@ -13,7 +13,7 @@ struct ProjectsSettingsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Managed applications")
                         .font(.title2.bold())
-                    Text("Add the source folder of each iOS application. An install script is optional.")
+                    Text("Add the source folder of each iOS or macOS application. An install script is optional.")
                         .foregroundStyle(.secondary)
                 }
                 .padding([.horizontal, .top])
@@ -177,9 +177,15 @@ struct ProjectsSettingsView: View {
     private func projectDetails(_ project: ManagedProject) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             projectConfigurationCard(project)
-            deviceTargetsSection(project)
-                .frame(maxHeight: .infinity)
-                .layoutPriority(1)
+            Group {
+                if project.isMacOSApplication {
+                    macInstallationSection(project)
+                } else {
+                    deviceTargetsSection(project)
+                }
+            }
+            .frame(maxHeight: .infinity)
+            .layoutPriority(1)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -208,7 +214,7 @@ struct ProjectsSettingsView: View {
                 }
                 .disabled(
                     !project.isEnabled
-                        || model.selectedInstallableDevices(for: project).isEmpty
+                        || !model.hasAvailableInstallationTarget(for: project)
                         || model.progress != nil
                 )
 
@@ -220,6 +226,18 @@ struct ProjectsSettingsView: View {
             }
             .padding(.horizontal, 12)
             .frame(minHeight: 44)
+
+            settingsDivider
+
+            settingsPickerRow("Platform") {
+                HStack {
+                    Text(project.effectiveApplicationPlatform.title)
+                    Spacer()
+                    if model.isRefreshingCompatibility(for: project.id) {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+            }
 
             settingsDivider
 
@@ -313,7 +331,7 @@ struct ProjectsSettingsView: View {
 
                 settingsDivider
 
-                Text(signingTeamGuidance)
+                Text(signingTeamGuidance(for: project))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -386,6 +404,44 @@ struct ProjectsSettingsView: View {
                 }
             }
             .frame(minHeight: 130, maxHeight: .infinity)
+            .background(settingsCardBackground)
+        }
+    }
+
+    private func macInstallationSection(_ project: ManagedProject) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Install on this Mac")
+                .font(.headline)
+                .padding(.horizontal, 2)
+
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    Label("This Mac", systemImage: "desktopcomputer")
+                        .fontWeight(.medium)
+                    Spacer()
+                    Text("/Applications")
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+
+                settingsDivider
+
+                VStack(alignment: .leading, spacing: 5) {
+                    if project.installMethod == .xcodebuild {
+                        Text("Development Management builds the selected macOS scheme, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build.")
+                        Text(L10n.format("DMG output: %@", project.macOSDMGURL.path))
+                            .textSelection(.enabled)
+                    } else {
+                        Text("The selected install.sh runs locally with MACOS_INSTALL_TARGET=local.")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+            }
             .background(settingsCardBackground)
         }
     }
@@ -512,7 +568,10 @@ struct ProjectsSettingsView: View {
             .fill(Color(nsColor: .controlBackgroundColor))
     }
 
-    private var signingTeamGuidance: String {
+    private func signingTeamGuidance(for project: ManagedProject) -> String {
+        if project.isMacOSApplication {
+            return L10n.text("Automatic uses the macOS project's signing settings. Choosing a team here overrides it without changing project files.")
+        }
         if model.developerTeams.isEmpty {
             return L10n.text("No Apple Development signing teams were found. Add the account and certificate in Xcode, then refresh.")
         }
@@ -526,7 +585,7 @@ struct ProjectsSettingsView: View {
 
     private func chooseProjectFolder() {
         let panel = NSOpenPanel()
-        panel.title = L10n.text("Choose an iOS application folder")
+        panel.title = L10n.text("Choose an iOS or macOS application folder")
         panel.prompt = L10n.text("Add")
         panel.canChooseDirectories = true
         panel.canChooseFiles = false

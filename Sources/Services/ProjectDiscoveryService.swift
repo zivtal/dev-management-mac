@@ -4,6 +4,19 @@ struct ProjectApplicationMetadata: Equatable {
     let supportedDeviceFamilies: Set<MobileDeviceFamily>?
     let bundleIdentifier: String?
     let projectSigningTeamID: String?
+    let applicationPlatform: ApplicationPlatform
+
+    init(
+        supportedDeviceFamilies: Set<MobileDeviceFamily>?,
+        bundleIdentifier: String?,
+        projectSigningTeamID: String?,
+        applicationPlatform: ApplicationPlatform = .iOS
+    ) {
+        self.supportedDeviceFamilies = supportedDeviceFamilies
+        self.bundleIdentifier = bundleIdentifier
+        self.projectSigningTeamID = projectSigningTeamID
+        self.applicationPlatform = applicationPlatform
+    }
 }
 
 enum ProjectDiscoveryError: LocalizedError {
@@ -118,6 +131,7 @@ final class ProjectDiscoveryService {
             descriptor.supportedDeviceFamilies = metadata.supportedDeviceFamilies
             descriptor.bundleIdentifier = metadata.bundleIdentifier
             descriptor.projectSigningTeamID = metadata.projectSigningTeamID
+            descriptor.applicationPlatform = metadata.applicationPlatform
         }
         return descriptor
     }
@@ -127,39 +141,58 @@ final class ProjectDiscoveryService {
     }
 
     func applicationMetadata(for project: ManagedProject) async throws -> ProjectApplicationMetadata {
-        let result = try await processRunner.runAndRequireSuccess(
-            executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
-            arguments: [
-                project.containerKind.xcodebuildFlag, project.containerPath,
-                "-scheme", project.scheme,
-                "-configuration", project.configuration,
-                "-destination", "generic/platform=iOS",
-                "-showBuildSettings", "-json"
-            ],
-            workingDirectory: project.folderURL
-        )
-        guard let metadata = Self.applicationMetadata(fromBuildSettingsJSON: result.output) else {
-            throw ProjectDiscoveryError.malformedXcodeResponse
+        let destinations: [(ApplicationPlatform, String)] = project.applicationPlatform == .macOS
+            ? [(.macOS, "generic/platform=macOS"), (.iOS, "generic/platform=iOS")]
+            : [(.iOS, "generic/platform=iOS"), (.macOS, "generic/platform=macOS")]
+        var lastError: Error?
+
+        for (platform, destination) in destinations {
+            do {
+                let result = try await processRunner.runAndRequireSuccess(
+                    executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
+                    arguments: [
+                        project.containerKind.xcodebuildFlag, project.containerPath,
+                        "-scheme", project.scheme,
+                        "-configuration", project.configuration,
+                        "-destination", destination,
+                        "-showBuildSettings", "-json"
+                    ],
+                    workingDirectory: project.folderURL
+                )
+                if let metadata = Self.applicationMetadata(
+                    fromBuildSettingsJSON: result.output,
+                    expectedPlatform: platform
+                ) {
+                    return metadata
+                }
+            } catch {
+                lastError = error
+            }
         }
-        return metadata
+
+        if let lastError { throw lastError }
+        throw ProjectDiscoveryError.malformedXcodeResponse
     }
 
     static func supportedDeviceFamilies(fromBuildSettingsJSON output: String) -> Set<MobileDeviceFamily>? {
         applicationMetadata(fromBuildSettingsJSON: output)?.supportedDeviceFamilies
     }
 
-    static func applicationMetadata(fromBuildSettingsJSON output: String) -> ProjectApplicationMetadata? {
+    static func applicationMetadata(
+        fromBuildSettingsJSON output: String,
+        expectedPlatform: ApplicationPlatform? = nil
+    ) -> ProjectApplicationMetadata? {
         guard let entries = buildSettingsEntries(from: output) else { return nil }
 
         for entry in entries {
             guard let settings = entry["buildSettings"] as? [String: Any],
-                  isIOSApplicationBuildSettings(settings),
-                  let rawFamilies = settings["TARGETED_DEVICE_FAMILY"] as? String
+                  let applicationPlatform = applicationPlatform(from: settings),
+                  expectedPlatform == nil || applicationPlatform == expectedPlatform
             else {
                 continue
             }
 
-            let identifiers = rawFamilies
+            let identifiers = ((settings["TARGETED_DEVICE_FAMILY"] as? String) ?? "")
                 .split(whereSeparator: { !$0.isNumber })
                 .compactMap { Int($0) }
             var families: Set<MobileDeviceFamily> = []
@@ -176,7 +209,8 @@ final class ProjectDiscoveryService {
                     && bundleIdentifier?.contains("$(") == false
                         ? bundleIdentifier
                         : nil,
-                projectSigningTeamID: projectSigningTeamID
+                projectSigningTeamID: projectSigningTeamID,
+                applicationPlatform: applicationPlatform
             )
         }
         return nil
@@ -202,19 +236,29 @@ final class ProjectDiscoveryService {
         return nil
     }
 
-    private static func isIOSApplicationBuildSettings(_ settings: [String: Any]) -> Bool {
+    private static func applicationPlatform(
+        from settings: [String: Any]
+    ) -> ApplicationPlatform? {
         let productType = settings["PRODUCT_TYPE"] as? String
         guard productType == "com.apple.product-type.application",
               (settings["SKIP_INSTALL"] as? String) != "YES"
         else {
-            return false
+            return nil
         }
 
         let supportedPlatforms = (settings["SUPPORTED_PLATFORMS"] as? String)?.lowercased() ?? ""
         let sdkRoot = (settings["SDKROOT"] as? String)?.lowercased() ?? ""
         let platformName = (settings["PLATFORM_NAME"] as? String)?.lowercased() ?? ""
-        return supportedPlatforms.split(separator: " ").contains("iphoneos")
-            || sdkRoot.hasPrefix("iphoneos")
-            || platformName == "iphoneos"
+        if platformName == "macosx" || sdkRoot.hasPrefix("macosx") {
+            return .macOS
+        }
+        if platformName == "iphoneos" || sdkRoot.hasPrefix("iphoneos") {
+            return .iOS
+        }
+
+        let platforms = supportedPlatforms.split(separator: " ")
+        if platforms.contains("iphoneos") { return .iOS }
+        if platforms.contains("macosx") { return .macOS }
+        return nil
     }
 }
