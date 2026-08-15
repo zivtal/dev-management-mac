@@ -16,6 +16,8 @@ struct InstallationRecord: Codable, Equatable, Identifiable {
     let deviceUDID: String
     var installedAt: Date
     var installedVersion: String?
+    var profileExpirationDate: Date? = nil
+    var profileExpirationWasChecked: Bool? = nil
 }
 
 extension Sequence where Element == InstallationRecord {

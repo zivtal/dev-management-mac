@@ -95,7 +95,7 @@ private struct GeneralSettingsView: View {
                         Text(L10n.format("%d days", model.preferences.reinstallAfterDays))
                     }
                 }
-                Text("The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection.")
+                Text("The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection. Development-signed apps are rebuilt three days before their provisioning profile expires.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

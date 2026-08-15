@@ -89,10 +89,19 @@ final class InstallationEventCoalescer: @unchecked Sendable {
 struct InstallationOutcome {
     let log: String
     let artifactURL: URL?
+    let profileExpirationDate: Date?
+    let profileExpirationWasChecked: Bool
 
-    init(log: String, artifactURL: URL? = nil) {
+    init(
+        log: String,
+        artifactURL: URL? = nil,
+        profileExpirationDate: Date? = nil,
+        profileExpirationWasChecked: Bool = false
+    ) {
         self.log = log
         self.artifactURL = artifactURL
+        self.profileExpirationDate = profileExpirationDate
+        self.profileExpirationWasChecked = profileExpirationWasChecked
     }
 }
 
@@ -271,6 +280,9 @@ final class InstallationService {
             commonArguments: commonArguments,
             derivedDataURL: derivedDataURL
         )
+        let profileExpirationDate = developerTeamService.provisioningProfileExpirationDate(
+            in: appURL
+        )
 
         eventHandler(.phase(.installing))
         let installResult = try await processRunner.runAndRequireSuccess(
@@ -285,9 +297,11 @@ final class InstallationService {
             onOutput: { eventHandler(.output($0)) }
         )
 
-        return InstallationOutcome(log: Self.trimmedLog(
-            buildResult.output + "\n\n" + installResult.output
-        ))
+        return InstallationOutcome(
+            log: Self.trimmedLog(buildResult.output + "\n\n" + installResult.output),
+            profileExpirationDate: profileExpirationDate,
+            profileExpirationWasChecked: true
+        )
     }
 
     private func buildPackageAndInstallMacApplication(
@@ -322,6 +336,9 @@ final class InstallationService {
             project: project,
             commonArguments: commonArguments,
             derivedDataURL: derivedDataURL
+        )
+        let profileExpirationDate = developerTeamService.provisioningProfileExpirationDate(
+            in: appURL
         )
         let builtBundleIdentifier = Bundle(url: appURL)?.bundleIdentifier ?? project.bundleIdentifier
         if builtBundleIdentifier == Bundle.main.bundleIdentifier {
@@ -442,7 +459,9 @@ final class InstallationService {
                 .joined(separator: "\n\n")
             return InstallationOutcome(
                 log: Self.trimmedLog(log),
-                artifactURL: project.macOSDMGURL
+                artifactURL: project.macOSDMGURL,
+                profileExpirationDate: profileExpirationDate,
+                profileExpirationWasChecked: true
             )
         } catch {
             if isDMGAttached {

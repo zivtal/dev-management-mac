@@ -26,6 +26,7 @@
 "Application" = "Application";
 "Version" = "Version";
 "Next build" = "Next build";
+"Expires at" = "Expires at";
 "Last installed" = "Last installed";
 "Every %d days" = "Every %d days";
 "No applications have been added yet." = "No applications have been added yet.";
@@ -63,6 +64,7 @@
 "%d days" = "%d days";
 "The interval is tracked separately for each application and each iPhone. A newly added application is installed at the next connection." = "The interval is tracked separately for each application and each iPhone. A newly added application is installed at the next connection.";
 "The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection." = "The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection.";
+"The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection. Development-signed apps are rebuilt three days before their provisioning profile expires." = "The interval is tracked separately for each application and each selected iPhone or iPad. A newly added application is installed at the next connection. Development-signed apps are rebuilt three days before their provisioning profile expires.";
 "Background operation" = "Background operation";
 "Open Development Management at login" = "Open Development Management at login";
 "The application has no Dock window and remains available from the menu bar." = "The application has no Dock window and remains available from the menu bar.";

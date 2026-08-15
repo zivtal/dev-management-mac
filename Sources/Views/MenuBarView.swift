@@ -237,7 +237,7 @@ struct MenuBarView: View {
                             .frame(width: 160, alignment: .leading)
                         Text("Devices")
                             .frame(width: 55, alignment: .center)
-                        Text("Next build")
+                        Text("Expires at")
                             .frame(width: 110, alignment: .leading)
                         Text("Last installed")
                             .frame(width: 135, alignment: .leading)
@@ -265,9 +265,9 @@ struct MenuBarView: View {
 
                             selectedDeviceCountCell(for: project)
 
-                            Text(nextBuildText(for: project))
+                            Text(expirationText(for: project))
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(expirationColor(for: project))
                                 .frame(width: 110, alignment: .leading)
                                 .lineLimit(1)
 
@@ -399,13 +399,22 @@ struct MenuBarView: View {
             .accessibilityLabel(description)
     }
 
-    private func nextBuildText(for project: ManagedProject) -> String {
-        guard project.isEnabled else { return L10n.text("Paused") }
-        guard let nextDate = model.nextInstallation(for: project.id) else {
-            return L10n.text("Ready for first installation")
+    private func expirationText(for project: ManagedProject) -> String {
+        guard let expirationDate = model.expirationDate(for: project.id) else {
+            return L10n.text("Unknown")
         }
-        if nextDate <= Date() { return L10n.text("Installation is due") }
-        return nextDate.formatted(date: .abbreviated, time: .shortened)
+        return expirationDate.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private func expirationColor(for project: ManagedProject) -> Color {
+        guard let expirationDate = model.expirationDate(for: project.id) else {
+            return .secondary
+        }
+        if expirationDate <= Date() { return .red }
+        if SchedulingPolicy.profileRenewalDate(for: expirationDate).map({ $0 <= Date() }) == true {
+            return .orange
+        }
+        return .secondary
     }
 
     private func projectActivationActionText(for project: ManagedProject) -> String {

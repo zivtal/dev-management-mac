@@ -527,8 +527,16 @@ final class AppModel: ObservableObject {
     func nextInstallation(for projectID: UUID) -> Date? {
         SchedulingPolicy.nextInstallationDate(
             lastInstalledAt: lastInstallation(for: projectID),
+            profileExpirationDate: expirationDate(for: projectID),
             intervalDays: preferences.reinstallAfterDays
         )
+    }
+
+    func expirationDate(for projectID: UUID) -> Date? {
+        installationRecords.lazy
+            .filter { $0.projectID == projectID }
+            .compactMap(\.profileExpirationDate)
+            .min()
     }
 
     func clearActivity() {
@@ -551,11 +559,13 @@ final class AppModel: ObservableObject {
                 if let cooldownUntil = failedAttemptCooldowns[attemptKey], cooldownUntil > now {
                     continue
                 }
-                let lastInstalledAt = installationRecords.first {
-                    $0.projectID == project.id && $0.deviceUDID == target.identifier
-                }?.installedAt
+                let installationRecord = lastInstallationRecord(
+                    for: project.id,
+                    deviceUDID: target.identifier
+                )
                 guard SchedulingPolicy.isDue(
-                    lastInstalledAt: lastInstalledAt,
+                    lastInstalledAt: installationRecord?.installedAt,
+                    profileExpirationDate: installationRecord?.profileExpirationDate,
                     now: now,
                     intervalDays: preferences.reinstallAfterDays
                 ) else {
@@ -576,14 +586,19 @@ final class AppModel: ObservableObject {
                     continue
                 }
 
-                let lastInstalledAt = installationRecords.first {
-                    $0.projectID == project.id && $0.deviceUDID == device.udid
-                }?.installedAt
+                let installationRecord = lastInstallationRecord(
+                    for: project.id,
+                    deviceUDID: device.udid
+                )
                 let scheduleIsDue = SchedulingPolicy.isDue(
-                    lastInstalledAt: lastInstalledAt,
+                    lastInstalledAt: installationRecord?.installedAt,
+                    profileExpirationDate: installationRecord?.profileExpirationDate,
                     now: now,
                     intervalDays: preferences.reinstallAfterDays
                 )
+                let expirationDiscoveryIsDue = project.installMethod == .xcodebuild
+                    && installationRecord != nil
+                    && installationRecord?.profileExpirationWasChecked != true
                 let installedVersionIsOlder: Bool
                 if let bundleIdentifier = project.bundleIdentifier,
                    checkedInstalledApplicationDeviceUDIDs.contains(device.udid) {
@@ -597,7 +612,7 @@ final class AppModel: ObservableObject {
                 } else {
                     installedVersionIsOlder = false
                 }
-                guard scheduleIsDue || installedVersionIsOlder else {
+                guard scheduleIsDue || expirationDiscoveryIsDue || installedVersionIsOlder else {
                     continue
                 }
 
@@ -744,7 +759,12 @@ final class AppModel: ObservableObject {
             handleInstallationEvents(eventCoalescer.finish(), installationLogID: installationLogID)
             replaceInstallationLogOutput(outcome.log, installationLogID: installationLogID)
             finishInstallationLog(id: installationLogID, state: .succeeded)
-            recordSuccessfulInstallation(projectID: project.id, deviceUDID: target.identifier)
+            recordSuccessfulInstallation(
+                projectID: project.id,
+                deviceUDID: target.identifier,
+                profileExpirationDate: outcome.profileExpirationDate,
+                profileExpirationWasChecked: outcome.profileExpirationWasChecked
+            )
             if preferences.notificationsEnabled != false {
                 let iconURL = await projectIconService.iconURL(for: project)
                 projectIconURLs[project.id] = iconURL
@@ -864,7 +884,12 @@ final class AppModel: ObservableObject {
         installationLog = log
     }
 
-    private func recordSuccessfulInstallation(projectID: UUID, deviceUDID: String) {
+    private func recordSuccessfulInstallation(
+        projectID: UUID,
+        deviceUDID: String,
+        profileExpirationDate: Date?,
+        profileExpirationWasChecked: Bool
+    ) {
         let installedProject = projects.first(where: { $0.id == projectID })
         let installedVersion = installedProject?.versionDisplay
         if let index = installationRecords.firstIndex(where: {
@@ -872,12 +897,16 @@ final class AppModel: ObservableObject {
         }) {
             installationRecords[index].installedAt = Date()
             installationRecords[index].installedVersion = installedVersion
+            installationRecords[index].profileExpirationDate = profileExpirationDate
+            installationRecords[index].profileExpirationWasChecked = profileExpirationWasChecked
         } else {
             installationRecords.append(InstallationRecord(
                 projectID: projectID,
                 deviceUDID: deviceUDID,
                 installedAt: Date(),
-                installedVersion: installedVersion
+                installedVersion: installedVersion,
+                profileExpirationDate: profileExpirationDate,
+                profileExpirationWasChecked: profileExpirationWasChecked
             ))
         }
         if deviceUDID != ManagedProject.localMacInstallationTargetID,
@@ -1048,12 +1077,20 @@ final class AppModel: ObservableObject {
             }
 
             for deviceUDID in targetDeviceUDIDs {
-                guard let lastInstalledAt = lastInstallation(
-                    for: project.id,
-                    deviceUDID: deviceUDID
-                ),
+                let installationRecord = deviceUDID.flatMap {
+                    lastInstallationRecord(for: project.id, deviceUDID: $0)
+                }
+                if !project.isMacOSApplication,
+                   project.installMethod == .xcodebuild,
+                   installationRecord != nil,
+                   installationRecord?.profileExpirationWasChecked != true {
+                    return TimeInterval(preferences.pollIntervalSeconds)
+                }
+                guard let lastInstalledAt = installationRecord?.installedAt
+                    ?? lastInstallation(for: project.id, deviceUDID: deviceUDID),
                 let nextDate = SchedulingPolicy.nextInstallationDate(
                     lastInstalledAt: lastInstalledAt,
+                    profileExpirationDate: installationRecord?.profileExpirationDate,
                     intervalDays: preferences.reinstallAfterDays
                 )
                 else {

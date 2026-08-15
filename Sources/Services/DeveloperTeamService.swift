@@ -163,6 +163,43 @@ final class DeveloperTeamService {
         )
     }
 
+    static func provisioningProfileExpirationDate(fromPropertyListData data: Data) -> Date? {
+        guard let propertyList = try? PropertyListSerialization.propertyList(
+            from: data,
+            format: nil
+        ),
+        let dictionary = propertyList as? [String: Any]
+        else {
+            return nil
+        }
+        return dictionary["ExpirationDate"] as? Date
+    }
+
+    func provisioningProfileExpirationDate(in applicationURL: URL) -> Date? {
+        let candidateURLs = [
+            applicationURL.appendingPathComponent("embedded.mobileprovision"),
+            applicationURL.appendingPathComponent("Contents/embedded.provisionprofile")
+        ]
+
+        for profileURL in candidateURLs {
+            guard let data = try? Data(contentsOf: profileURL) else { continue }
+            if let expirationDate = Self.provisioningProfileExpirationDate(
+                fromPropertyListData: data
+            ) {
+                return expirationDate
+            }
+            guard let propertyListData = decodedProvisioningProfileContent(data) else {
+                continue
+            }
+            if let expirationDate = Self.provisioningProfileExpirationDate(
+                fromPropertyListData: propertyListData
+            ) {
+                return expirationDate
+            }
+        }
+        return nil
+    }
+
     private static func accountName(fromCertificateCommonName commonName: String) -> String? {
         let prefixes = ["Apple Development:", "iPhone Developer:"]
         guard let prefix = prefixes.first(where: commonName.hasPrefix) else { return nil }

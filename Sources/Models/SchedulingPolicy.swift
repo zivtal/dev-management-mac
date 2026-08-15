@@ -1,15 +1,47 @@
 import Foundation
 
 enum SchedulingPolicy {
-    static func isDue(lastInstalledAt: Date?, now: Date = Date(), intervalDays: Int) -> Bool {
+    static let expirationLeadDays = 3
+
+    static func isDue(
+        lastInstalledAt: Date?,
+        profileExpirationDate: Date? = nil,
+        now: Date = Date(),
+        intervalDays: Int
+    ) -> Bool {
         guard let lastInstalledAt else { return true }
         let interval = TimeInterval(max(1, intervalDays)) * 24 * 60 * 60
-        return now.timeIntervalSince(lastInstalledAt) >= interval
+        if now.timeIntervalSince(lastInstalledAt) >= interval {
+            return true
+        }
+
+        guard let renewalDate = profileRenewalDate(for: profileExpirationDate) else {
+            return false
+        }
+        return now >= renewalDate && lastInstalledAt < renewalDate
     }
 
-    static func nextInstallationDate(lastInstalledAt: Date?, intervalDays: Int) -> Date? {
+    static func nextInstallationDate(
+        lastInstalledAt: Date?,
+        profileExpirationDate: Date? = nil,
+        intervalDays: Int
+    ) -> Date? {
         guard let lastInstalledAt else { return nil }
-        return lastInstalledAt.addingTimeInterval(TimeInterval(max(1, intervalDays)) * 24 * 60 * 60)
+        let intervalDate = lastInstalledAt.addingTimeInterval(
+            TimeInterval(max(1, intervalDays)) * 24 * 60 * 60
+        )
+        guard let renewalDate = profileRenewalDate(for: profileExpirationDate),
+              lastInstalledAt < renewalDate
+        else {
+            return intervalDate
+        }
+        return min(intervalDate, renewalDate)
+    }
+
+    static func profileRenewalDate(for expirationDate: Date?) -> Date? {
+        expirationDate?.addingTimeInterval(
+            -TimeInterval(expirationLeadDays) * 24 * 60 * 60
+        )
     }
 
     static func installedApplicationIsOlder(

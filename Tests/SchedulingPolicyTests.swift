@@ -24,6 +24,71 @@ final class SchedulingPolicyTests: XCTestCase {
         XCTAssertFalse(SchedulingPolicy.isDue(lastInstalledAt: twelveHoursAgo, now: now, intervalDays: 0))
     }
 
+    func testProfileExpirationIsDueThreeDaysEarly() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let expirationDate = now.addingTimeInterval(3 * 24 * 60 * 60)
+        let lastInstalledAt = now.addingTimeInterval(-24 * 60 * 60)
+
+        XCTAssertTrue(SchedulingPolicy.isDue(
+            lastInstalledAt: lastInstalledAt,
+            profileExpirationDate: expirationDate,
+            now: now,
+            intervalDays: 30
+        ))
+    }
+
+    func testProfileExpirationIsNotDueMoreThanThreeDaysEarly() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let expirationDate = now.addingTimeInterval(4 * 24 * 60 * 60)
+        let lastInstalledAt = now.addingTimeInterval(-24 * 60 * 60)
+
+        XCTAssertFalse(SchedulingPolicy.isDue(
+            lastInstalledAt: lastInstalledAt,
+            profileExpirationDate: expirationDate,
+            now: now,
+            intervalDays: 30
+        ))
+    }
+
+    func testSuccessfulRefreshInsideExpirationWindowDoesNotImmediatelyRepeat() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let expirationDate = now.addingTimeInterval(2 * 24 * 60 * 60)
+        let lastInstalledAt = now.addingTimeInterval(-60)
+
+        XCTAssertFalse(SchedulingPolicy.isDue(
+            lastInstalledAt: lastInstalledAt,
+            profileExpirationDate: expirationDate,
+            now: now,
+            intervalDays: 30
+        ))
+    }
+
+    func testRefreshExactlyAtRenewalDateCountsAsHandled() {
+        let renewalDate = Date(timeIntervalSince1970: 1_000_000)
+        let expirationDate = renewalDate.addingTimeInterval(3 * 24 * 60 * 60)
+
+        XCTAssertFalse(SchedulingPolicy.isDue(
+            lastInstalledAt: renewalDate,
+            profileExpirationDate: expirationDate,
+            now: renewalDate,
+            intervalDays: 30
+        ))
+    }
+
+    func testNextInstallationUsesEarlierProfileRenewalDate() {
+        let lastInstalledAt = Date(timeIntervalSince1970: 1_000_000)
+        let expirationDate = lastInstalledAt.addingTimeInterval(7 * 24 * 60 * 60)
+
+        XCTAssertEqual(
+            SchedulingPolicy.nextInstallationDate(
+                lastInstalledAt: lastInstalledAt,
+                profileExpirationDate: expirationDate,
+                intervalDays: 30
+            ),
+            lastInstalledAt.addingTimeInterval(4 * 24 * 60 * 60)
+        )
+    }
+
     func testMissingApplicationIsOlderThanKnownProjectVersion() {
         XCTAssertTrue(SchedulingPolicy.installedApplicationIsOlder(
             nil,

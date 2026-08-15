@@ -212,6 +212,35 @@ final class DirectXcodeInstallationTests: XCTestCase {
                 expirationDate: expirationDate
             )
         )
+        XCTAssertEqual(
+            DeveloperTeamService.provisioningProfileExpirationDate(
+                fromPropertyListData: data
+            ),
+            expirationDate
+        )
+    }
+
+    func testExpirationDateIsReadFromBuiltApplicationProfile() throws {
+        let applicationURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProfileExpirationTests-\(UUID().uuidString).app", isDirectory: true)
+        let profileURL = applicationURL.appendingPathComponent("embedded.mobileprovision")
+        let expirationDate = Date(timeIntervalSince1970: 2_000)
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: ["ExpirationDate": expirationDate],
+            format: .xml,
+            options: 0
+        )
+        try FileManager.default.createDirectory(
+            at: applicationURL,
+            withIntermediateDirectories: true
+        )
+        try data.write(to: profileURL)
+        defer { try? FileManager.default.removeItem(at: applicationURL) }
+
+        XCTAssertEqual(
+            DeveloperTeamService().provisioningProfileExpirationDate(in: applicationURL),
+            expirationDate
+        )
     }
 
     func testNotificationAttachmentUsesCopyAndPreservesSourceIcon() throws {

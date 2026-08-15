@@ -17,6 +17,25 @@ final class InstallationRecordTests: XCTestCase {
         XCTAssertEqual(records.installedDeviceCount(for: UUID()), 0)
     }
 
+    func testLegacyRecordDecodesWithoutExpirationMetadata() throws {
+        let projectID = UUID()
+        let json = """
+        {
+          "projectID": "\(projectID.uuidString)",
+          "deviceUDID": "PHONE-1",
+          "installedAt": 0,
+          "installedVersion": "1.0 (1)"
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+
+        let record = try decoder.decode(InstallationRecord.self, from: Data(json.utf8))
+
+        XCTAssertNil(record.profileExpirationDate)
+        XCTAssertNil(record.profileExpirationWasChecked)
+    }
+
     private func makeRecord(projectID: UUID, deviceUDID: String) -> InstallationRecord {
         InstallationRecord(
             projectID: projectID,
