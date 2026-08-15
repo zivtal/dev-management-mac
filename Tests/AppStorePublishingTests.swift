@@ -44,13 +44,32 @@ final class AppStorePublishingTests: XCTestCase {
             description: String(repeating: "d", count: 4_100),
             keywords: String(repeating: "é", count: 60),
             promotionalText: String(repeating: "p", count: 200),
-            whatsNew: String(repeating: "n", count: 4_100)
+            whatsNew: String(repeating: "n", count: 4_100),
+            subtitle: String(repeating: "s", count: 40),
+            primaryCategory: "FINANCE",
+            secondaryCategory: ""
         ).normalized()
 
         XCTAssertEqual(metadata.description.count, 4_000)
         XCTAssertLessThanOrEqual(metadata.keywords.lengthOfBytes(using: .utf8), 100)
         XCTAssertEqual(metadata.promotionalText.count, 170)
         XCTAssertEqual(metadata.whatsNew.count, 4_000)
+        XCTAssertEqual(metadata.subtitle?.count, 30)
+        XCTAssertEqual(metadata.primaryCategory, "FINANCE")
+        XCTAssertNil(metadata.secondaryCategory)
+    }
+
+    func testOpenAIRequestGeneratesEditableListingAndCategories() throws {
+        let body = OpenAIStoreMetadataService.requestBody(model: "model", prompt: "prompt")
+        let text = try XCTUnwrap(body["text"] as? [String: Any])
+        let format = try XCTUnwrap(text["format"] as? [String: Any])
+        let schema = try XCTUnwrap(format["schema"] as? [String: Any])
+        let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+        XCTAssertNotNil(properties["subtitle"])
+        XCTAssertNotNil(properties["primaryCategory"])
+        XCTAssertNotNil(properties["secondaryCategory"])
+        let required = try XCTUnwrap(schema["required"] as? [String])
+        XCTAssertTrue(required.contains("primaryCategory"))
     }
 
     func testScreenshotDimensionsMapToAppStoreDisplayTypes() {
@@ -303,6 +322,34 @@ final class AppStorePublishingTests: XCTestCase {
                 currentVersion: "1.1"
             )
         )
+    }
+
+    func testCurrentConfigurationPrefersTheLocalVersionEvenWhenAnotherIsInReview() throws {
+        let versions: [[String: Any]] = [
+            [
+                "id": "older-review",
+                "attributes": [
+                    "versionString": "1.1",
+                    "appStoreState": "IN_REVIEW",
+                    "createdDate": "2026-08-16T08:00:00Z"
+                ]
+            ],
+            [
+                "id": "local-version",
+                "attributes": [
+                    "versionString": "1.2",
+                    "appStoreState": "PREPARE_FOR_SUBMISSION",
+                    "createdDate": "2026-08-15T08:00:00Z"
+                ]
+            ]
+        ]
+        let selected = try XCTUnwrap(
+            AppStoreConnectService.selectedAppStoreVersion(
+                versions,
+                preferredVersion: "1.2"
+            )
+        )
+        XCTAssertEqual(selected["id"] as? String, "local-version")
     }
 
     private func decodedJWTComponent(_ component: String) throws -> [String: Any] {

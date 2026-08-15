@@ -573,6 +573,13 @@ final class AppModel: ObservableObject {
                 ?? "en-US",
             copyright: copyright,
             supportURL: supportURL,
+            marketingURL: perAppConfiguration?.marketingURL?.nilIfEmpty,
+            termsURL: perAppConfiguration?.termsURL?.nilIfEmpty,
+            privacyPolicyURL: perAppConfiguration?.privacyPolicyURL?.nilIfEmpty,
+            privacyChoicesURL: perAppConfiguration?.privacyChoicesURL?.nilIfEmpty,
+            appName: perAppConfiguration?.appName?.nilIfEmpty,
+            subtitle: perAppConfiguration?.subtitle?.nilIfEmpty,
+            licenseAgreementText: perAppConfiguration?.licenseAgreementText?.nilIfEmpty,
             review: AppStoreReviewConfiguration(
                 contactFirstName: reviewFirstName,
                 contactLastName: reviewLastName,
@@ -587,6 +594,7 @@ final class AppModel: ObservableObject {
             ),
             manualMetadata: perAppConfiguration?.metadata?.normalized(),
             screenshotPaths: perAppConfiguration?.screenshotPaths ?? [],
+            replaceScreenshots: perAppConfiguration?.replaceScreenshots ?? false,
             submitForReview: submitForReview,
             releaseAutomatically: releaseAutomatically
         )
@@ -659,6 +667,64 @@ final class AppModel: ObservableObject {
 
     func cancelPublishing() {
         activePublishingTask?.cancel()
+    }
+
+    func loadAppStoreConnectConfiguration(
+        projectID: UUID
+    ) async throws -> AppStoreConnectConfigurationSnapshot {
+        guard let project = projects.first(where: { $0.id == projectID }),
+              !project.isMacOSApplication,
+              project.installMethod == .xcodebuild else {
+            throw AppStorePublishingError.unsupportedProject
+        }
+        guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
+            throw AppStorePublishingError.missingBundleIdentifier
+        }
+        let issuerID = preferences.appStoreConnectIssuerID?.nilIfEmpty ?? ""
+        let keyID = preferences.appStoreConnectKeyID?.nilIfEmpty ?? ""
+        guard !issuerID.isEmpty, !keyID.isEmpty else {
+            throw AppStoreConnectError.requestFailed(
+                0,
+                L10n.text("Enter the App Store Connect issuer ID and key ID in Publishing settings.")
+            )
+        }
+        guard let privateKey = try credentialStore.string(for: .appStoreConnectPrivateKey),
+              !privateKey.isEmpty else {
+            throw AppStoreConnectError.requestFailed(
+                0,
+                L10n.text("Import an App Store Connect .p8 private key in Publishing settings.")
+            )
+        }
+        let service = try AppStoreConnectService(
+            issuerID: issuerID,
+            keyID: keyID,
+            privateKeyPEM: privateKey
+        )
+        return try await service.fetchConfigurationSnapshot(
+            bundleIdentifier: bundleIdentifier,
+            preferredVersion: project.marketingVersion
+        )
+    }
+
+    func generateAppStoreMetadataDraft(
+        projectID: UUID,
+        locale: String
+    ) async throws -> AppStoreMetadata {
+        guard let project = projects.first(where: { $0.id == projectID }) else {
+            throw AppStorePublishingError.unsupportedProject
+        }
+        guard let apiKey = try credentialStore.string(for: .openAIAPIKey)?.nilIfEmpty else {
+            throw OpenAIStoreMetadataError.requestFailed(
+                0,
+                L10n.text("Save an OpenAI API key in Publishing settings before generating metadata.")
+            )
+        }
+        return try await OpenAIStoreMetadataService().generate(
+            project: project,
+            locale: locale.nilIfEmpty ?? preferences.appStoreLocale?.nilIfEmpty ?? "en-US",
+            apiKey: apiKey,
+            model: preferences.openAIModel?.nilIfEmpty ?? "gpt-5.6-luna"
+        )
     }
 
     func generateSubscriptionOfferCodes(

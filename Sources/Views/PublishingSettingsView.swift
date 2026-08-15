@@ -32,9 +32,13 @@ struct PublishingSettingsView: View {
                 }
                 LabeledContent("Model") {
                     TextField("gpt-5.6-luna", text: optionalTextBinding(\.openAIModel, fallback: "gpt-5.6-luna"))
+                        .labelsHidden()
                         .frame(width: 220)
                 }
-                Text("On Publish, the app sends the application name, version, identifiers, and excerpts from its README or supported project manifest to the OpenAI Responses API. Swift and Objective-C source code and credentials are not uploaded.")
+                Text("Save the key here, then use Generate Settings with OpenAI in the Publish window. OpenAI generates an editable description, subtitle, keywords, promotional text, release notes, and app categories. Publish also generates them automatically when no manual draft is saved. URLs, legal terms, prices, and review facts are never invented.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("The app sends the application name, version, identifiers, and excerpts from its README or supported project manifest to the OpenAI Responses API. Swift and Objective-C source code and credentials are not uploaded.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -42,10 +46,12 @@ struct PublishingSettingsView: View {
             Section("App Store Connect API") {
                 LabeledContent("Issuer ID") {
                     TextField("Issuer ID", text: optionalTextBinding(\.appStoreConnectIssuerID))
+                        .labelsHidden()
                         .frame(width: 340)
                 }
                 LabeledContent("Key ID") {
                     TextField("Key ID", text: optionalTextBinding(\.appStoreConnectKeyID))
+                        .labelsHidden()
                         .frame(width: 220)
                 }
                 HStack {
@@ -71,14 +77,17 @@ struct PublishingSettingsView: View {
             Section("Publication") {
                 LabeledContent("Store locale") {
                     TextField("en-US", text: optionalTextBinding(\.appStoreLocale, fallback: "en-US"))
+                        .labelsHidden()
                         .frame(width: 120)
                 }
                 LabeledContent("Copyright owner") {
                     TextField("2026 Company Name", text: optionalTextBinding(\.appStoreCopyright))
+                        .labelsHidden()
                         .frame(width: 340)
                 }
                 LabeledContent("Support URL") {
                     TextField("https://example.com/support", text: optionalTextBinding(\.appStoreSupportURL))
+                        .labelsHidden()
                         .frame(width: 340)
                 }
                 Toggle(
@@ -95,7 +104,7 @@ struct PublishingSettingsView: View {
                 Text("On a first publication, local StoreKit configuration files and app-store-publishing.json are used to create and configure subscription groups, products, localizations, availability, pricing, review screenshots, categories, and age ratings. Later app versions reuse that setup.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Use Per-App Configuration in the Publish window to override these defaults and manually configure metadata, screenshots, review details, app setup, and subscriptions for the selected app.")
+                Text("Use Edit Full Publishing Configuration in the Publish window to load current App Store Connect values, generate an editable AI draft, and override metadata, URLs, screenshots, review details, app setup, and subscriptions for the selected app.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -103,22 +112,27 @@ struct PublishingSettingsView: View {
             Section("App Review") {
                 LabeledContent("First name") {
                     TextField("First name", text: optionalTextBinding(\.appStoreReviewFirstName))
+                        .labelsHidden()
                         .frame(width: 220)
                 }
                 LabeledContent("Last name") {
                     TextField("Last name", text: optionalTextBinding(\.appStoreReviewLastName))
+                        .labelsHidden()
                         .frame(width: 220)
                 }
                 LabeledContent("Phone") {
                     TextField("Phone", text: optionalTextBinding(\.appStoreReviewPhone))
+                        .labelsHidden()
                         .frame(width: 220)
                 }
                 LabeledContent("Email") {
                     TextField("Email", text: optionalTextBinding(\.appStoreReviewEmail))
+                        .labelsHidden()
                         .frame(width: 300)
                 }
                 LabeledContent("Review notes") {
                     TextField("Optional instructions for Apple", text: optionalTextBinding(\.appStoreReviewNotes), axis: .vertical)
+                        .labelsHidden()
                         .lineLimit(2...5)
                         .frame(width: 380)
                 }

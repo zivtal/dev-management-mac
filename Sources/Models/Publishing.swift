@@ -5,13 +5,19 @@ struct AppStoreMetadata: Codable, Equatable, Sendable {
     let keywords: String
     let promotionalText: String
     let whatsNew: String
+    var subtitle: String? = nil
+    var primaryCategory: String? = nil
+    var secondaryCategory: String? = nil
 
     func normalized() -> AppStoreMetadata {
         AppStoreMetadata(
             description: Self.limited(description, characters: 4_000),
             keywords: Self.limitedUTF8(keywords, bytes: 100),
             promotionalText: Self.limited(promotionalText, characters: 170),
-            whatsNew: Self.limited(whatsNew, characters: 4_000)
+            whatsNew: Self.limited(whatsNew, characters: 4_000),
+            subtitle: subtitle.map { Self.limited($0, characters: 30) },
+            primaryCategory: primaryCategory?.nilIfEmpty,
+            secondaryCategory: secondaryCategory?.nilIfEmpty
         )
     }
 
@@ -143,10 +149,18 @@ struct AppStorePublicationConfiguration: Codable, Equatable, Sendable {
     var locale: String?
     var copyright: String?
     var supportURL: String?
+    var marketingURL: String? = nil
+    var termsURL: String? = nil
+    var privacyPolicyURL: String? = nil
+    var privacyChoicesURL: String? = nil
+    var appName: String? = nil
+    var subtitle: String? = nil
+    var licenseAgreementText: String? = nil
     var submitForReview: Bool?
     var releaseAutomatically: Bool?
     var metadata: AppStoreMetadata?
     var screenshotPaths: [String]?
+    var replaceScreenshots: Bool? = nil
     var review: AppStoreReviewManifestConfiguration?
 }
 
@@ -175,6 +189,125 @@ struct AppStoreConnectReviewItem: Equatable, Sendable {
     let resourceType: String
     let id: String
     let label: String
+}
+
+struct AppStoreConnectConfigurationSnapshot: Equatable, Sendable {
+    let appName: String
+    let bundleIdentifier: String
+    let sku: String?
+    let primaryLocale: String?
+    let contentRightsDeclaration: String?
+    let primaryCategory: String?
+    let secondaryCategory: String?
+    let ageRating: [String: AppStoreManifestValue]?
+    let licenseAgreementText: String?
+    let licenseTerritoryIDs: [String]
+    let appLocalizations: [AppStoreConnectAppLocalizationSnapshot]
+    let version: AppStoreConnectVersionSnapshot?
+    let subscriptionGroups: [AppStoreConnectSubscriptionGroupSnapshot]
+    let loadedAt: Date
+}
+
+struct AppStoreConnectAppLocalizationSnapshot: Equatable, Sendable, Identifiable {
+    var id: String { locale }
+
+    let locale: String
+    let name: String?
+    let subtitle: String?
+    let privacyPolicyURL: String?
+    let privacyChoicesURL: String?
+}
+
+struct AppStoreConnectVersionSnapshot: Equatable, Sendable {
+    let versionString: String
+    let state: String
+    let buildNumber: String?
+    let releaseType: String?
+    let copyright: String?
+    let earliestReleaseDate: String?
+    let localizations: [AppStoreConnectVersionLocalizationSnapshot]
+    let review: AppStoreConnectReviewSnapshot?
+
+    var isUnderReview: Bool {
+        Self.reviewStates.contains(state)
+    }
+
+    private static let reviewStates: Set<String> = [
+        "WAITING_FOR_REVIEW",
+        "IN_REVIEW",
+        "PENDING_APPLE_RELEASE",
+        "PENDING_DEVELOPER_RELEASE",
+        "PROCESSING_FOR_APP_STORE",
+        "READY_FOR_SALE",
+        "PREORDER_READY_FOR_SALE"
+    ]
+}
+
+struct AppStoreConnectVersionLocalizationSnapshot: Equatable, Sendable, Identifiable {
+    var id: String { locale }
+
+    let locale: String
+    let description: String?
+    let keywords: String?
+    let promotionalText: String?
+    let whatsNew: String?
+    let supportURL: String?
+    let marketingURL: String?
+    let screenshotCounts: [String: Int]
+}
+
+struct AppStoreConnectReviewSnapshot: Equatable, Sendable {
+    let contactFirstName: String?
+    let contactLastName: String?
+    let contactPhone: String?
+    let contactEmail: String?
+    let notes: String?
+    let demoAccountRequired: Bool
+}
+
+struct AppStoreConnectSubscriptionGroupSnapshot: Equatable, Sendable, Identifiable {
+    let id: String
+    let referenceName: String
+    let state: String?
+    let localizations: [AppStoreSubscriptionLocalization]
+    let subscriptions: [AppStoreConnectSubscriptionSnapshot]
+}
+
+struct AppStoreConnectSubscriptionSnapshot: Equatable, Sendable, Identifiable {
+    let id: String
+    let referenceName: String
+    let productID: String
+    let state: String?
+    let period: String?
+    let familySharable: Bool
+    let groupLevel: Int?
+    let reviewNote: String?
+    let localizations: [AppStoreSubscriptionLocalization]
+    let availableTerritoryIDs: [String]
+    let availableInNewTerritories: Bool?
+    let prices: [AppStoreConnectSubscriptionPriceSnapshot]
+    let offers: [AppStoreConnectOfferSnapshot]
+}
+
+struct AppStoreConnectSubscriptionPriceSnapshot: Equatable, Sendable, Identifiable {
+    var id: String { "\(territory)-\(startDate ?? "")-\(price)" }
+
+    let territory: String
+    let price: String
+    let currency: String?
+    let startDate: String?
+    let endDate: String?
+    let preserved: Bool
+}
+
+struct AppStoreConnectOfferSnapshot: Equatable, Sendable, Identifiable {
+    let id: String
+    let name: String
+    let active: Bool
+    let duration: String?
+    let customerEligibilities: [String]
+    let productionCodeCount: Int
+    let totalNumberOfCodes: Int
 }
 
 enum SubscriptionOfferDuration: String, CaseIterable, Codable, Sendable {
@@ -283,9 +416,17 @@ struct PublishingConfiguration: Sendable {
     let locale: String
     let copyright: String
     let supportURL: String
+    let marketingURL: String?
+    let termsURL: String?
+    let privacyPolicyURL: String?
+    let privacyChoicesURL: String?
+    let appName: String?
+    let subtitle: String?
+    let licenseAgreementText: String?
     let review: AppStoreReviewConfiguration
     let manualMetadata: AppStoreMetadata?
     let screenshotPaths: [String]
+    let replaceScreenshots: Bool
     let submitForReview: Bool
     let releaseAutomatically: Bool
 }

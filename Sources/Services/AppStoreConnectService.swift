@@ -77,6 +77,473 @@ final class AppStoreConnectService {
         }
     }
 
+    func fetchConfigurationSnapshot(
+        bundleIdentifier: String,
+        preferredVersion: String?
+    ) async throws -> AppStoreConnectConfigurationSnapshot {
+        let apps = try await pagedData(
+            path: "/v1/apps",
+            query: ["filter[bundleId]": bundleIdentifier, "limit": "1"]
+        )
+        guard let app = apps.first,
+              let appID = app["id"] as? String else {
+            throw AppStoreConnectError.applicationNotFound(bundleIdentifier)
+        }
+        let appAttributes = Self.attributes(app)
+
+        var primaryCategory: String?
+        var secondaryCategory: String?
+        var ageRating: [String: AppStoreManifestValue]?
+        var appLocalizations: [AppStoreConnectAppLocalizationSnapshot] = []
+        let infos = try await pagedData(
+            path: "/v1/apps/\(appID)/appInfos",
+            query: ["limit": "200"]
+        )
+        if let info = Self.currentAppInfo(infos), let infoID = info["id"] as? String {
+            primaryCategory = try await optionalResourceID(
+                path: "/v1/appInfos/\(infoID)/primaryCategory"
+            )
+            secondaryCategory = try await optionalResourceID(
+                path: "/v1/appInfos/\(infoID)/secondaryCategory"
+            )
+            do {
+                let response = try await request(
+                    method: "GET",
+                    path: "/v1/appInfos/\(infoID)/ageRatingDeclaration"
+                )
+                if let resource = response["data"] as? [String: Any] {
+                    ageRating = Self.attributes(resource).compactMapValues(Self.manifestValue)
+                }
+            } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
+                ageRating = nil
+            }
+            appLocalizations = try await pagedData(
+                path: "/v1/appInfos/\(infoID)/appInfoLocalizations",
+                query: ["limit": "200"]
+            ).compactMap(Self.appLocalizationSnapshot)
+                .sorted { $0.locale < $1.locale }
+        }
+
+        var licenseAgreementText: String?
+        var licenseTerritoryIDs: [String] = []
+        do {
+            let agreement = try await request(
+                method: "GET",
+                path: "/v1/apps/\(appID)/endUserLicenseAgreement"
+            )
+            if let resource = agreement["data"] as? [String: Any],
+               let agreementID = resource["id"] as? String {
+                licenseAgreementText = Self.attributes(resource)["agreementText"] as? String
+                licenseTerritoryIDs = try await pagedData(
+                    path: "/v1/endUserLicenseAgreements/\(agreementID)/territories",
+                    query: ["limit": "200"]
+                ).compactMap { $0["id"] as? String }.sorted()
+            }
+        } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
+            licenseAgreementText = nil
+        }
+
+        let versions = try await pagedData(
+            path: "/v1/apps/\(appID)/appStoreVersions",
+            query: ["filter[platform]": "IOS", "limit": "200"]
+        )
+        let selectedVersion = Self.selectedAppStoreVersion(
+            versions,
+            preferredVersion: preferredVersion
+        )
+        let version: AppStoreConnectVersionSnapshot? = if let selectedVersion {
+            try await versionSnapshot(selectedVersion)
+        } else {
+            nil
+        }
+
+        var groups: [AppStoreConnectSubscriptionGroupSnapshot] = []
+        for group in try await pagedData(
+            path: "/v1/apps/\(appID)/subscriptionGroups",
+            query: ["limit": "200"]
+        ) {
+            try Task.checkCancellation()
+            if let snapshot = try await subscriptionGroupSnapshot(group) {
+                groups.append(snapshot)
+            }
+        }
+
+        return AppStoreConnectConfigurationSnapshot(
+            appName: appAttributes["name"] as? String ?? bundleIdentifier,
+            bundleIdentifier: appAttributes["bundleId"] as? String ?? bundleIdentifier,
+            sku: appAttributes["sku"] as? String,
+            primaryLocale: appAttributes["primaryLocale"] as? String,
+            contentRightsDeclaration: appAttributes["contentRightsDeclaration"] as? String,
+            primaryCategory: primaryCategory,
+            secondaryCategory: secondaryCategory,
+            ageRating: ageRating,
+            licenseAgreementText: licenseAgreementText,
+            licenseTerritoryIDs: licenseTerritoryIDs,
+            appLocalizations: appLocalizations,
+            version: version,
+            subscriptionGroups: groups.sorted {
+                $0.referenceName.localizedCaseInsensitiveCompare($1.referenceName) == .orderedAscending
+            },
+            loadedAt: Date()
+        )
+    }
+
+    static func selectedAppStoreVersion(
+        _ versions: [[String: Any]],
+        preferredVersion: String?
+    ) -> [String: Any]? {
+        let newest: ([[String: Any]]) -> [String: Any]? = { candidates in
+            candidates.max {
+                let left = Self.attributes($0)["createdDate"] as? String ?? ""
+                let right = Self.attributes($1)["createdDate"] as? String ?? ""
+                return left < right
+            }
+        }
+        if let preferredVersion = preferredVersion?.nilIfEmpty,
+           let exact = newest(versions.filter {
+               Self.attributes($0)["versionString"] as? String == preferredVersion
+           }) {
+            return exact
+        }
+        let activeStates: Set<String> = [
+            "PREPARE_FOR_SUBMISSION",
+            "WAITING_FOR_REVIEW",
+            "IN_REVIEW",
+            "PENDING_APPLE_RELEASE",
+            "PENDING_DEVELOPER_RELEASE",
+            "PROCESSING_FOR_APP_STORE"
+        ]
+        let active = versions.filter {
+            guard let state = Self.attributes($0)["appStoreState"] as? String else { return false }
+            return activeStates.contains(state)
+        }
+        return newest(active) ?? newest(versions)
+    }
+
+    private func versionSnapshot(
+        _ resource: [String: Any]
+    ) async throws -> AppStoreConnectVersionSnapshot? {
+        guard let versionID = resource["id"] as? String else { return nil }
+        let attributes = Self.attributes(resource)
+        let localizations = try await pagedData(
+            path: "/v1/appStoreVersions/\(versionID)/appStoreVersionLocalizations",
+            query: ["limit": "200"]
+        )
+        var localizationSnapshots: [AppStoreConnectVersionLocalizationSnapshot] = []
+        for localization in localizations {
+            guard let localizationID = localization["id"] as? String else { continue }
+            let values = Self.attributes(localization)
+            let sets = try await pagedData(
+                path: "/v1/appStoreVersionLocalizations/\(localizationID)/appScreenshotSets",
+                query: [
+                    "fields[appScreenshotSets]": "screenshotDisplayType,appScreenshots",
+                    "include": "appScreenshots",
+                    "limit": "50"
+                ]
+            )
+            var screenshotCounts: [String: Int] = [:]
+            for set in sets {
+                let displayType = Self.attributes(set)["screenshotDisplayType"] as? String ?? L10n.text("Unknown")
+                let relationships = set["relationships"] as? [String: Any]
+                let screenshots = relationships?["appScreenshots"] as? [String: Any]
+                let data = screenshots?["data"] as? [[String: Any]] ?? []
+                screenshotCounts[displayType, default: 0] += data.count
+            }
+            localizationSnapshots.append(
+                AppStoreConnectVersionLocalizationSnapshot(
+                    locale: values["locale"] as? String ?? L10n.text("Unknown"),
+                    description: values["description"] as? String,
+                    keywords: values["keywords"] as? String,
+                    promotionalText: values["promotionalText"] as? String,
+                    whatsNew: values["whatsNew"] as? String,
+                    supportURL: values["supportUrl"] as? String,
+                    marketingURL: values["marketingUrl"] as? String,
+                    screenshotCounts: screenshotCounts
+                )
+            )
+        }
+
+        var review: AppStoreConnectReviewSnapshot?
+        do {
+            let response = try await request(
+                method: "GET",
+                path: "/v1/appStoreVersions/\(versionID)/appStoreReviewDetail"
+            )
+            if let resource = response["data"] as? [String: Any] {
+                let values = Self.attributes(resource)
+                review = AppStoreConnectReviewSnapshot(
+                    contactFirstName: values["contactFirstName"] as? String,
+                    contactLastName: values["contactLastName"] as? String,
+                    contactPhone: values["contactPhone"] as? String,
+                    contactEmail: values["contactEmail"] as? String,
+                    notes: values["notes"] as? String,
+                    demoAccountRequired: values["demoAccountRequired"] as? Bool ?? false
+                )
+            }
+        } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
+            review = nil
+        }
+
+        var buildNumber: String?
+        do {
+            let response = try await request(
+                method: "GET",
+                path: "/v1/appStoreVersions/\(versionID)/build"
+            )
+            if let build = response["data"] as? [String: Any] {
+                buildNumber = Self.attributes(build)["version"] as? String
+            }
+        } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
+            buildNumber = nil
+        }
+
+        return AppStoreConnectVersionSnapshot(
+            versionString: attributes["versionString"] as? String ?? L10n.text("Unknown"),
+            state: attributes["appStoreState"] as? String ?? L10n.text("Unknown"),
+            buildNumber: buildNumber,
+            releaseType: attributes["releaseType"] as? String,
+            copyright: attributes["copyright"] as? String,
+            earliestReleaseDate: attributes["earliestReleaseDate"] as? String,
+            localizations: localizationSnapshots.sorted { $0.locale < $1.locale },
+            review: review
+        )
+    }
+
+    private func subscriptionGroupSnapshot(
+        _ resource: [String: Any]
+    ) async throws -> AppStoreConnectSubscriptionGroupSnapshot? {
+        guard let groupID = resource["id"] as? String else { return nil }
+        let attributes = Self.attributes(resource)
+        let versions = try await pagedData(
+            path: "/v1/subscriptionGroups/\(groupID)/versions",
+            query: ["limit": "200"]
+        )
+        let selectedVersion = Self.latestVersionedResource(versions)
+        var localizations: [AppStoreSubscriptionLocalization] = []
+        if let versionID = selectedVersion?["id"] as? String {
+            localizations = try await pagedData(
+                path: "/v1/subscriptionGroupVersions/\(versionID)/localizations",
+                query: ["limit": "200"]
+            ).compactMap(Self.subscriptionLocalization)
+                .sorted { $0.locale < $1.locale }
+        }
+
+        var subscriptions: [AppStoreConnectSubscriptionSnapshot] = []
+        for subscription in try await pagedData(
+            path: "/v1/subscriptionGroups/\(groupID)/subscriptions",
+            query: ["limit": "200"]
+        ) {
+            if let snapshot = try await subscriptionSnapshot(subscription) {
+                subscriptions.append(snapshot)
+            }
+        }
+        return AppStoreConnectSubscriptionGroupSnapshot(
+            id: groupID,
+            referenceName: attributes["referenceName"] as? String ?? L10n.text("Unknown"),
+            state: selectedVersion.flatMap { Self.attributes($0)["state"] as? String },
+            localizations: localizations,
+            subscriptions: subscriptions.sorted { $0.productID < $1.productID }
+        )
+    }
+
+    private func subscriptionSnapshot(
+        _ resource: [String: Any]
+    ) async throws -> AppStoreConnectSubscriptionSnapshot? {
+        guard let subscriptionID = resource["id"] as? String else { return nil }
+        let attributes = Self.attributes(resource)
+        let versions = try await pagedData(
+            path: "/v1/subscriptions/\(subscriptionID)/versions",
+            query: ["limit": "200"]
+        )
+        let selectedVersion = Self.latestVersionedResource(versions)
+        var localizations: [AppStoreSubscriptionLocalization] = []
+        if let versionID = selectedVersion?["id"] as? String {
+            localizations = try await pagedData(
+                path: "/v1/subscriptionVersions/\(versionID)/localizations",
+                query: ["limit": "200"]
+            ).compactMap(Self.subscriptionLocalization)
+                .sorted { $0.locale < $1.locale }
+        }
+
+        var availableInNewTerritories: Bool?
+        var territoryIDs: [String] = []
+        do {
+            let availability = try await request(
+                method: "GET",
+                path: "/v1/subscriptions/\(subscriptionID)/subscriptionAvailability"
+            )
+            if let availabilityResource = availability["data"] as? [String: Any],
+               let availabilityID = availabilityResource["id"] as? String {
+                availableInNewTerritories = Self.attributes(availabilityResource)["availableInNewTerritories"] as? Bool
+                territoryIDs = try await pagedData(
+                    path: "/v1/subscriptionAvailabilities/\(availabilityID)/availableTerritories",
+                    query: ["limit": "200"]
+                ).compactMap { $0["id"] as? String }.sorted()
+            }
+        } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
+            territoryIDs = []
+        }
+
+        let prices = try await subscriptionPrices(subscriptionID: subscriptionID)
+        let offers = try await pagedData(
+            path: "/v1/subscriptions/\(subscriptionID)/offerCodes",
+            query: ["limit": "200"]
+        ).compactMap(Self.offerSnapshot)
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        return AppStoreConnectSubscriptionSnapshot(
+            id: subscriptionID,
+            referenceName: attributes["name"] as? String ?? L10n.text("Unknown"),
+            productID: attributes["productId"] as? String ?? L10n.text("Unknown"),
+            state: (attributes["state"] as? String)
+                ?? selectedVersion.flatMap { Self.attributes($0)["state"] as? String },
+            period: attributes["subscriptionPeriod"] as? String,
+            familySharable: attributes["familySharable"] as? Bool ?? false,
+            groupLevel: attributes["groupLevel"] as? Int,
+            reviewNote: attributes["reviewNote"] as? String,
+            localizations: localizations,
+            availableTerritoryIDs: territoryIDs,
+            availableInNewTerritories: availableInNewTerritories,
+            prices: prices,
+            offers: offers
+        )
+    }
+
+    private func subscriptionPrices(
+        subscriptionID: String
+    ) async throws -> [AppStoreConnectSubscriptionPriceSnapshot] {
+        let resources = try await pagedResources(
+            path: "/v1/subscriptions/\(subscriptionID)/prices",
+            query: [
+                "include": "subscriptionPricePoint,territory",
+                "limit": "200"
+            ]
+        )
+        let included = Dictionary(
+            resources.included.compactMap { item -> (String, [String: Any])? in
+                guard let type = item["type"] as? String, let id = item["id"] as? String else { return nil }
+                return ("\(type):\(id)", item)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return resources.data.compactMap { price in
+            let attributes = Self.attributes(price)
+            let relationships = price["relationships"] as? [String: Any]
+            let pointID = Self.relationshipID(relationships?["subscriptionPricePoint"])
+            let point = pointID.flatMap { included["subscriptionPricePoints:\($0)"] }
+            let pointRelationships = point?["relationships"] as? [String: Any]
+            let territoryID = Self.relationshipID(relationships?["territory"])
+                ?? Self.relationshipID(pointRelationships?["territory"])
+                ?? L10n.text("Unknown")
+            let territory = included["territories:\(territoryID)"]
+            guard let customerPrice = Self.stringValue(Self.attributes(point ?? [:])["customerPrice"]) else {
+                return nil
+            }
+            return AppStoreConnectSubscriptionPriceSnapshot(
+                territory: territoryID,
+                price: customerPrice,
+                currency: Self.attributes(territory ?? [:])["currency"] as? String,
+                startDate: attributes["startDate"] as? String,
+                endDate: attributes["endDate"] as? String,
+                preserved: (attributes["preserved"] as? Bool)
+                    ?? (attributes["preserveCurrentPrice"] as? Bool)
+                    ?? false
+            )
+        }.sorted { $0.territory < $1.territory }
+    }
+
+    private func optionalResourceID(path: String) async throws -> String? {
+        do {
+            let response = try await request(method: "GET", path: path)
+            return (response["data"] as? [String: Any])?["id"] as? String
+        } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
+            return nil
+        }
+    }
+
+    private static func currentAppInfo(_ infos: [[String: Any]]) -> [String: Any]? {
+        infos.first {
+            let state = attributes($0)["appStoreState"] as? String
+                ?? attributes($0)["state"] as? String
+            return state != "REPLACED_WITH_NEW_INFO"
+        } ?? infos.first
+    }
+
+    private static func latestVersionedResource(_ resources: [[String: Any]]) -> [String: Any]? {
+        resources.max {
+            let left = attributes($0)["version"] as? Int ?? 0
+            let right = attributes($1)["version"] as? Int ?? 0
+            return left < right
+        }
+    }
+
+    private static func appLocalizationSnapshot(
+        _ resource: [String: Any]
+    ) -> AppStoreConnectAppLocalizationSnapshot? {
+        let attributes = attributes(resource)
+        guard let locale = attributes["locale"] as? String else { return nil }
+        return AppStoreConnectAppLocalizationSnapshot(
+            locale: locale,
+            name: attributes["name"] as? String,
+            subtitle: attributes["subtitle"] as? String,
+            privacyPolicyURL: attributes["privacyPolicyUrl"] as? String,
+            privacyChoicesURL: attributes["privacyChoicesUrl"] as? String
+        )
+    }
+
+    private static func subscriptionLocalization(
+        _ resource: [String: Any]
+    ) -> AppStoreSubscriptionLocalization? {
+        let attributes = attributes(resource)
+        guard let locale = attributes["locale"] as? String,
+              let name = attributes["name"] as? String else { return nil }
+        return AppStoreSubscriptionLocalization(
+            locale: locale,
+            name: name,
+            description: attributes["description"] as? String
+        )
+    }
+
+    private static func offerSnapshot(
+        _ resource: [String: Any]
+    ) -> AppStoreConnectOfferSnapshot? {
+        guard let id = resource["id"] as? String else { return nil }
+        let attributes = attributes(resource)
+        return AppStoreConnectOfferSnapshot(
+            id: id,
+            name: attributes["name"] as? String ?? L10n.text("Unknown"),
+            active: attributes["active"] as? Bool ?? false,
+            duration: attributes["duration"] as? String,
+            customerEligibilities: attributes["customerEligibilities"] as? [String] ?? [],
+            productionCodeCount: attributes["productionCodeCount"] as? Int ?? 0,
+            totalNumberOfCodes: attributes["totalNumberOfCodes"] as? Int ?? 0
+        )
+    }
+
+    private static func attributes(_ resource: [String: Any]) -> [String: Any] {
+        resource["attributes"] as? [String: Any] ?? [:]
+    }
+
+    private static func relationshipID(_ rawRelationship: Any?) -> String? {
+        let relationship = rawRelationship as? [String: Any]
+        let data = relationship?["data"] as? [String: Any]
+        return data?["id"] as? String
+    }
+
+    private static func stringValue(_ value: Any?) -> String? {
+        if let string = value as? String { return string }
+        if let number = value as? NSNumber { return number.stringValue }
+        return nil
+    }
+
+    private static func manifestValue(_ value: Any) -> AppStoreManifestValue? {
+        if let value = value as? Bool { return .bool(value) }
+        if let value = value as? Int { return .integer(value) }
+        if let value = value as? Double { return .decimal(value) }
+        if let value = value as? String { return .string(value) }
+        return nil
+    }
+
     func preparePublication(
         bundleIdentifier: String,
         version: String,
@@ -84,6 +551,13 @@ final class AppStoreConnectService {
         metadata: AppStoreMetadata,
         copyright: String,
         supportURL: String,
+        marketingURL: String?,
+        termsURL: String?,
+        appName: String?,
+        subtitle: String?,
+        privacyPolicyURL: String?,
+        privacyChoicesURL: String?,
+        licenseAgreementText: String?,
         review: AppStoreReviewConfiguration,
         releaseAutomatically: Bool
     ) async throws -> AppStoreConnectPublication {
@@ -104,6 +578,8 @@ final class AppStoreConnectService {
                 localizationID,
                 metadata: metadata,
                 supportURL: supportURL,
+                marketingURL: marketingURL,
+                termsURL: termsURL,
                 includesReleaseNotes: true
             )
         } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 || status == 422 {
@@ -112,8 +588,21 @@ final class AppStoreConnectService {
                 localizationID,
                 metadata: metadata,
                 supportURL: supportURL,
+                marketingURL: marketingURL,
+                termsURL: termsURL,
                 includesReleaseNotes: false
             )
+        }
+        try await configureLocalizedAppInformation(
+            appID: appID,
+            locale: locale,
+            appName: appName,
+            subtitle: subtitle ?? metadata.subtitle,
+            privacyPolicyURL: privacyPolicyURL,
+            privacyChoicesURL: privacyChoicesURL
+        )
+        if let licenseAgreementText = licenseAgreementText?.nilIfEmpty {
+            try await configureLicenseAgreement(appID: appID, agreementText: licenseAgreementText)
         }
         try await configureReviewDetails(versionID: versionID, review: review)
         return AppStoreConnectPublication(
@@ -516,6 +1005,7 @@ final class AppStoreConnectService {
     func uploadScreenshots(
         _ screenshots: [AppStoreScreenshotAsset],
         localizationID: String,
+        replaceExisting: Bool,
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws {
         for group in Dictionary(grouping: screenshots, by: \AppStoreScreenshotAsset.displayType).sorted(by: { $0.key < $1.key }) {
@@ -529,9 +1019,25 @@ final class AppStoreConnectService {
             let existingScreenshots = (setResponse["included"] as? [[String: Any]])?.filter {
                 $0["type"] as? String == "appScreenshots"
             } ?? []
-            if !existingScreenshots.isEmpty {
+            if !existingScreenshots.isEmpty, !replaceExisting {
                 onOutput(L10n.format("Keeping %d existing screenshot(s) for %@.\n", existingScreenshots.count, displayType))
                 continue
+            }
+            if replaceExisting {
+                for screenshot in existingScreenshots {
+                    guard let screenshotID = screenshot["id"] as? String else { continue }
+                    _ = try await request(
+                        method: "DELETE",
+                        path: "/v1/appScreenshots/\(screenshotID)"
+                    )
+                }
+                if !existingScreenshots.isEmpty {
+                    onOutput(L10n.format(
+                        "Removed %d existing screenshot(s) for %@ before replacement.\n",
+                        existingScreenshots.count,
+                        displayType
+                    ))
+                }
             }
 
             let screenshotSetID: String
@@ -824,6 +1330,115 @@ final class AppStoreConnectService {
                         "relationships": [
                             "appStoreVersion": [
                                 "data": ["type": "appStoreVersions", "id": versionID]
+                            ]
+                        ]
+                    ]
+                ]
+            )
+        }
+    }
+
+    private func configureLocalizedAppInformation(
+        appID: String,
+        locale: String,
+        appName: String?,
+        subtitle: String?,
+        privacyPolicyURL: String?,
+        privacyChoicesURL: String?
+    ) async throws {
+        var attributes: [String: Any] = [:]
+        if let appName = appName?.nilIfEmpty { attributes["name"] = String(appName.prefix(30)) }
+        if let subtitle = subtitle?.nilIfEmpty { attributes["subtitle"] = String(subtitle.prefix(30)) }
+        if let privacyPolicyURL = privacyPolicyURL?.nilIfEmpty {
+            attributes["privacyPolicyUrl"] = privacyPolicyURL
+        }
+        if let privacyChoicesURL = privacyChoicesURL?.nilIfEmpty {
+            attributes["privacyChoicesUrl"] = privacyChoicesURL
+        }
+        guard !attributes.isEmpty else { return }
+
+        let infos = try await pagedData(
+            path: "/v1/apps/\(appID)/appInfos",
+            query: ["limit": "200"]
+        )
+        guard let info = Self.currentAppInfo(infos), let infoID = info["id"] as? String else {
+            throw AppStoreConnectError.missingIdentifier("app information")
+        }
+        let localizations = try await pagedData(
+            path: "/v1/appInfos/\(infoID)/appInfoLocalizations",
+            query: ["limit": "200"]
+        )
+        if let existing = localizations.first(where: {
+            Self.attributes($0)["locale"] as? String == locale
+        }), let localizationID = existing["id"] as? String {
+            _ = try await request(
+                method: "PATCH",
+                path: "/v1/appInfoLocalizations/\(localizationID)",
+                body: [
+                    "data": [
+                        "type": "appInfoLocalizations",
+                        "id": localizationID,
+                        "attributes": attributes
+                    ]
+                ]
+            )
+        } else {
+            attributes["locale"] = locale
+            _ = try await request(
+                method: "POST",
+                path: "/v1/appInfoLocalizations",
+                body: [
+                    "data": [
+                        "type": "appInfoLocalizations",
+                        "attributes": attributes,
+                        "relationships": [
+                            "appInfo": [
+                                "data": ["type": "appInfos", "id": infoID]
+                            ]
+                        ]
+                    ]
+                ]
+            )
+        }
+    }
+
+    private func configureLicenseAgreement(
+        appID: String,
+        agreementText: String
+    ) async throws {
+        do {
+            let existing = try await request(
+                method: "GET",
+                path: "/v1/apps/\(appID)/endUserLicenseAgreement"
+            )
+            let agreementID = try Self.identifier(in: existing, named: "end-user license agreement")
+            _ = try await request(
+                method: "PATCH",
+                path: "/v1/endUserLicenseAgreements/\(agreementID)",
+                body: [
+                    "data": [
+                        "type": "endUserLicenseAgreements",
+                        "id": agreementID,
+                        "attributes": ["agreementText": agreementText]
+                    ]
+                ]
+            )
+        } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
+            let territories = try await pagedData(
+                path: "/v1/territories",
+                query: ["limit": "200"]
+            ).compactMap { $0["id"] as? String }
+            _ = try await request(
+                method: "POST",
+                path: "/v1/endUserLicenseAgreements",
+                body: [
+                    "data": [
+                        "type": "endUserLicenseAgreements",
+                        "attributes": ["agreementText": agreementText],
+                        "relationships": [
+                            "app": ["data": ["type": "apps", "id": appID]],
+                            "territories": [
+                                "data": territories.map { ["type": "territories", "id": $0] }
                             ]
                         ]
                     ]
@@ -1430,14 +2045,25 @@ final class AppStoreConnectService {
         _ localizationID: String,
         metadata: AppStoreMetadata,
         supportURL: String,
+        marketingURL: String?,
+        termsURL: String?,
         includesReleaseNotes: Bool
     ) async throws {
+        var description = metadata.description
+        if let termsURL = termsURL?.nilIfEmpty,
+           !description.localizedCaseInsensitiveContains(termsURL) {
+            let suffix = "\n\n\(L10n.text("Terms of Use")): \(termsURL)"
+            description = String((description + suffix).prefix(4_000))
+        }
         var attributes: [String: Any] = [
-            "description": metadata.description,
+            "description": description,
             "keywords": metadata.keywords,
             "promotionalText": metadata.promotionalText,
             "supportUrl": supportURL
         ]
+        if let marketingURL = marketingURL?.nilIfEmpty {
+            attributes["marketingUrl"] = marketingURL
+        }
         if includesReleaseNotes {
             attributes["whatsNew"] = metadata.whatsNew
         }
@@ -1601,6 +2227,29 @@ final class AppStoreConnectService {
                 )
             }
         }
+    }
+
+    private func pagedResources(
+        path: String,
+        query: [String: String] = [:]
+    ) async throws -> (data: [[String: Any]], included: [[String: Any]]) {
+        var data: [[String: Any]] = []
+        var included: [[String: Any]] = []
+        var nextPath: String? = path
+        var nextQuery = query
+        while let currentPath = nextPath {
+            let response = try await request(
+                method: "GET",
+                path: currentPath,
+                query: nextQuery
+            )
+            data.append(contentsOf: response["data"] as? [[String: Any]] ?? [])
+            included.append(contentsOf: response["included"] as? [[String: Any]] ?? [])
+            let links = response["links"] as? [String: Any]
+            nextPath = links?["next"] as? String
+            nextQuery = [:]
+        }
+        return (data, included)
     }
 
     private func pagedData(

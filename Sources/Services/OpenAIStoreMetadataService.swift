@@ -39,6 +39,7 @@ final class OpenAIStoreMetadataService {
         Never invent features, prices, awards, privacy claims, support URLs, or capabilities that are not in the supplied project information.
         Use clear customer-facing language. Keywords must be comma-separated and no more than 100 UTF-8 bytes.
         Promotional text must be at most 170 characters. Description and release notes must each be at most 4000 characters.
+        Subtitle must be at most 30 characters. Select the most accurate App Store primary category identifier and an optional secondary category identifier from Apple's category list. Use an empty secondary category when one is not clearly justified.
 
         Application: \(project.displayName)
         Bundle identifier: \(project.bundleIdentifier ?? "unknown")
@@ -100,15 +101,36 @@ final class OpenAIStoreMetadataService {
                             "description": ["type": "string"],
                             "keywords": ["type": "string"],
                             "promotionalText": ["type": "string"],
-                            "whatsNew": ["type": "string"]
+                            "whatsNew": ["type": "string"],
+                            "subtitle": ["type": "string"],
+                            "primaryCategory": [
+                                "type": "string",
+                                "enum": appCategoryIdentifiers
+                            ],
+                            "secondaryCategory": [
+                                "type": "string",
+                                "enum": [""] + appCategoryIdentifiers
+                            ]
                         ],
-                        "required": ["description", "keywords", "promotionalText", "whatsNew"],
+                        "required": [
+                            "description", "keywords", "promotionalText", "whatsNew",
+                            "subtitle", "primaryCategory", "secondaryCategory"
+                        ],
                         "additionalProperties": false
                     ]
                 ]
             ]
         ]
     }
+
+    private static let appCategoryIdentifiers = [
+        "BOOKS", "BUSINESS", "DEVELOPER_TOOLS", "EDUCATION", "ENTERTAINMENT",
+        "FINANCE", "FOOD_AND_DRINK", "GAMES", "GRAPHICS_AND_DESIGN",
+        "HEALTH_AND_FITNESS", "LIFESTYLE", "MAGAZINES_AND_NEWSPAPERS",
+        "MEDICAL", "MUSIC", "NAVIGATION", "NEWS", "PHOTO_AND_VIDEO",
+        "PRODUCTIVITY", "REFERENCE", "SHOPPING", "SOCIAL_NETWORKING",
+        "SPORTS", "TRAVEL", "UTILITIES", "WEATHER"
+    ]
 
     static func decodeMetadata(from data: Data) throws -> AppStoreMetadata {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
