@@ -24,7 +24,7 @@ struct DevManagementApp: App {
     }
 
     private var menuBarSymbol: String {
-        if model.progress != nil { return "arrow.triangle.2.circlepath" }
+        if model.hasActiveWork { return "arrow.triangle.2.circlepath" }
         return "square.stack.3d.up.fill"
     }
 }

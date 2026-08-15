@@ -12,7 +12,9 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
 
-            if let progress = model.progress {
+            if let publishing = model.publishingProgress {
+                publishingProgressSection(publishing)
+            } else if let progress = model.progress {
                 progressSection(progress)
             } else if isDeviceListExpanded
                         || (model.connectedDevices.isEmpty && model.hasIOSProjects) {
@@ -61,13 +63,13 @@ struct MenuBarView: View {
 
     private var header: some View {
         HStack(spacing: 9) {
-            Image(systemName: model.progress == nil ? "square.stack.3d.up.fill" : "arrow.triangle.2.circlepath")
+            Image(systemName: model.hasActiveWork ? "arrow.triangle.2.circlepath" : "square.stack.3d.up.fill")
                 .font(.title2)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Development Management")
                     .font(.headline)
                 Group {
-                    if model.progress == nil, !model.connectedDevices.isEmpty {
+                    if !model.hasActiveWork, !model.connectedDevices.isEmpty {
                         Button {
                             withAnimation(.easeInOut(duration: 0.16)) {
                                 isDeviceListExpanded.toggle()
@@ -99,6 +101,37 @@ struct MenuBarView: View {
                 .controlSize(.small)
                 .help("Enable automatic installation")
         }
+    }
+
+    private func publishingProgressSection(_ progress: PublishingProgress) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                ProgressView().controlSize(.small)
+                Text(progress.phase.title)
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                Button {
+                    model.cancelPublishing()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help("Cancel publication")
+            }
+            Text(L10n.format("Publishing %@ to the App Store", progress.projectName))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if !progress.latestOutput.isEmpty {
+                Text(progress.latestOutput)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
     }
 
     @ViewBuilder
@@ -299,7 +332,7 @@ struct MenuBarView: View {
                                 .disabled(
                                     !project.isEnabled
                                         || !model.hasAvailableInstallationTarget(for: project)
-                                        || model.progress != nil
+                                        || model.hasActiveWork
                                 )
                             }
                             .frame(width: 48, alignment: .trailing)
@@ -317,14 +350,14 @@ struct MenuBarView: View {
             } label: {
                 Label("Install All Now", systemImage: "arrow.triangle.2.circlepath")
             }
-            .disabled(model.projects.filter(\.isEnabled).isEmpty || model.progress != nil)
+            .disabled(model.projects.filter(\.isEnabled).isEmpty || model.hasActiveWork)
 
             Button {
                 model.refreshNow()
             } label: {
                 Label("Check now", systemImage: "arrow.clockwise")
             }
-            .disabled(model.isRefreshingDevices || model.progress != nil)
+            .disabled(model.isRefreshingDevices || model.hasActiveWork)
 
             Spacer(minLength: 8)
 
@@ -364,6 +397,7 @@ struct MenuBarView: View {
     }
 
     private var statusText: String {
+        if let publishing = model.publishingProgress { return publishing.phase.title }
         if model.progress != nil { return L10n.text("Installation in progress") }
         if !model.preferences.automationEnabled { return L10n.text("Automation is paused") }
         if model.connectedDevices.isEmpty, model.hasMacOSProjects, model.hasIOSProjects {

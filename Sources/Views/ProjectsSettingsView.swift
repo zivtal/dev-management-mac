@@ -6,6 +6,7 @@ struct ProjectsSettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selection: Set<UUID> = []
     @State private var showsRemoveConfirmation = false
+    @State private var pendingPublishProjectID: UUID?
 
     var body: some View {
         GeometryReader { geometry in
@@ -61,6 +62,24 @@ struct ProjectsSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The source folder and its files will not be deleted.")
+        }
+        .confirmationDialog(
+            Text("Publish to the App Store?"),
+            isPresented: Binding(
+                get: { pendingPublishProjectID != nil },
+                set: { if !$0 { pendingPublishProjectID = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Build, upload, and submit") {
+                if let projectID = pendingPublishProjectID {
+                    model.publish(projectID: projectID)
+                }
+                pendingPublishProjectID = nil
+            }
+            Button("Cancel", role: .cancel) { pendingPublishProjectID = nil }
+        } message: {
+            Text("This production action generates store text, collects screenshots, archives and uploads the build, updates App Store Connect, and submits the version for App Review using Publishing settings.")
         }
         .onAppear {
             model.refreshDeveloperTeams()
@@ -136,7 +155,7 @@ struct ProjectsSettingsView: View {
                 }
             }
             .help("Add application…")
-            .disabled(model.isDiscoveringProject || model.progress != nil)
+            .disabled(model.isDiscoveringProject || model.hasActiveWork)
 
             Divider().frame(height: 20).padding(.horizontal, 6)
 
@@ -146,7 +165,7 @@ struct ProjectsSettingsView: View {
                 Image(systemName: "minus")
             }
             .help("Remove")
-            .disabled(selection.isEmpty || model.progress != nil)
+            .disabled(selection.isEmpty || model.hasActiveWork)
 
             Divider().frame(height: 20).padding(.horizontal, 10)
 
@@ -155,7 +174,7 @@ struct ProjectsSettingsView: View {
             } label: {
                 Label("Install All Now", systemImage: "arrow.triangle.2.circlepath")
             }
-            .disabled(model.projects.filter(\.isEnabled).isEmpty || model.progress != nil)
+            .disabled(model.projects.filter(\.isEnabled).isEmpty || model.hasActiveWork)
 
             if model.pendingInstallAllCount > 0 {
                 Text(L10n.format("Waiting to install %d application(s)", model.pendingInstallAllCount))
@@ -215,8 +234,27 @@ struct ProjectsSettingsView: View {
                 .disabled(
                     !project.isEnabled
                         || !model.hasAvailableInstallationTarget(for: project)
-                        || model.progress != nil
+                        || model.hasActiveWork
                 )
+
+                if !project.isMacOSApplication, project.installMethod == .xcodebuild {
+                    Button {
+                        pendingPublishProjectID = project.id
+                    } label: {
+                        if model.publishingProgress?.projectID == project.id {
+                            Label {
+                                Text("Publishing…")
+                            } icon: {
+                                ProgressView().controlSize(.small)
+                            }
+                        } else {
+                            Label("Publish", systemImage: "paperplane.fill")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.hasActiveWork)
+                    .help("Build, upload, and submit this application to the App Store")
+                }
 
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([project.folderURL])
@@ -325,7 +363,7 @@ struct ProjectsSettingsView: View {
                         }
                         .buttonStyle(.borderless)
                         .help("Refresh signing teams")
-                        .disabled(model.isRefreshingDeveloperTeams || model.progress != nil)
+                        .disabled(model.isRefreshingDeveloperTeams || model.hasActiveWork)
                     }
                 }
 
@@ -366,7 +404,7 @@ struct ProjectsSettingsView: View {
                     } label: {
                         Label("Refresh devices", systemImage: "arrow.clockwise")
                     }
-                    .disabled(model.isRefreshingDevices || model.progress != nil)
+                    .disabled(model.isRefreshingDevices || model.hasActiveWork)
                 }
                 .padding(.horizontal, 12)
                 .frame(minHeight: 44)

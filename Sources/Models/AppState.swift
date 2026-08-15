@@ -8,6 +8,14 @@ struct AppPreferences: Codable, Equatable {
     var notificationsEnabled: Bool? = true
     // Retained only to migrate the former global device exclusions into each project.
     var excludedDeviceUDIDs: Set<String>?
+    var openAIModel: String?
+    var appStoreConnectIssuerID: String?
+    var appStoreConnectKeyID: String?
+    var appStoreLocale: String?
+    var appStoreCopyright: String?
+    var appStoreSupportURL: String?
+    var appStoreSubmitForReview: Bool?
+    var appStoreReleaseAutomatically: Bool?
 }
 
 struct InstallationRecord: Codable, Equatable, Identifiable {

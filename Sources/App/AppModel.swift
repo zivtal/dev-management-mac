@@ -26,6 +26,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var checkedInstalledApplicationDeviceUDIDs: Set<String> = []
     @Published private(set) var progress: InstallationProgress?
     @Published private(set) var installationLog: InstallationLogSession?
+    @Published private(set) var publishingProgress: PublishingProgress?
+    @Published private(set) var publishingLog: PublishingLogSession?
+    @Published private(set) var hasOpenAIAPIKey = false
+    @Published private(set) var hasAppStoreConnectPrivateKey = false
     @Published private(set) var isCancellingInstallation = false
     @Published private(set) var isRefreshingDevices = false
     @Published private(set) var isDiscoveringProject = false
@@ -47,6 +51,10 @@ final class AppModel: ObservableObject {
 
     var hasIOSProjects: Bool {
         projects.contains { !$0.isMacOSApplication }
+    }
+
+    var hasActiveWork: Bool {
+        progress != nil || publishingProgress != nil
     }
 
     private struct ProjectInstallationTarget {
@@ -73,8 +81,11 @@ final class AppModel: ObservableObject {
     private let notificationService: NotificationService
     private let projectIconService: ProjectIconService
     private let developerTeamService: DeveloperTeamService
+    private let credentialStore: KeychainCredentialStore
+    private let publishingService: AppStorePublishingService
     private var monitoringTask: Task<Void, Never>?
     private var activeInstallationTask: Task<InstallationOutcome, Error>?
+    private var activePublishingTask: Task<Void, Never>?
     private var installationCancellationGeneration = 0
     private var isLoading = true
     private var failedAttemptCooldowns: [String: Date] = [:]
@@ -97,7 +108,9 @@ final class AppModel: ObservableObject {
         usbConnectionMonitor: USBConnectionMonitor = USBConnectionMonitor(),
         notificationService: NotificationService = NotificationService(),
         projectIconService: ProjectIconService = ProjectIconService(),
-        developerTeamService: DeveloperTeamService = DeveloperTeamService()
+        developerTeamService: DeveloperTeamService = DeveloperTeamService(),
+        credentialStore: KeychainCredentialStore = KeychainCredentialStore(),
+        publishingService: AppStorePublishingService = AppStorePublishingService()
     ) {
         self.settingsStore = settingsStore
         self.deviceService = deviceService
@@ -109,6 +122,8 @@ final class AppModel: ObservableObject {
         self.notificationService = notificationService
         self.projectIconService = projectIconService
         self.developerTeamService = developerTeamService
+        self.credentialStore = credentialStore
+        self.publishingService = publishingService
 
         let savedState = settingsStore.load()
         var loadedPreferences = savedState.preferences
@@ -127,6 +142,8 @@ final class AppModel: ObservableObject {
         installationRecords = savedState.installationRecords
         activity = savedState.activity
         didApplyLaunchAtLoginDefault = true
+        hasOpenAIAPIKey = credentialStore.contains(.openAIAPIKey)
+        hasAppStoreConnectPrivateKey = credentialStore.contains(.appStoreConnectPrivateKey)
         isLoading = false
 
         usbConnectionMonitor.onConnectionChanged = { [weak self] in
@@ -152,6 +169,7 @@ final class AppModel: ObservableObject {
     deinit {
         monitoringTask?.cancel()
         activeInstallationTask?.cancel()
+        activePublishingTask?.cancel()
     }
 
     func startMonitoring() {
@@ -382,6 +400,187 @@ final class AppModel: ObservableObject {
         refreshProjectCompatibility(projectID: projectID)
     }
 
+    func saveOpenAIAPIKey(_ apiKey: String) {
+        do {
+            try credentialStore.set(apiKey, for: .openAIAPIKey)
+            hasOpenAIAPIKey = true
+        } catch {
+            presentedError = error.localizedDescription
+        }
+    }
+
+    func removeOpenAIAPIKey() {
+        do {
+            try credentialStore.remove(.openAIAPIKey)
+            hasOpenAIAPIKey = false
+        } catch {
+            presentedError = error.localizedDescription
+        }
+    }
+
+    func saveAppStoreConnectPrivateKey(_ privateKey: String) {
+        guard privateKey.contains("BEGIN PRIVATE KEY") else {
+            presentedError = L10n.text("The selected file is not an App Store Connect .p8 private key.")
+            return
+        }
+        do {
+            try credentialStore.set(privateKey, for: .appStoreConnectPrivateKey)
+            hasAppStoreConnectPrivateKey = true
+        } catch {
+            presentedError = error.localizedDescription
+        }
+    }
+
+    func removeAppStoreConnectPrivateKey() {
+        do {
+            try credentialStore.remove(.appStoreConnectPrivateKey)
+            hasAppStoreConnectPrivateKey = false
+        } catch {
+            presentedError = error.localizedDescription
+        }
+    }
+
+    func publish(projectID: UUID) {
+        guard !hasActiveWork else {
+            presentedError = L10n.text("Another build, installation, or publication is already in progress.")
+            return
+        }
+        refreshProjectVersions()
+        guard let project = projects.first(where: { $0.id == projectID }) else { return }
+        guard !project.isMacOSApplication, project.installMethod == .xcodebuild else {
+            presentedError = AppStorePublishingError.unsupportedProject.localizedDescription
+            return
+        }
+        let issuerID = preferences.appStoreConnectIssuerID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let keyID = preferences.appStoreConnectKeyID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !issuerID.isEmpty, !keyID.isEmpty else {
+            presentedError = L10n.text("Enter the App Store Connect issuer ID and key ID in Publishing settings.")
+            return
+        }
+        let copyright = preferences.appStoreCopyright?.nilIfEmpty ?? ""
+        guard !copyright.isEmpty else {
+            presentedError = L10n.text("Enter the copyright owner in Publishing settings.")
+            return
+        }
+        let supportURL = preferences.appStoreSupportURL?.nilIfEmpty ?? ""
+        guard let parsedSupportURL = URL(string: supportURL),
+              ["http", "https"].contains(parsedSupportURL.scheme?.lowercased() ?? ""),
+              parsedSupportURL.host != nil else {
+            presentedError = L10n.text("Enter a valid support URL in Publishing settings.")
+            return
+        }
+        guard let openAIAPIKey = try? credentialStore.string(for: .openAIAPIKey),
+              !openAIAPIKey.isEmpty else {
+            presentedError = L10n.text("Save an OpenAI API key in Publishing settings.")
+            return
+        }
+        guard let privateKey = try? credentialStore.string(for: .appStoreConnectPrivateKey),
+              !privateKey.isEmpty else {
+            presentedError = L10n.text("Import an App Store Connect .p8 private key in Publishing settings.")
+            return
+        }
+
+        let publishingConfiguration = PublishingConfiguration(
+            openAIAPIKey: openAIAPIKey,
+            openAIModel: preferences.openAIModel?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                ?? "gpt-5.6-luna",
+            appStoreConnectIssuerID: issuerID,
+            appStoreConnectKeyID: keyID,
+            appStoreConnectPrivateKey: privateKey,
+            locale: preferences.appStoreLocale?.nilIfEmpty ?? "en-US",
+            copyright: copyright,
+            supportURL: supportURL,
+            submitForReview: preferences.appStoreSubmitForReview ?? true,
+            releaseAutomatically: preferences.appStoreReleaseAutomatically ?? true
+        )
+        var log = PublishingLogSession(projectName: project.displayName)
+        let logID = log.id
+        log.append(L10n.format("Starting App Store publication for %@ %@ (%@).\n", project.displayName, project.marketingVersion ?? "—", project.buildNumber ?? "—"))
+        publishingLog = log
+        publishingProgress = PublishingProgress(
+            projectID: project.id,
+            projectName: project.displayName,
+            phase: .preparing,
+            latestOutput: log.latestOutputLine
+        )
+        addActivity(
+            level: .info,
+            title: L10n.format("Starting App Store publication of %@", project.displayName),
+            projectID: project.id
+        )
+
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await publishingService.publish(
+                    project: project,
+                    configuration: publishingConfiguration,
+                    eventHandler: { [weak self] event in
+                        Task { @MainActor [weak self] in
+                            self?.handlePublishingEvent(event, logID: logID)
+                        }
+                    }
+                )
+                guard !Task.isCancelled else { throw CancellationError() }
+                if var currentLog = publishingLog, currentLog.id == logID {
+                    currentLog.state = .succeeded
+                    currentLog.append(L10n.text("Publication completed successfully.\n"))
+                    publishingLog = currentLog
+                }
+                publishingProgress = nil
+                activePublishingTask = nil
+                addActivity(
+                    level: .success,
+                    title: result.submittedForReview
+                        ? L10n.format("%@ %@ (%@) was submitted for App Review", project.displayName, result.version, result.buildNumber)
+                        : L10n.format("%@ %@ (%@) was uploaded to App Store Connect", project.displayName, result.version, result.buildNumber),
+                    details: publishingLog?.output,
+                    projectID: project.id
+                )
+            } catch {
+                let cancelled = Task.isCancelled || error is CancellationError
+                if var currentLog = publishingLog, currentLog.id == logID {
+                    currentLog.state = cancelled ? .cancelled : .failed
+                    currentLog.append("\n\(cancelled ? L10n.text("Publication canceled by user.") : error.localizedDescription)\n")
+                    publishingLog = currentLog
+                }
+                publishingProgress = nil
+                activePublishingTask = nil
+                addActivity(
+                    level: cancelled ? .warning : .error,
+                    title: cancelled
+                        ? L10n.format("Publication of %@ was canceled", project.displayName)
+                        : L10n.format("Publication of %@ failed", project.displayName),
+                    details: publishingLog?.output,
+                    projectID: project.id
+                )
+                if !cancelled { presentedError = error.localizedDescription }
+            }
+        }
+        activePublishingTask = task
+    }
+
+    func cancelPublishing() {
+        activePublishingTask?.cancel()
+    }
+
+    private func handlePublishingEvent(_ event: PublishingEvent, logID: UUID) {
+        guard var log = publishingLog, log.id == logID, log.state == .inProgress,
+              var current = publishingProgress else { return }
+        switch event {
+        case .phase(let phase):
+            log.phase = phase
+            current.phase = phase
+        case .output(let output):
+            log.append(output)
+            current.latestOutput = log.latestOutputLine
+        }
+        publishingLog = log
+        publishingProgress = current
+    }
+
     func installNow(projectID: UUID, deviceUDID: String? = nil) {
         guard let project = projects.first(where: { $0.id == projectID }) else { return }
         guard project.isEnabled else {
@@ -439,7 +638,7 @@ final class AppModel: ObservableObject {
     }
 
     func installAll() {
-        guard progress == nil else {
+        guard !hasActiveWork else {
             presentedError = L10n.text("An installation is already in progress. Try again when it finishes.")
             return
         }
@@ -544,7 +743,7 @@ final class AppModel: ObservableObject {
     }
 
     private func installDueProjects(on devices: [ConnectedDevice]) async {
-        guard progress == nil else { return }
+        guard !hasActiveWork else { return }
         let enabledProjects = projects.filter(\.isEnabled)
         let now = Date()
         let cancellationGeneration = installationCancellationGeneration
@@ -630,7 +829,7 @@ final class AppModel: ObservableObject {
     }
 
     private func installAllRequestedProjects(on devices: [ConnectedDevice]) async {
-        guard progress == nil else { return }
+        guard !hasActiveWork else { return }
         let cancellationGeneration = installationCancellationGeneration
         let requestedIDs = projects.map(\.id).filter { installAllTargets[$0] != nil }
         for projectID in requestedIDs {
@@ -705,7 +904,7 @@ final class AppModel: ObservableObject {
         } else {
             guard project.isMacOSApplication, project.isEnabled else { return false }
         }
-        guard progress == nil else {
+        guard !hasActiveWork else {
             if ignoreSchedule {
                 presentedError = L10n.text("An installation is already in progress. Try again when it finishes.")
             }
@@ -1125,5 +1324,12 @@ final class AppModel: ObservableObject {
     private static func trimmedError(_ text: String, limit: Int = 30_000) -> String {
         guard text.count > limit else { return text }
         return "…\n" + String(text.suffix(limit))
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

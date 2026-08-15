@@ -14,6 +14,10 @@ struct SettingsView: View {
                 .environmentObject(model)
                 .tabItem { Label("Applications", systemImage: "app.badge") }
 
+            PublishingSettingsView()
+                .environmentObject(model)
+                .tabItem { Label("Publishing", systemImage: "paperplane") }
+
             ActivityView()
                 .environmentObject(model)
                 .tabItem { Label("Activity", systemImage: "list.bullet.rectangle") }
@@ -164,7 +168,7 @@ private struct DevicesSettingsView: View {
                 } label: {
                     Label("Refresh devices", systemImage: "arrow.clockwise")
                 }
-                .disabled(model.isRefreshingDevices || model.progress != nil)
+                .disabled(model.isRefreshingDevices || model.hasActiveWork)
             }
 
             if model.connectedDevices.isEmpty {
