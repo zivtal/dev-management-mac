@@ -35,7 +35,7 @@ struct PublishingSettingsView: View {
                         .labelsHidden()
                         .frame(width: 220)
                 }
-                Text("Save the key here, then use Generate Settings with OpenAI in the Publish window. OpenAI generates an editable description, subtitle, keywords, promotional text, release notes, and app categories. Publish also generates them automatically when no manual draft is saved. URLs, legal terms, prices, and review facts are never invented.")
+                Text("Save the key here, then use Generate Settings with OpenAI in the Publish window. OpenAI detects the app’s languages and creates a separate editable description, subtitle, keywords, promotional text, and release notes for each language, plus app categories. Publish also generates them automatically when no manual draft is saved. URLs, legal terms, prices, and review facts are never invented.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("The app sends the application name, version, identifiers, and excerpts from its README or supported project manifest to the OpenAI Responses API. Swift and Objective-C source code and credentials are not uploaded.")

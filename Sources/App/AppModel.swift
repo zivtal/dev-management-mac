@@ -514,7 +514,9 @@ final class AppModel: ObservableObject {
             return
         }
         let openAIAPIKey = (try? credentialStore.string(for: .openAIAPIKey)) ?? ""
-        if perAppConfiguration?.metadata == nil, openAIAPIKey.isEmpty {
+        if perAppConfiguration?.metadata == nil,
+           perAppConfiguration?.localizations?.isEmpty != false,
+           openAIAPIKey.isEmpty {
             presentedError = L10n.text("Save an OpenAI API key in Publishing settings or enter manual metadata in the per-app configuration.")
             return
         }
@@ -593,6 +595,13 @@ final class AppModel: ObservableObject {
                 demoAccountPassword: demoAccountPassword?.nilIfEmpty
             ),
             manualMetadata: perAppConfiguration?.metadata?.normalized(),
+            manualLocalizations: perAppConfiguration?.localizations?.map { $0.normalized() } ?? [],
+            detectedLocales: ProjectLocalizationDiscoveryService().discover(
+                project: project,
+                defaultLocale: perAppConfiguration?.locale?.nilIfEmpty
+                    ?? preferences.appStoreLocale?.nilIfEmpty
+                    ?? "en-US"
+            ),
             screenshotPaths: perAppConfiguration?.screenshotPaths ?? [],
             replaceScreenshots: perAppConfiguration?.replaceScreenshots ?? false,
             submitForReview: submitForReview,
@@ -710,6 +719,25 @@ final class AppModel: ObservableObject {
         projectID: UUID,
         locale: String
     ) async throws -> AppStoreMetadata {
+        let generated = try await generateAppStoreMetadataDrafts(
+            projectID: projectID,
+            preferredLocale: locale
+        )
+        guard let localization = generated.localizations.first(where: {
+            $0.locale.caseInsensitiveCompare(locale) == .orderedSame
+        }) ?? generated.localizations.first else {
+            throw OpenAIStoreMetadataError.missingGeneratedText
+        }
+        return localization.metadata(
+            primaryCategory: generated.primaryCategory,
+            secondaryCategory: generated.secondaryCategory
+        )
+    }
+
+    func generateAppStoreMetadataDrafts(
+        projectID: UUID,
+        preferredLocale: String
+    ) async throws -> AppStoreGeneratedMetadata {
         guard let project = projects.first(where: { $0.id == projectID }) else {
             throw AppStorePublishingError.unsupportedProject
         }
@@ -719,9 +747,15 @@ final class AppModel: ObservableObject {
                 L10n.text("Save an OpenAI API key in Publishing settings before generating metadata.")
             )
         }
-        return try await OpenAIStoreMetadataService().generate(
+        let locales = ProjectLocalizationDiscoveryService().discover(
             project: project,
-            locale: locale.nilIfEmpty ?? preferences.appStoreLocale?.nilIfEmpty ?? "en-US",
+            defaultLocale: preferredLocale.nilIfEmpty
+                ?? preferences.appStoreLocale?.nilIfEmpty
+                ?? "en-US"
+        )
+        return try await OpenAIStoreMetadataService().generateLocalized(
+            project: project,
+            locales: locales,
             apiKey: apiKey,
             model: preferences.openAIModel?.nilIfEmpty ?? "gpt-5.6-luna"
         )

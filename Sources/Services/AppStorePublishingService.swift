@@ -110,18 +110,57 @@ final class AppStorePublishingService {
 
         eventHandler(.phase(.generatingMetadata))
         let metadata: AppStoreMetadata
-        if let manualMetadata = configuration.manualMetadata {
+        let localizedMetadata: [AppStoreLocalizedMetadata]
+        if !configuration.manualLocalizations.isEmpty {
+            localizedMetadata = configuration.manualLocalizations.map { $0.normalized() }
+            let preferred = localizedMetadata.first(where: {
+                $0.locale.caseInsensitiveCompare(configuration.locale) == .orderedSame
+            }) ?? localizedMetadata[0]
+            metadata = preferred.metadata(
+                primaryCategory: configuration.manualMetadata?.primaryCategory,
+                secondaryCategory: configuration.manualMetadata?.secondaryCategory
+            )
+            eventHandler(.output(L10n.format(
+                "Using manually configured App Store metadata for %d language(s).\n",
+                localizedMetadata.count
+            )))
+        } else if let manualMetadata = configuration.manualMetadata {
             metadata = manualMetadata.normalized()
+            localizedMetadata = [
+                AppStoreLocalizedMetadata(
+                    locale: configuration.locale,
+                    appName: configuration.appName ?? project.displayName,
+                    subtitle: configuration.subtitle ?? metadata.subtitle ?? "",
+                    description: metadata.description,
+                    keywords: metadata.keywords,
+                    promotionalText: metadata.promotionalText,
+                    whatsNew: metadata.whatsNew
+                ).normalized()
+            ]
             eventHandler(.output(L10n.text("Using manually configured per-app App Store metadata.\n")))
         } else {
-            eventHandler(.output(L10n.text("Generating structured App Store metadata with OpenAI…\n")))
-            metadata = try await openAIService.generate(
+            eventHandler(.output(L10n.format(
+                "Generating structured App Store metadata with OpenAI for %d language(s)…\n",
+                configuration.detectedLocales.count
+            )))
+            let generated = try await openAIService.generateLocalized(
                 project: project,
-                locale: configuration.locale,
+                locales: configuration.detectedLocales,
                 apiKey: configuration.openAIAPIKey,
                 model: configuration.openAIModel
             )
-            eventHandler(.output(L10n.text("App Store metadata generated and validated.\n")))
+            localizedMetadata = generated.localizations
+            let preferred = localizedMetadata.first(where: {
+                $0.locale.caseInsensitiveCompare(configuration.locale) == .orderedSame
+            }) ?? localizedMetadata[0]
+            metadata = preferred.metadata(
+                primaryCategory: generated.primaryCategory,
+                secondaryCategory: generated.secondaryCategory
+            )
+            eventHandler(.output(L10n.format(
+                "App Store metadata generated and validated for %d language(s).\n",
+                localizedMetadata.count
+            )))
         }
         var applicationConfiguration = subscriptionCatalog.application
         if applicationConfiguration == nil,
@@ -177,6 +216,7 @@ final class AppStorePublishingService {
             version: version,
             locale: configuration.locale,
             metadata: metadata,
+            localizedMetadata: localizedMetadata,
             copyright: configuration.copyright,
             supportURL: configuration.supportURL,
             marketingURL: configuration.marketingURL,

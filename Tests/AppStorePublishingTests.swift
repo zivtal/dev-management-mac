@@ -3,6 +3,13 @@ import XCTest
 @testable import DevManagement
 
 final class AppStorePublishingTests: XCTestCase {
+    func testPublishingWindowLayoutExpandsAcrossTheAvailableWidth() {
+        XCTAssertEqual(PublishingWindowLayout(width: 899), .singleColumn)
+        XCTAssertEqual(PublishingWindowLayout(width: 900), .twoColumns)
+        XCTAssertEqual(PublishingWindowLayout(width: 1_499), .twoColumns)
+        XCTAssertEqual(PublishingWindowLayout(width: 1_500), .threeColumns)
+    }
+
     func testOpenAIRequestUsesStrictStructuredOutputAndDisablesStorage() throws {
         let body = OpenAIStoreMetadataService.requestBody(
             model: "gpt-5.6-luna",
@@ -70,6 +77,60 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertNotNil(properties["secondaryCategory"])
         let required = try XCTUnwrap(schema["required"] as? [String])
         XCTAssertTrue(required.contains("primaryCategory"))
+    }
+
+    func testOpenAIRequestGeneratesOneEditableListingForEveryDetectedLanguage() throws {
+        let body = OpenAIStoreMetadataService.localizedRequestBody(
+            model: "model",
+            prompt: "prompt",
+            locales: ["en-US", "he"]
+        )
+        XCTAssertEqual(body["store"] as? Bool, false)
+        let text = try XCTUnwrap(body["text"] as? [String: Any])
+        let format = try XCTUnwrap(text["format"] as? [String: Any])
+        let schema = try XCTUnwrap(format["schema"] as? [String: Any])
+        let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+        let localizations = try XCTUnwrap(properties["localizations"] as? [String: Any])
+        XCTAssertEqual(localizations["minItems"] as? Int, 2)
+        XCTAssertEqual(localizations["maxItems"] as? Int, 2)
+        let items = try XCTUnwrap(localizations["items"] as? [String: Any])
+        let itemProperties = try XCTUnwrap(items["properties"] as? [String: Any])
+        let locale = try XCTUnwrap(itemProperties["locale"] as? [String: Any])
+        XCTAssertEqual(locale["enum"] as? [String], ["en-US", "he"])
+    }
+
+    func testDiscoversAppLanguagesFromXcodeAndLocalizationResources() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProjectLocalizationTests-\(UUID().uuidString)", isDirectory: true)
+        let projectDirectory = root.appendingPathComponent("Example.xcodeproj", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("Resources/fr.lproj", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try """
+        developmentRegion = en;
+        knownRegions = (Base, en, de);
+        """.write(
+            to: projectDirectory.appendingPathComponent("project.pbxproj"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let catalog = #"{"sourceLanguage":"en","strings":{"title":{"localizations":{"he":{}}}}}"#
+        try catalog.write(
+            to: root.appendingPathComponent("Localizable.xcstrings"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let locales = ProjectLocalizationDiscoveryService().discover(
+            project: managedProject(at: root),
+            defaultLocale: "es-ES"
+        )
+        XCTAssertEqual(Set(locales), Set(["de-DE", "en-US", "es-ES", "fr-FR", "he"]))
+        XCTAssertEqual(locales.first, "es-ES")
     }
 
     func testScreenshotDimensionsMapToAppStoreDisplayTypes() {
@@ -303,6 +364,28 @@ final class AppStorePublishingTests: XCTestCase {
         )
         XCTAssertTrue(catalog.detectedProductIDs.contains("com.example.app.premium.monthly"))
         XCTAssertFalse(catalog.detectedProductIDs.contains("com.example.premium.application"))
+        XCTAssertEqual(catalog.subscriptionCount, 1)
+        XCTAssertTrue(catalog.sourceFiles.contains("Purchases.swift"))
+    }
+
+    func testDiscoversNestedPublishingManifestFromTheAppFolder() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("NestedPublishingManifestTests-\(UUID().uuidString)", isDirectory: true)
+        let configurationDirectory = root.appendingPathComponent("Config/AppStore", isDirectory: true)
+        try FileManager.default.createDirectory(at: configurationDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try #"{"schemaVersion":1,"publication":{"locale":"fr-FR"}}"#.write(
+            to: configurationDirectory.appendingPathComponent("app-store-publishing.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let catalog = try StoreKitSubscriptionDiscoveryService().discover(
+            project: managedProject(at: root),
+            defaultLocale: "en-US"
+        )
+        XCTAssertEqual(catalog.publication?.locale, "fr-FR")
+        XCTAssertTrue(catalog.sourceFiles.contains("Config/AppStore/app-store-publishing.json"))
     }
 
     func testPublishedOlderVersionSelectsVersionOnlyUpdate() {

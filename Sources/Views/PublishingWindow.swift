@@ -2,6 +2,34 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum PublishingWindowLayout: Equatable {
+    case singleColumn
+    case twoColumns
+    case threeColumns
+
+    init(width: CGFloat) {
+        if width >= 1_500 {
+            self = .threeColumns
+        } else if width >= 900 {
+            self = .twoColumns
+        } else {
+            self = .singleColumn
+        }
+    }
+}
+
+private enum PublishingWorkspace: String, CaseIterable {
+    case overview
+    case configuration
+
+    var title: String {
+        switch self {
+        case .overview: L10n.text("Publish Overview")
+        case .configuration: L10n.text("Publishing Configuration")
+        }
+    }
+}
+
 @MainActor
 final class PublishingWindowPresenter {
     static let shared = PublishingWindowPresenter()
@@ -26,7 +54,11 @@ final class PublishingWindowPresenter {
         panel.isFloatingPanel = false
         panel.isReleasedWhenClosed = false
         panel.minSize = NSSize(width: 600, height: 580)
-        panel.center()
+        if let screen = NSApplication.shared.keyWindow?.screen ?? NSScreen.main ?? NSScreen.screens.first {
+            panel.setFrame(screen.visibleFrame, display: false)
+        } else {
+            panel.center()
+        }
         windowController = NSWindowController(window: panel)
 
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -48,7 +80,7 @@ private struct PublishingWindowView: View {
     @State private var appStoreConfiguration: AppStoreConfigurationState = .loading
     @State private var selectedAction = PublishingAction.release
     @State private var configurationRevision = 0
-    @State private var showsPerAppConfiguration = false
+    @State private var selectedWorkspace = PublishingWorkspace.overview
     @State private var configurationEditorStartsWithAI = false
     @State private var showsConfirmation = false
     @State private var showsCodeConfirmation = false
@@ -82,13 +114,42 @@ private struct PublishingWindowView: View {
                     description: Text("Add an iOS application that uses Direct Xcode build.")
                 )
             } else if let project = selectedProject {
-                projectOptions(project)
+                Picker("Workspace", selection: $selectedWorkspace) {
+                    ForEach(PublishingWorkspace.allCases, id: \.self) { workspace in
+                        Text(workspace.title).tag(workspace)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+
+                if selectedWorkspace == .overview {
+                    projectOptions(project)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    footer(project)
+                } else {
+                    PerAppPublishingConfigurationEditor(
+                        project: project,
+                        defaults: model.preferences,
+                        currentConfiguration: currentAppStoreSnapshot,
+                        generateAIDraftOnOpen: configurationEditorStartsWithAI,
+                        onCancel: {
+                            configurationEditorStartsWithAI = false
+                            selectedWorkspace = .overview
+                        },
+                        onSave: {
+                            configurationRevision += 1
+                            configurationEditorStartsWithAI = false
+                            selectedWorkspace = .overview
+                        }
+                    )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                footer(project)
+                }
             }
         }
         .padding(20)
         .frame(minWidth: 540, minHeight: 460)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             if selectedProject == nil {
                 selectedProjectID = eligibleProjects.first?.id
@@ -99,20 +160,6 @@ private struct PublishingWindowView: View {
         }
         .task(id: appStoreConfigurationTaskID) {
             await refreshAppStoreConfiguration()
-        }
-        .sheet(isPresented: $showsPerAppConfiguration) {
-            if let project = selectedProject {
-                PerAppPublishingConfigurationEditor(
-                    project: project,
-                    defaults: model.preferences,
-                    currentConfiguration: currentAppStoreSnapshot,
-                    generateAIDraftOnOpen: configurationEditorStartsWithAI,
-                    onSave: {
-                        configurationRevision += 1
-                        showsPerAppConfiguration = false
-                    }
-                )
-            }
         }
         .onChange(of: codeKind) { _, kind in
             if kind == .oneTime, numberOfCodes < 500 {
@@ -171,47 +218,96 @@ private struct PublishingWindowView: View {
     }
 
     private func projectOptions(_ project: ManagedProject) -> some View {
-        Form {
-            Section("Application") {
-                Picker("Application", selection: $selectedProjectID) {
-                    ForEach(eligibleProjects) { candidate in
-                        Text(candidate.displayName).tag(Optional(candidate.id))
+        GeometryReader { geometry in
+            switch PublishingWindowLayout(width: geometry.size.width) {
+            case .threeColumns:
+                HStack(alignment: .top, spacing: 16) {
+                    publishingColumn {
+                        applicationSection(project)
+                        actionPicker
+                        localPublishSummary(project)
+                    }
+                    publishingColumn {
+                        appStoreConnectOptions
+                    }
+                    publishingColumn {
+                        selectedActionOptions
                     }
                 }
-                LabeledContent("Bundle identifier", value: project.bundleIdentifier ?? L10n.text("Unknown"))
-                LabeledContent("Version", value: project.marketingVersion ?? L10n.text("Unknown"))
-                LabeledContent("Build", value: project.buildNumber ?? L10n.text("Unknown"))
-                Button {
-                    configurationEditorStartsWithAI = false
-                    showsPerAppConfiguration = true
-                } label: {
-                    Label("Edit Full Publishing Configuration…", systemImage: "doc.badge.gearshape")
+            case .twoColumns:
+                HStack(alignment: .top, spacing: 16) {
+                    publishingColumn {
+                        applicationSection(project)
+                        actionPicker
+                        localPublishSummary(project)
+                    }
+                    publishingColumn {
+                        appStoreConnectOptions
+                        selectedActionOptions
+                    }
                 }
-                Button {
-                    configurationEditorStartsWithAI = true
-                    showsPerAppConfiguration = true
-                } label: {
-                    Label("Generate Settings with OpenAI…", systemImage: "sparkles")
-                }
-            }
-
-            Picker("Action", selection: $selectedAction) {
-                Text("App Release").tag(PublishingAction.release)
-                Text("Offer Codes").tag(PublishingAction.offerCodes)
-            }
-            .pickerStyle(.segmented)
-
-            Group {
-                localPublishSummary(project)
-                appStoreConnectOptions
-                if selectedAction == .release {
-                    releaseOptions
-                } else {
-                    offerCodeOptions
+            case .singleColumn:
+                publishingColumn {
+                    applicationSection(project)
+                    actionPicker
+                    localPublishSummary(project)
+                    appStoreConnectOptions
+                    selectedActionOptions
                 }
             }
         }
+    }
+
+    private func publishingColumn<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Form {
+            content()
+        }
         .formStyle(.grouped)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func applicationSection(_ project: ManagedProject) -> some View {
+        Section("Application") {
+            Picker("Application", selection: $selectedProjectID) {
+                ForEach(eligibleProjects) { candidate in
+                    Text(candidate.displayName).tag(Optional(candidate.id))
+                }
+            }
+            LabeledContent("Bundle identifier", value: project.bundleIdentifier ?? L10n.text("Unknown"))
+            LabeledContent("Version", value: project.marketingVersion ?? L10n.text("Unknown"))
+            LabeledContent("Build", value: project.buildNumber ?? L10n.text("Unknown"))
+            Button {
+                configurationEditorStartsWithAI = false
+                selectedWorkspace = .configuration
+            } label: {
+                Label("Edit Full Publishing Configuration…", systemImage: "doc.badge.gearshape")
+            }
+            Button {
+                configurationEditorStartsWithAI = true
+                selectedWorkspace = .configuration
+            } label: {
+                Label("Generate Settings with OpenAI…", systemImage: "sparkles")
+            }
+        }
+    }
+
+    private var actionPicker: some View {
+        Picker("Action", selection: $selectedAction) {
+            Text("App Release").tag(PublishingAction.release)
+            Text("Offer Codes").tag(PublishingAction.offerCodes)
+        }
+        .pickerStyle(.segmented)
+    }
+
+    @ViewBuilder
+    private var selectedActionOptions: some View {
+        if selectedAction == .release {
+            releaseOptions
+        } else {
+            offerCodeOptions
+        }
     }
 
     @ViewBuilder
@@ -232,12 +328,33 @@ private struct PublishingWindowView: View {
                 let publication = preview.catalog.publication
                 let application = preview.catalog.application
                 LabeledContent("Metadata source") {
-                    Text(publication?.metadata == nil
-                        ? "OpenAI editable generation"
-                        : "Per-app editable metadata")
+                    let configuredCount = publication?.localizations?.count ?? 0
+                    Text(publication?.metadata == nil && configuredCount == 0
+                        ? L10n.format(
+                            "OpenAI generation for %d language(s)",
+                            ProjectLocalizationDiscoveryService().discover(
+                                project: project,
+                                defaultLocale: publication?.locale
+                                    ?? model.preferences.appStoreLocale
+                                    ?? "en-US"
+                            ).count
+                        )
+                        : L10n.format(
+                            "Per-app editable metadata for %d language(s)",
+                            max(configuredCount, 1)
+                        ))
                 }
                 LabeledContent("Locale") {
                     selectableValue(publication?.locale ?? model.preferences.appStoreLocale)
+                }
+                LabeledContent("Detected app languages") {
+                    Text(verbatim: ProjectLocalizationDiscoveryService().discover(
+                        project: project,
+                        defaultLocale: publication?.locale
+                            ?? model.preferences.appStoreLocale
+                            ?? "en-US"
+                    ).joined(separator: ", "))
+                    .textSelection(.enabled)
                 }
                 LabeledContent("Primary category") {
                     selectableValue(application?.primaryCategory ?? publication?.metadata?.primaryCategory)
@@ -271,12 +388,40 @@ private struct PublishingWindowView: View {
                         .padding(.vertical, 6)
                     }
                 }
+                if let localizations = publication?.localizations, !localizations.isEmpty {
+                    DisclosureGroup(L10n.format("Localized Store Listings (%d)", localizations.count)) {
+                        ForEach(localizations) { localization in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(verbatim: localization.locale)
+                                    .font(.headline)
+                                metadataValue("App name", localization.appName)
+                                metadataValue("Subtitle", localization.subtitle)
+                                metadataValue("Description", localization.description)
+                                metadataValue("Keywords", localization.keywords)
+                                metadataValue("Promotional text", localization.promotionalText)
+                                metadataValue("What’s New", localization.whatsNew)
+                            }
+                            .padding(.vertical, 5)
+                        }
+                    }
+                }
 
                 let productCount = preview.catalog.subscriptionCount
                 DisclosureGroup(L10n.format("Local Subscriptions (%d)", productCount)) {
                     if preview.catalog.groups.isEmpty {
-                        Text("No local subscriptions were detected.")
-                            .foregroundStyle(.secondary)
+                        if preview.catalog.detectedProductIDs.isEmpty {
+                            Text("No local subscriptions were detected.")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(preview.catalog.detectedProductIDs.sorted(), id: \.self) { productID in
+                                Text(verbatim: productID)
+                                    .font(.caption.monospaced())
+                                    .textSelection(.enabled)
+                            }
+                            Text("Product identifiers were found in source files. Add duration, pricing, and group details in the Subscriptions tab before creating new products.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     } else {
                         ForEach(Array(preview.catalog.groups.enumerated()), id: \.offset) { _, group in
                             VStack(alignment: .leading, spacing: 4) {
@@ -1136,13 +1281,13 @@ private struct PublishingWindowView: View {
 }
 
 private struct PerAppPublishingConfigurationEditor: View {
-    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
 
     let project: ManagedProject
     let defaults: AppPreferences
     let currentConfiguration: AppStoreConnectConfigurationSnapshot?
     let generateAIDraftOnOpen: Bool
+    let onCancel: () -> Void
     let onSave: () -> Void
 
     @State private var selectedTab = ConfigurationTab.listing
@@ -1159,6 +1304,8 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var keywords = ""
     @State private var promotionalText = ""
     @State private var whatsNew = ""
+    @State private var additionalLocalizations: [AppStoreLocalizedMetadata] = []
+    @State private var detectedLocales: [String] = []
     @State private var useAIMetadata = true
     @State private var copyright = ""
     @State private var supportURL = ""
@@ -1209,7 +1356,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                         if isGeneratingAI {
                             ProgressView().controlSize(.small)
                         } else {
-                            Label("Generate Editable AI Draft", systemImage: "sparkles")
+                            Label("Generate All Languages with OpenAI", systemImage: "sparkles")
                         }
                     }
                     .disabled(isLoading || isGeneratingAI)
@@ -1248,7 +1395,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { onCancel() }
                 Button("Validate and Save") { save() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
@@ -1257,6 +1404,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         }
         .padding(20)
         .frame(minWidth: 860, minHeight: 760)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             load()
             if generateAIDraftOnOpen, validationMessage == nil {
@@ -1281,11 +1429,15 @@ private struct PerAppPublishingConfigurationEditor: View {
         case .listing:
             Form {
                 Section("Localization") {
+                    LabeledContent("Detected app languages") {
+                        Text(verbatim: detectedLocales.joined(separator: ", "))
+                            .textSelection(.enabled)
+                    }
                     TextField("Locale", text: $locale)
                     TextField("App name", text: $appName)
                     TextField("Subtitle", text: $subtitle)
                     Toggle("Generate metadata with OpenAI during Publish", isOn: $useAIMetadata)
-                    Text("Generate an AI draft now to review and edit it, or leave AI enabled to generate automatically during Publish.")
+                    Text("OpenAI generates a separate editable listing for every language detected in the app project.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1294,6 +1446,56 @@ private struct PerAppPublishingConfigurationEditor: View {
                     TextField("Keywords", text: $keywords)
                     TextField("Promotional text", text: $promotionalText)
                     configurationTextEditor("What’s New", text: $whatsNew, height: 80)
+                }
+                Section("Additional Localized Listings") {
+                    if additionalLocalizations.isEmpty {
+                        Text("No additional localized listing is configured.")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(additionalLocalizations.indices, id: \.self) { index in
+                        DisclosureGroup(additionalLocalizations[index].locale) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                TextField("Locale", text: $additionalLocalizations[index].locale)
+                                TextField("App name", text: $additionalLocalizations[index].appName)
+                                TextField("Subtitle", text: $additionalLocalizations[index].subtitle)
+                                configurationTextEditor(
+                                    "Description",
+                                    text: $additionalLocalizations[index].description,
+                                    height: 110
+                                )
+                                TextField("Keywords", text: $additionalLocalizations[index].keywords)
+                                TextField(
+                                    "Promotional text",
+                                    text: $additionalLocalizations[index].promotionalText
+                                )
+                                configurationTextEditor(
+                                    "What’s New",
+                                    text: $additionalLocalizations[index].whatsNew,
+                                    height: 70
+                                )
+                                Button("Remove Localization", role: .destructive) {
+                                    guard additionalLocalizations.indices.contains(index) else { return }
+                                    additionalLocalizations.remove(at: index)
+                                }
+                            }
+                            .padding(.vertical, 6)
+                        }
+                    }
+                    Button {
+                        additionalLocalizations.append(
+                            AppStoreLocalizedMetadata(
+                                locale: "en-US",
+                                appName: appName,
+                                subtitle: "",
+                                description: "",
+                                keywords: "",
+                                promotionalText: "",
+                                whatsNew: ""
+                            )
+                        )
+                    } label: {
+                        Label("Add Localization", systemImage: "plus")
+                    }
                 }
                 Section("URLs and Rights") {
                     TextField("Support URL", text: $supportURL)
@@ -1430,6 +1632,10 @@ private struct PerAppPublishingConfigurationEditor: View {
     private func load() {
         defer { isLoading = false }
         do {
+            detectedLocales = ProjectLocalizationDiscoveryService().discover(
+                project: project,
+                defaultLocale: defaults.appStoreLocale?.nilIfEmpty ?? "en-US"
+            )
             var manifest: AppStorePublishingManifest
             let hasSavedConfiguration = FileManager.default.fileExists(atPath: configurationURL.path)
             if hasSavedConfiguration {
@@ -1528,6 +1734,24 @@ private struct PerAppPublishingConfigurationEditor: View {
                 secondaryCategory: currentConfiguration.secondaryCategory
             )
         }
+        if (publication.localizations?.isEmpty != false || preferCurrentValues),
+           let versionLocalizations = currentConfiguration.version?.localizations,
+           !versionLocalizations.isEmpty {
+            publication.localizations = versionLocalizations.map { localization in
+                let localizedApp = currentConfiguration.appLocalizations.first(where: {
+                    $0.locale.caseInsensitiveCompare(localization.locale) == .orderedSame
+                })
+                return AppStoreLocalizedMetadata(
+                    locale: localization.locale,
+                    appName: localizedApp?.name ?? currentConfiguration.appName,
+                    subtitle: localizedApp?.subtitle ?? "",
+                    description: localization.description ?? "",
+                    keywords: localization.keywords ?? "",
+                    promotionalText: localization.promotionalText ?? "",
+                    whatsNew: localization.whatsNew ?? ""
+                )
+            }
+        }
         manifest.publication = publication
         var application = manifest.application ?? AppStoreApplicationConfiguration(
             primaryCategory: nil,
@@ -1596,7 +1820,26 @@ private struct PerAppPublishingConfigurationEditor: View {
         keywords = publication.metadata?.keywords ?? ""
         promotionalText = publication.metadata?.promotionalText ?? ""
         whatsNew = publication.metadata?.whatsNew ?? ""
+        if let localizations = publication.localizations, !localizations.isEmpty {
+            let primaryIndex = localizations.firstIndex(where: {
+                $0.locale.caseInsensitiveCompare(locale) == .orderedSame
+            }) ?? 0
+            let primary = localizations[primaryIndex]
+            locale = primary.locale
+            appName = primary.appName
+            subtitle = primary.subtitle
+            description = primary.description
+            keywords = primary.keywords
+            promotionalText = primary.promotionalText
+            whatsNew = primary.whatsNew
+            additionalLocalizations = localizations.enumerated().compactMap { index, localization in
+                index == primaryIndex ? nil : localization
+            }
+        } else {
+            additionalLocalizations = []
+        }
         useAIMetadata = publication.metadata == nil
+            && publication.localizations?.isEmpty != false
         copyright = publication.copyright ?? ""
         supportURL = publication.supportURL ?? ""
         marketingURL = publication.marketingURL ?? ""
@@ -1646,6 +1889,21 @@ private struct PerAppPublishingConfigurationEditor: View {
             primaryCategory: primaryCategory.nilIfEmpty,
             secondaryCategory: secondaryCategory.nilIfEmpty
         )
+        let localizations: [AppStoreLocalizedMetadata]? = if useAIMetadata {
+            nil
+        } else {
+            [
+                AppStoreLocalizedMetadata(
+                    locale: locale,
+                    appName: appName,
+                    subtitle: subtitle,
+                    description: description,
+                    keywords: keywords,
+                    promotionalText: promotionalText,
+                    whatsNew: whatsNew
+                )
+            ] + additionalLocalizations
+        }
         manifest.publication = AppStorePublicationConfiguration(
             locale: locale.nilIfEmpty,
             copyright: copyright.nilIfEmpty,
@@ -1660,6 +1918,7 @@ private struct PerAppPublishingConfigurationEditor: View {
             submitForReview: submitForReview,
             releaseAutomatically: releaseAutomatically,
             metadata: metadata,
+            localizations: localizations,
             screenshotPaths: screenshotPaths.split(whereSeparator: \.isNewline).map(String.init),
             replaceScreenshots: replaceScreenshots,
             review: AppStoreReviewManifestConfiguration(
@@ -1723,17 +1982,29 @@ private struct PerAppPublishingConfigurationEditor: View {
         isGeneratingAI = true
         defer { isGeneratingAI = false }
         do {
-            let metadata = try await model.generateAppStoreMetadataDraft(
+            let generated = try await model.generateAppStoreMetadataDrafts(
                 projectID: project.id,
-                locale: locale
+                preferredLocale: locale
             )
-            description = metadata.description
-            keywords = metadata.keywords
-            promotionalText = metadata.promotionalText
-            whatsNew = metadata.whatsNew
-            subtitle = metadata.subtitle ?? subtitle
-            if primaryCategory.isEmpty { primaryCategory = metadata.primaryCategory ?? "" }
-            if secondaryCategory.isEmpty { secondaryCategory = metadata.secondaryCategory ?? "" }
+            guard let primaryIndex = generated.localizations.firstIndex(where: {
+                $0.locale.caseInsensitiveCompare(locale) == .orderedSame
+            }) ?? generated.localizations.indices.first else {
+                throw OpenAIStoreMetadataError.missingGeneratedText
+            }
+            let primary = generated.localizations[primaryIndex]
+            locale = primary.locale
+            appName = primary.appName
+            subtitle = primary.subtitle
+            description = primary.description
+            keywords = primary.keywords
+            promotionalText = primary.promotionalText
+            whatsNew = primary.whatsNew
+            additionalLocalizations = generated.localizations.enumerated().compactMap { index, localization in
+                index == primaryIndex ? nil : localization
+            }
+            detectedLocales = generated.localizations.map(\.locale)
+            if primaryCategory.isEmpty { primaryCategory = generated.primaryCategory }
+            if secondaryCategory.isEmpty { secondaryCategory = generated.secondaryCategory }
             useAIMetadata = false
             validationMessage = nil
         } catch {
@@ -1787,6 +2058,23 @@ private struct PerAppPublishingConfigurationEditor: View {
         if let metadata = manifest.publication?.metadata,
            metadata.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw ConfigurationEditorError.invalid(L10n.text("Manual metadata requires a non-empty description."))
+        }
+        var locales: Set<String> = []
+        for localization in manifest.publication?.localizations ?? [] {
+            let normalizedLocale = localization.locale
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard !normalizedLocale.isEmpty,
+                  locales.insert(normalizedLocale).inserted else {
+                throw ConfigurationEditorError.invalid(
+                    L10n.text("Localized listings require non-empty, unique locale identifiers.")
+                )
+            }
+            guard localization.description.nilIfEmpty != nil else {
+                throw ConfigurationEditorError.invalid(
+                    L10n.format("The %@ listing requires a non-empty description.", localization.locale)
+                )
+            }
         }
         var productIDs: Set<String> = []
         for group in manifest.subscriptions?.groups ?? [] {

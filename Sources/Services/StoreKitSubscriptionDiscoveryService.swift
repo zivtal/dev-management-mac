@@ -22,9 +22,14 @@ final class StoreKitSubscriptionDiscoveryService {
     }
 
     func discover(project: ManagedProject, defaultLocale: String) throws -> AppStoreSubscriptionCatalog {
-        let manifestURLs = ["app-store-publishing.json", ".app-store-publishing.json"]
+        let rootManifestURLs = ["app-store-publishing.json", ".app-store-publishing.json"]
             .map(project.folderURL.appendingPathComponent)
             .filter { fileManager.fileExists(atPath: $0.path) }
+        let nestedManifestURLs = discoverFiles(withExtension: "json", in: project.folderURL)
+            .filter { $0.lastPathComponent == "app-store-publishing.json" }
+        let rootManifestSet = Set(rootManifestURLs)
+        let manifestURLs = rootManifestURLs
+            + nestedManifestURLs.filter { !rootManifestSet.contains($0) }
         let manifest = try manifestURLs.first.map(loadManifest)
         let storeKitURLs = discoverFiles(withExtension: "storekit", in: project.folderURL)
         let effectiveLocale = manifest?.publication?.locale?.nilIfEmpty ?? defaultLocale
@@ -84,14 +89,15 @@ final class StoreKitSubscriptionDiscoveryService {
         }
 
         let configuredIDs = Set(groups.flatMap(\.subscriptions).map(\.productID))
-        let sourceIDs = discoverProductIdentifiers(in: project.folderURL)
+        let sourceProducts = discoverProductIdentifiers(in: project.folderURL)
         return AppStoreSubscriptionCatalog(
             publication: manifest?.publication,
             application: manifest?.application,
             groups: groups,
-            detectedProductIDs: sourceIDs.union(configuredIDs),
-            sourceFiles: manifestURLs.map(\.lastPathComponent)
-                + storeKitURLs.map { $0.path.replacingOccurrences(of: project.folderURL.path + "/", with: "") },
+            detectedProductIDs: sourceProducts.identifiers.union(configuredIDs),
+            sourceFiles: manifestURLs.map { Self.relativePath($0, from: project.folderURL) }
+                + storeKitURLs.map { Self.relativePath($0, from: project.folderURL) }
+                + sourceProducts.sourceFiles.sorted(),
             projectDirectory: project.folderURL
         )
     }
@@ -225,7 +231,12 @@ final class StoreKitSubscriptionDiscoveryService {
         return results.sorted { $0.path < $1.path }
     }
 
-    private func discoverProductIdentifiers(in root: URL) -> Set<String> {
+    private struct ProductIdentifierDiscovery {
+        var identifiers: Set<String> = []
+        var sourceFiles: Set<String> = []
+    }
+
+    private func discoverProductIdentifiers(in root: URL) -> ProductIdentifierDiscovery {
         let extensions = Set(["swift", "m", "mm", "h", "json", "plist", "yml", "yaml", "js", "ts"])
         guard let expression = try? NSRegularExpression(
             pattern: #"[\"']((?:[A-Za-z0-9_-]+\.){2,}[A-Za-z0-9._-]+)[\"']"#
@@ -233,8 +244,8 @@ final class StoreKitSubscriptionDiscoveryService {
             at: root,
             includingPropertiesForKeys: [.fileSizeKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return [] }
-        var results: Set<String> = []
+        ) else { return ProductIdentifierDiscovery() }
+        var results = ProductIdentifierDiscovery()
         for case let url as URL in enumerator {
             let relativeDepth = url.pathComponents.count - root.pathComponents.count
             if relativeDepth > 8 || Self.isIgnored(url) {
@@ -263,7 +274,8 @@ final class StoreKitSubscriptionDiscoveryService {
                 let hasProductContext = ["productid", "product_ids", "products(for", "product.products", "purchase"]
                     .contains(where: context.contains)
                 if looksLikeSubscription && hasProductContext {
-                    results.insert(productID)
+                    results.identifiers.insert(productID)
+                    results.sourceFiles.insert(Self.relativePath(url, from: root))
                 }
             }
         }
@@ -364,6 +376,13 @@ final class StoreKitSubscriptionDiscoveryService {
     private static func isIgnored(_ url: URL) -> Bool {
         let components = Set(url.pathComponents.map { $0.lowercased() })
         return !components.isDisjoint(with: ["build", "deriveddata", "node_modules", ".build", "pods"])
+    }
+
+    private static func relativePath(_ url: URL, from root: URL) -> String {
+        let fileComponents = url.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        let rootComponents = root.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        guard fileComponents.starts(with: rootComponents) else { return url.lastPathComponent }
+        return fileComponents.dropFirst(rootComponents.count).joined(separator: "/")
     }
 
     private static func string(_ dictionary: [String: Any], keys: [String]) -> String? {

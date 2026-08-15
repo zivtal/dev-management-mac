@@ -34,6 +34,66 @@ struct AppStoreMetadata: Codable, Equatable, Sendable {
     }
 }
 
+struct AppStoreLocalizedMetadata: Codable, Equatable, Sendable, Identifiable {
+    var id: String { locale }
+
+    var locale: String
+    var appName: String
+    var subtitle: String
+    var description: String
+    var keywords: String
+    var promotionalText: String
+    var whatsNew: String
+
+    func normalized() -> AppStoreLocalizedMetadata {
+        let metadata = AppStoreMetadata(
+            description: description,
+            keywords: keywords,
+            promotionalText: promotionalText,
+            whatsNew: whatsNew,
+            subtitle: subtitle
+        ).normalized()
+        return AppStoreLocalizedMetadata(
+            locale: locale.replacingOccurrences(of: "_", with: "-"),
+            appName: String(appName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(30)),
+            subtitle: metadata.subtitle ?? "",
+            description: metadata.description,
+            keywords: metadata.keywords,
+            promotionalText: metadata.promotionalText,
+            whatsNew: metadata.whatsNew
+        )
+    }
+
+    func metadata(primaryCategory: String?, secondaryCategory: String?) -> AppStoreMetadata {
+        AppStoreMetadata(
+            description: description,
+            keywords: keywords,
+            promotionalText: promotionalText,
+            whatsNew: whatsNew,
+            subtitle: subtitle.nilIfEmpty,
+            primaryCategory: primaryCategory,
+            secondaryCategory: secondaryCategory
+        ).normalized()
+    }
+}
+
+struct AppStoreGeneratedMetadata: Codable, Equatable, Sendable {
+    var primaryCategory: String
+    var secondaryCategory: String
+    var localizations: [AppStoreLocalizedMetadata]
+
+    func normalized() -> AppStoreGeneratedMetadata {
+        var seen = Set<String>()
+        return AppStoreGeneratedMetadata(
+            primaryCategory: primaryCategory,
+            secondaryCategory: secondaryCategory,
+            localizations: localizations
+                .map { $0.normalized() }
+                .filter { !$0.locale.isEmpty && seen.insert($0.locale.lowercased()).inserted }
+        )
+    }
+}
+
 struct AppStoreReviewConfiguration: Equatable, Sendable {
     let contactFirstName: String
     let contactLastName: String
@@ -159,6 +219,7 @@ struct AppStorePublicationConfiguration: Codable, Equatable, Sendable {
     var submitForReview: Bool?
     var releaseAutomatically: Bool?
     var metadata: AppStoreMetadata?
+    var localizations: [AppStoreLocalizedMetadata]? = nil
     var screenshotPaths: [String]?
     var replaceScreenshots: Bool? = nil
     var review: AppStoreReviewManifestConfiguration?
@@ -180,7 +241,10 @@ struct AppStoreSubscriptionCatalog: Equatable, Sendable {
     var projectDirectory: URL
 
     var subscriptionCount: Int {
-        groups.reduce(0) { $0 + $1.subscriptions.count }
+        max(
+            groups.reduce(0) { $0 + $1.subscriptions.count },
+            detectedProductIDs.count
+        )
     }
 }
 
@@ -425,6 +489,8 @@ struct PublishingConfiguration: Sendable {
     let licenseAgreementText: String?
     let review: AppStoreReviewConfiguration
     let manualMetadata: AppStoreMetadata?
+    let manualLocalizations: [AppStoreLocalizedMetadata]
+    let detectedLocales: [String]
     let screenshotPaths: [String]
     let replaceScreenshots: Bool
     let submitForReview: Bool

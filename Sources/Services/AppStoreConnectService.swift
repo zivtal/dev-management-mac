@@ -549,6 +549,7 @@ final class AppStoreConnectService {
         version: String,
         locale: String,
         metadata: AppStoreMetadata,
+        localizedMetadata: [AppStoreLocalizedMetadata],
         copyright: String,
         supportURL: String,
         marketingURL: String?,
@@ -569,38 +570,67 @@ final class AppStoreConnectService {
             copyright: copyright,
             releaseAutomatically: releaseAutomatically
         )
-        let localizationID = try await findOrCreateLocalization(
-            versionID: versionID,
-            locale: locale
+        let fallbackListing = AppStoreLocalizedMetadata(
+            locale: locale,
+            appName: appName ?? "",
+            subtitle: subtitle ?? metadata.subtitle ?? "",
+            description: metadata.description,
+            keywords: metadata.keywords,
+            promotionalText: metadata.promotionalText,
+            whatsNew: metadata.whatsNew
         )
-        do {
-            try await updateLocalization(
-                localizationID,
-                metadata: metadata,
-                supportURL: supportURL,
-                marketingURL: marketingURL,
-                termsURL: termsURL,
-                includesReleaseNotes: true
+        let listings = localizedMetadata.isEmpty ? [fallbackListing] : localizedMetadata
+        let orderedListings = listings.sorted { lhs, rhs in
+            let lhsIsPrimary = lhs.locale.caseInsensitiveCompare(locale) == .orderedSame
+            let rhsIsPrimary = rhs.locale.caseInsensitiveCompare(locale) == .orderedSame
+            return lhsIsPrimary && !rhsIsPrimary
+        }
+        var primaryLocalizationID: String?
+        for listing in orderedListings {
+            let localizationID = try await findOrCreateLocalization(
+                versionID: versionID,
+                locale: listing.locale
             )
-        } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 || status == 422 {
-            // App Store Connect rejects release notes for an application's first version.
-            try await updateLocalization(
-                localizationID,
-                metadata: metadata,
-                supportURL: supportURL,
-                marketingURL: marketingURL,
-                termsURL: termsURL,
-                includesReleaseNotes: false
+            if primaryLocalizationID == nil
+                || listing.locale.caseInsensitiveCompare(locale) == .orderedSame {
+                primaryLocalizationID = localizationID
+            }
+            let localizedStoreMetadata = listing.metadata(
+                primaryCategory: metadata.primaryCategory,
+                secondaryCategory: metadata.secondaryCategory
+            )
+            do {
+                try await updateLocalization(
+                    localizationID,
+                    metadata: localizedStoreMetadata,
+                    supportURL: supportURL,
+                    marketingURL: marketingURL,
+                    termsURL: termsURL,
+                    includesReleaseNotes: true
+                )
+            } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 || status == 422 {
+                // App Store Connect rejects release notes for an application's first version.
+                try await updateLocalization(
+                    localizationID,
+                    metadata: localizedStoreMetadata,
+                    supportURL: supportURL,
+                    marketingURL: marketingURL,
+                    termsURL: termsURL,
+                    includesReleaseNotes: false
+                )
+            }
+            try await configureLocalizedAppInformation(
+                appID: appID,
+                locale: listing.locale,
+                appName: listing.appName.nilIfEmpty ?? appName,
+                subtitle: listing.subtitle.nilIfEmpty ?? subtitle ?? metadata.subtitle,
+                privacyPolicyURL: privacyPolicyURL,
+                privacyChoicesURL: privacyChoicesURL
             )
         }
-        try await configureLocalizedAppInformation(
-            appID: appID,
-            locale: locale,
-            appName: appName,
-            subtitle: subtitle ?? metadata.subtitle,
-            privacyPolicyURL: privacyPolicyURL,
-            privacyChoicesURL: privacyChoicesURL
-        )
+        guard let localizationID = primaryLocalizationID else {
+            throw AppStoreConnectError.missingIdentifier("App Store version localization")
+        }
         if let licenseAgreementText = licenseAgreementText?.nilIfEmpty {
             try await configureLicenseAgreement(appID: appID, agreementText: licenseAgreementText)
         }
