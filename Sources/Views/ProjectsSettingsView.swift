@@ -6,7 +6,6 @@ struct ProjectsSettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selection: Set<UUID> = []
     @State private var showsRemoveConfirmation = false
-    @State private var pendingPublishProjectID: UUID?
 
     var body: some View {
         GeometryReader { geometry in
@@ -62,24 +61,6 @@ struct ProjectsSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The source folder and its files will not be deleted.")
-        }
-        .confirmationDialog(
-            Text("Publish to the App Store?"),
-            isPresented: Binding(
-                get: { pendingPublishProjectID != nil },
-                set: { if !$0 { pendingPublishProjectID = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Build, upload, and submit") {
-                if let projectID = pendingPublishProjectID {
-                    model.publish(projectID: projectID)
-                }
-                pendingPublishProjectID = nil
-            }
-            Button("Cancel", role: .cancel) { pendingPublishProjectID = nil }
-        } message: {
-            Text("This production action generates store text, collects screenshots, archives and uploads the build, updates App Store Connect, and submits the version for App Review using Publishing settings.")
         }
         .onAppear {
             model.refreshDeveloperTeams()
@@ -239,7 +220,7 @@ struct ProjectsSettingsView: View {
 
                 if !project.isMacOSApplication, project.installMethod == .xcodebuild {
                     Button {
-                        pendingPublishProjectID = project.id
+                        PublishingWindowPresenter.shared.show(model: model, projectID: project.id)
                     } label: {
                         if model.publishingProgress?.projectID == project.id {
                             Label {
@@ -248,7 +229,7 @@ struct ProjectsSettingsView: View {
                                 ProgressView().controlSize(.small)
                             }
                         } else {
-                            Label("Publish", systemImage: "paperplane.fill")
+                            Label("Publish…", systemImage: "paperplane.fill")
                         }
                     }
                     .buttonStyle(.borderedProminent)

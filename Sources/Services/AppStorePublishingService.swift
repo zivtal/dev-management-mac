@@ -2,6 +2,7 @@ import ImageIO
 import Foundation
 
 enum AppStorePublishingError: LocalizedError {
+    case busy
     case unsupportedProject
     case missingBundleIdentifier
     case missingVersion
@@ -15,6 +16,8 @@ enum AppStorePublishingError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .busy:
+            return L10n.text("Another build, installation, publication, or offer-code request is already in progress.")
         case .unsupportedProject:
             return L10n.text("App Store publishing requires an iOS application using Direct Xcode build.")
         case .missingBundleIdentifier:
@@ -45,15 +48,18 @@ final class AppStorePublishingService {
     private let processRunner: ProcessRunner
     private let fileManager: FileManager
     private let openAIService: OpenAIStoreMetadataService
+    private let subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
         fileManager: FileManager = .default,
-        openAIService: OpenAIStoreMetadataService = OpenAIStoreMetadataService()
+        openAIService: OpenAIStoreMetadataService = OpenAIStoreMetadataService(),
+        subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService = StoreKitSubscriptionDiscoveryService()
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
         self.openAIService = openAIService
+        self.subscriptionDiscoveryService = subscriptionDiscoveryService
     }
 
     func publish(
@@ -82,19 +88,46 @@ final class AppStorePublishingService {
         try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: temporaryDirectory) }
 
-        eventHandler(.phase(.generatingMetadata))
-        eventHandler(.output(L10n.text("Generating structured App Store metadata with OpenAI…\n")))
-        let metadata = try await openAIService.generate(
+        eventHandler(.phase(.discoveringSubscriptions))
+        let subscriptionCatalog = try subscriptionDiscoveryService.discover(
             project: project,
-            locale: configuration.locale,
-            apiKey: configuration.openAIAPIKey,
-            model: configuration.openAIModel
+            defaultLocale: configuration.locale
         )
-        eventHandler(.output(L10n.text("App Store metadata generated and validated.\n")))
+        if subscriptionCatalog.detectedProductIDs.isEmpty {
+            eventHandler(.output(L10n.text("No subscription products were found in the app project.\n")))
+        } else {
+            eventHandler(.output(L10n.format(
+                "Detected %d subscription product(s) in the app project.\n",
+                subscriptionCatalog.detectedProductIDs.count
+            )))
+            if !subscriptionCatalog.sourceFiles.isEmpty {
+                eventHandler(.output(L10n.format(
+                    "Subscription configuration: %@.\n",
+                    subscriptionCatalog.sourceFiles.joined(separator: ", ")
+                )))
+            }
+        }
+
+        eventHandler(.phase(.generatingMetadata))
+        let metadata: AppStoreMetadata
+        if let manualMetadata = configuration.manualMetadata {
+            metadata = manualMetadata.normalized()
+            eventHandler(.output(L10n.text("Using manually configured per-app App Store metadata.\n")))
+        } else {
+            eventHandler(.output(L10n.text("Generating structured App Store metadata with OpenAI…\n")))
+            metadata = try await openAIService.generate(
+                project: project,
+                locale: configuration.locale,
+                apiKey: configuration.openAIAPIKey,
+                model: configuration.openAIModel
+            )
+            eventHandler(.output(L10n.text("App Store metadata generated and validated.\n")))
+        }
 
         eventHandler(.phase(.collectingScreenshots))
         let screenshots = try await collectScreenshots(
             project: project,
+            configuredPaths: configuration.screenshotPaths,
             temporaryDirectory: temporaryDirectory,
             eventHandler: eventHandler
         )
@@ -126,9 +159,29 @@ final class AppStorePublishingService {
             metadata: metadata,
             copyright: configuration.copyright,
             supportURL: configuration.supportURL,
+            review: configuration.review,
             releaseAutomatically: configuration.releaseAutomatically
         )
         eventHandler(.output(L10n.text("App Store metadata updated.\n")))
+
+        let subscriptionReviewItems: [AppStoreConnectReviewItem]
+        if publication.isVersionOnlyUpdate {
+            subscriptionReviewItems = []
+            eventHandler(.output(L10n.text("A previous version is already published; reusing app and subscription setup for this version-only update.\n")))
+        } else {
+            eventHandler(.phase(.configuringSubscriptions))
+            try await appStoreConnect.configureFirstPublication(
+                appID: publication.appID,
+                configuration: subscriptionCatalog.application,
+                onOutput: { eventHandler(.output($0)) }
+            )
+            subscriptionReviewItems = try await appStoreConnect.reconcileSubscriptions(
+                appID: publication.appID,
+                catalog: subscriptionCatalog,
+                requiresReviewAssets: configuration.submitForReview,
+                onOutput: { eventHandler(.output($0)) }
+            )
+        }
 
         eventHandler(.phase(.uploadingScreenshots))
         try await appStoreConnect.uploadScreenshots(
@@ -158,7 +211,8 @@ final class AppStorePublishingService {
             eventHandler(.phase(.submitting))
             try await appStoreConnect.submitForReview(
                 appID: publication.appID,
-                versionID: publication.versionID
+                versionID: publication.versionID,
+                additionalItems: subscriptionReviewItems
             )
             eventHandler(.output(L10n.text("The App Store version was submitted for review.\n")))
         }
@@ -194,10 +248,30 @@ final class AppStorePublishingService {
 
     private func collectScreenshots(
         project: ManagedProject,
+        configuredPaths: [String],
         temporaryDirectory: URL,
         eventHandler: @escaping EventHandler
     ) async throws -> [AppStoreScreenshotAsset] {
-        var screenshots = discoverProjectScreenshots(project: project)
+        var screenshots = configuredPaths.flatMap { path -> [AppStoreScreenshotAsset] in
+            let url = URL(fileURLWithPath: path, relativeTo: project.folderURL).standardizedFileURL
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else { return [] }
+            if isDirectory.boolValue {
+                guard let enumerator = fileManager.enumerator(
+                    at: url,
+                    includingPropertiesForKeys: [.isRegularFileKey],
+                    options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                ) else { return [] }
+                return enumerator.compactMap { item in
+                    guard let fileURL = item as? URL else { return nil }
+                    return screenshotAsset(at: fileURL)
+                }
+            }
+            return screenshotAsset(at: url).map { [$0] } ?? []
+        }
+        screenshots.append(contentsOf: discoverProjectScreenshots(project: project))
+        var seenPaths: Set<String> = []
+        screenshots = screenshots.filter { seenPaths.insert($0.url.standardizedFileURL.path).inserted }
         if !screenshots.isEmpty {
             eventHandler(.output(L10n.format("Found %d valid screenshot(s) in the project.\n", screenshots.count)))
         }
@@ -242,15 +316,22 @@ final class AppStorePublishingService {
                 enumerator.skipDescendants()
                 continue
             }
-            guard lowerPath.contains("screenshot"), ["png", "jpg", "jpeg"].contains(url.pathExtension.lowercased()),
-                  let dimensions = imageDimensions(at: url),
-                  let displayType = Self.screenshotDisplayType(width: dimensions.width, height: dimensions.height)
-            else {
+            guard lowerPath.contains("screenshot"), let asset = screenshotAsset(at: url) else {
                 continue
             }
-            results.append(AppStoreScreenshotAsset(url: url, displayType: displayType))
+            results.append(asset)
         }
         return results
+    }
+
+    private func screenshotAsset(at url: URL) -> AppStoreScreenshotAsset? {
+        guard ["png", "jpg", "jpeg"].contains(url.pathExtension.lowercased()),
+              let dimensions = imageDimensions(at: url),
+              let displayType = Self.screenshotDisplayType(
+                width: dimensions.width,
+                height: dimensions.height
+              ) else { return nil }
+        return AppStoreScreenshotAsset(url: url, displayType: displayType)
     }
 
     private func captureSimulatorScreenshots(

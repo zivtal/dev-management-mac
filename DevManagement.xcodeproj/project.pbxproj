@@ -19,10 +19,12 @@
 		26808D5C2DAEB3D8364A2B0D /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67D1D69275F7090166986CDC /* AppState.swift */; };
 		286867ABE436B1581E60801B /* ProjectIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AEB1BCEB0B82ED6D7E33965 /* ProjectIconView.swift */; };
 		28BA34EC2DE3AC31188C4DCD /* ProcessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CB256DC4A73BE90711652A1 /* ProcessRunner.swift */; };
+		2A1BA4E8DAD016908AD34443 /* String+NonEmpty.swift in Sources */ = {isa = PBXBuildFile; fileRef = 883000032D46600DD5CCFF08 /* String+NonEmpty.swift */; };
 		30BE0C471F8EE7AA7B72A601 /* ProjectIconServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59E1559E63A3643555DC751 /* ProjectIconServiceTests.swift */; };
 		333B2C5902BEB7FA416E5E91 /* ProjectVersionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16304D3C5216A6E329FC687D /* ProjectVersionService.swift */; };
 		3A03B76E9DB0978F003F953F /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB755CA878595D122931F826 /* IOKit.framework */; };
 		4349D459F2E4B2C4F17EA0E1 /* AppStorePublishingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA9DEC991B43F6B915C1712 /* AppStorePublishingTests.swift */; };
+		4C0613B0ABF394EB4A0C8B3D /* StoreKitSubscriptionDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25055FBACD7B5FDD275AF0E0 /* StoreKitSubscriptionDiscoveryService.swift */; };
 		586865366583D21C8E8EF961 /* USBConnectionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE52232D5DB1CF4FF3954EE /* USBConnectionMonitor.swift */; };
 		5ABA067966EE5ADBBB2DFBEC /* MacOSInstallationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D085DB26020DCCCA468F3EA7 /* MacOSInstallationTests.swift */; };
 		5FBF32C8DE8C0A0D70999AA2 /* DeveloperTeamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20FE1B7E5F176778282E80E /* DeveloperTeamService.swift */; };
@@ -42,6 +44,7 @@
 		9D7F580C89BD70EA6C0EBB86 /* InstallationLogWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 439AE14DCCE24CDCB7F7CD21 /* InstallationLogWindow.swift */; };
 		A8D413789388A0BF23682C35 /* OpenAIStoreMetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41B846AE2D38B1B7E7AC1C25 /* OpenAIStoreMetadataService.swift */; };
 		B1EBEC96A382A7896C968CD4 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4BD224F76E01A19DEBB6020 /* MenuBarView.swift */; };
+		B24A7569EE19C148FEE36102 /* PublishingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC02EA04969F48B7CB14ED49 /* PublishingWindow.swift */; };
 		C0820A8CA20DBBA4BE058884 /* InstallationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8648AB030DDA915B7137674A /* InstallationService.swift */; };
 		CEB5F920493A8DDB3DE1EE4A /* AppStorePublishingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BD6608F16060C2A947AB416 /* AppStorePublishingService.swift */; };
 		D65D97E3585DFF4F4C1B1409 /* ConnectedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0958EDE18F62F4A209B64D6 /* ConnectedDevice.swift */; };
@@ -72,6 +75,7 @@
 		16304D3C5216A6E329FC687D /* ProjectVersionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectVersionService.swift; sourceTree = "<group>"; };
 		1CB256DC4A73BE90711652A1 /* ProcessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessRunner.swift; sourceTree = "<group>"; };
 		1EE52232D5DB1CF4FF3954EE /* USBConnectionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USBConnectionMonitor.swift; sourceTree = "<group>"; };
+		25055FBACD7B5FDD275AF0E0 /* StoreKitSubscriptionDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitSubscriptionDiscoveryService.swift; sourceTree = "<group>"; };
 		25700C1E26331F9B6C65EBC7 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		2BD6608F16060C2A947AB416 /* AppStorePublishingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStorePublishingService.swift; sourceTree = "<group>"; };
 		3AEB1BCEB0B82ED6D7E33965 /* ProjectIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIconView.swift; sourceTree = "<group>"; };
@@ -93,6 +97,7 @@
 		8199DDF8810B81A5AB227609 /* DevManagementTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DevManagementTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8648AB030DDA915B7137674A /* InstallationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationService.swift; sourceTree = "<group>"; };
 		86BBDE915B650D7851ACEB46 /* InstallationNotificationTextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationNotificationTextTests.swift; sourceTree = "<group>"; };
+		883000032D46600DD5CCFF08 /* String+NonEmpty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+NonEmpty.swift"; sourceTree = "<group>"; };
 		8BE596EF36D4CA2839361964 /* DevManagement.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DevManagement.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		913C295EE121D11D54FE3D0D /* ProjectIconService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIconService.swift; sourceTree = "<group>"; };
 		92BA78CBDD2A9BB9E2A7417E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -101,6 +106,7 @@
 		A1907348C889C1CB74F76247 /* Publishing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Publishing.swift; sourceTree = "<group>"; };
 		A22ABD6C88F410A71DC9F716 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 		A59E1559E63A3643555DC751 /* ProjectIconServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIconServiceTests.swift; sourceTree = "<group>"; };
+		AC02EA04969F48B7CB14ED49 /* PublishingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingWindow.swift; sourceTree = "<group>"; };
 		B4BD224F76E01A19DEBB6020 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		B9D31026AFB1960E78BA7E7B /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 		C00D521CCAB99741C5A2A693 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
@@ -150,6 +156,7 @@
 				913C295EE121D11D54FE3D0D /* ProjectIconService.swift */,
 				16304D3C5216A6E329FC687D /* ProjectVersionService.swift */,
 				25700C1E26331F9B6C65EBC7 /* SettingsStore.swift */,
+				25055FBACD7B5FDD275AF0E0 /* StoreKitSubscriptionDiscoveryService.swift */,
 				1EE52232D5DB1CF4FF3954EE /* USBConnectionMonitor.swift */,
 			);
 			path = Services;
@@ -180,6 +187,7 @@
 			isa = PBXGroup;
 			children = (
 				E131CC76C0D8C122724C01B8 /* App */,
+				B3433E6A5712FAEA10966860 /* Extensions */,
 				BF54C64218C6B4FFC67FF5EA /* Models */,
 				04E8A2B6992E42828AB32285 /* Services */,
 				626BCAFD9480C06B6D540679 /* Views */,
@@ -196,6 +204,7 @@
 				3AEB1BCEB0B82ED6D7E33965 /* ProjectIconView.swift */,
 				D4E551EDA5AB8441BCD618FA /* ProjectsSettingsView.swift */,
 				960A2EC9E613818529E77D09 /* PublishingSettingsView.swift */,
+				AC02EA04969F48B7CB14ED49 /* PublishingWindow.swift */,
 				92BA78CBDD2A9BB9E2A7417E /* SettingsView.swift */,
 			);
 			path = Views;
@@ -208,6 +217,14 @@
 				8199DDF8810B81A5AB227609 /* DevManagementTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B3433E6A5712FAEA10966860 /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				883000032D46600DD5CCFF08 /* String+NonEmpty.swift */,
+			);
+			path = Extensions;
 			sourceTree = "<group>";
 		};
 		BF54C64218C6B4FFC67FF5EA /* Models */ = {
@@ -384,9 +401,12 @@
 				9B40DB677026BBB23FF93EC8 /* ProjectsSettingsView.swift in Sources */,
 				0690A247F796B6DE1221DC4C /* Publishing.swift in Sources */,
 				6A959F01BA7F8BE032126ECB /* PublishingSettingsView.swift in Sources */,
+				B24A7569EE19C148FEE36102 /* PublishingWindow.swift in Sources */,
 				202D345134232293697DEBBE /* SchedulingPolicy.swift in Sources */,
 				68CCE54A459F4078E5406101 /* SettingsStore.swift in Sources */,
 				614EB1AC385AB547B28CACE4 /* SettingsView.swift in Sources */,
+				4C0613B0ABF394EB4A0C8B3D /* StoreKitSubscriptionDiscoveryService.swift in Sources */,
+				2A1BA4E8DAD016908AD34443 /* String+NonEmpty.swift in Sources */,
 				586865366583D21C8E8EF961 /* USBConnectionMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -526,7 +546,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -546,7 +566,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -593,7 +613,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -607,7 +627,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

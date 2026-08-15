@@ -4,6 +4,8 @@ import Security
 enum PublishingCredential: String {
     case openAIAPIKey = "openai-api-key"
     case appStoreConnectPrivateKey = "app-store-connect-private-key"
+    case appReviewDemoAccountName = "app-review-demo-account-name"
+    case appReviewDemoAccountPassword = "app-review-demo-account-password"
 }
 
 enum KeychainCredentialError: LocalizedError {

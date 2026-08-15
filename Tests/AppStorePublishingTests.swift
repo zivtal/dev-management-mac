@@ -94,6 +94,215 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertNil(preferences.openAIModel)
         XCTAssertNil(preferences.appStoreConnectIssuerID)
         XCTAssertNil(preferences.appStoreSubmitForReview)
+        XCTAssertNil(preferences.appStoreReviewEmail)
+    }
+
+    func testDiscoversSubscriptionsFromStoreKitAndAppliesProjectDefaults() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StoreKitDiscoveryTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let storeKit = #"""
+        {
+          "subscriptionGroups": [{
+            "name": "Premium",
+            "localizations": [{"locale":"en_US","displayName":"Premium"}],
+            "subscriptions": [{
+              "referenceName": "Premium Monthly",
+              "productID": "com.example.app.premium.monthly",
+              "recurringSubscriptionPeriod": "P1M",
+              "displayPrice": "9.90",
+              "familyShareable": true,
+              "groupNumber": 1,
+              "localizations": [{
+                "locale": "en_US",
+                "displayName": "Premium Monthly",
+                "description": "All premium features for one month."
+              }]
+            }]
+          }]
+        }
+        """#
+        let manifest = #"""
+        {
+          "schemaVersion": 1,
+          "publication": {
+            "locale": "he",
+            "supportURL": "https://example.com/support",
+            "submitForReview": false,
+            "metadata": {
+              "description": "Manual description",
+              "keywords": "manual,keywords",
+              "promotionalText": "Manual promotion",
+              "whatsNew": "Manual release notes"
+            }
+          },
+          "application": {
+            "primaryCategory": "FINANCE",
+            "contentRightsDeclaration": "USES_THIRD_PARTY_CONTENT",
+            "isFree": true,
+            "baseTerritory": "USA",
+            "availableInAllTerritories": true,
+            "ageRating": {"gambling": false, "advertising": false}
+          },
+          "subscriptions": {
+            "baseTerritory": "ISR",
+            "availableInAllTerritories": true,
+            "reviewScreenshot": "Screenshots/subscription-review.png"
+          }
+        }
+        """#
+        try storeKit.write(
+            to: root.appendingPathComponent("Products.storekit"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try manifest.write(
+            to: root.appendingPathComponent("app-store-publishing.json"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let catalog = try StoreKitSubscriptionDiscoveryService().discover(
+            project: managedProject(at: root),
+            defaultLocale: "en-US"
+        )
+        XCTAssertEqual(catalog.subscriptionCount, 1)
+        XCTAssertEqual(catalog.publication?.locale, "he")
+        XCTAssertEqual(catalog.publication?.metadata?.description, "Manual description")
+        XCTAssertEqual(catalog.application?.primaryCategory, "FINANCE")
+        XCTAssertEqual(catalog.application?.ageRating?["gambling"], .bool(false))
+        let subscription = try XCTUnwrap(catalog.groups.first?.subscriptions.first)
+        XCTAssertEqual(subscription.period, "ONE_MONTH")
+        XCTAssertEqual(subscription.basePrice, "9.90")
+        XCTAssertEqual(subscription.baseTerritory, "ISR")
+        XCTAssertEqual(subscription.availableInAllTerritories, true)
+        XCTAssertEqual(subscription.reviewScreenshot, "Screenshots/subscription-review.png")
+        XCTAssertEqual(subscription.localizations?.first?.locale, "en-US")
+    }
+
+    func testSubscriptionOfferCodeBodiesUseCurrentAppStoreConnectShapes() throws {
+        let offer = SubscriptionOfferConfiguration(
+            referenceName: "Friends 2026",
+            duration: .oneMonth,
+            customerEligibilities: [.new, .expired],
+            stackWithIntroductoryOffer: false,
+            autoRenewEnabled: true
+        )
+        let offerBody = AppStoreConnectService.subscriptionOfferCreateBody(
+            offer,
+            subscriptionID: "subscription-id"
+        )
+        let offerData = try XCTUnwrap(offerBody["data"] as? [String: Any])
+        let offerAttributes = try XCTUnwrap(offerData["attributes"] as? [String: Any])
+        let offerRelationships = try XCTUnwrap(offerData["relationships"] as? [String: Any])
+        let prices = try XCTUnwrap(offerRelationships["prices"] as? [String: Any])
+        XCTAssertEqual(offerData["type"] as? String, "subscriptionOfferCodes")
+        XCTAssertEqual(offerAttributes["offerMode"] as? String, "FREE_TRIAL")
+        XCTAssertEqual(offerAttributes["duration"] as? String, "ONE_MONTH")
+        XCTAssertEqual(offerAttributes["customerEligibilities"] as? [String], ["EXPIRED", "NEW"])
+        XCTAssertEqual(prices["data"] as? [[String: String]], [])
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let expiration = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 12, day: 15)))
+        let oneTimeBody = AppStoreConnectService.oneTimeOfferCodeCreateBody(
+            offerID: "offer-id",
+            numberOfCodes: 500,
+            expirationDate: expiration,
+            calendar: calendar
+        )
+        let oneTimeData = try XCTUnwrap(oneTimeBody["data"] as? [String: Any])
+        let oneTimeAttributes = try XCTUnwrap(oneTimeData["attributes"] as? [String: Any])
+        XCTAssertEqual(oneTimeAttributes["numberOfCodes"] as? Int, 500)
+        XCTAssertEqual(oneTimeAttributes["expirationDate"] as? String, "2026-12-15")
+        XCTAssertEqual(oneTimeAttributes["environment"] as? String, "PRODUCTION")
+
+        let customBody = AppStoreConnectService.customOfferCodeCreateBody(
+            offerID: "offer-id",
+            customCode: "FAMILY2026",
+            numberOfCodes: 250,
+            expirationDate: nil,
+            calendar: calendar
+        )
+        let customData = try XCTUnwrap(customBody["data"] as? [String: Any])
+        let customAttributes = try XCTUnwrap(customData["attributes"] as? [String: Any])
+        XCTAssertEqual(customAttributes["customCode"] as? String, "FAMILY2026")
+        XCTAssertEqual(customAttributes["numberOfCodes"] as? Int, 250)
+        XCTAssertNil(customAttributes["expirationDate"])
+    }
+
+    func testSubscriptionCreateBodyUsesCurrentAppStoreConnectShape() throws {
+        let definition = AppStoreSubscriptionDefinition(
+            referenceName: "Premium Annual",
+            productID: "com.example.app.premium.yearly",
+            period: "ONE_YEAR",
+            basePrice: "89.90",
+            baseTerritory: "ISR",
+            availableInAllTerritories: true,
+            familySharable: true,
+            groupLevel: 1,
+            reviewNote: "Premium access",
+            reviewScreenshot: nil,
+            localizations: nil
+        )
+        let body = AppStoreConnectService.subscriptionCreateBody(definition, groupID: "group-id")
+        let data = try XCTUnwrap(body["data"] as? [String: Any])
+        let attributes = try XCTUnwrap(data["attributes"] as? [String: Any])
+        let relationships = try XCTUnwrap(data["relationships"] as? [String: Any])
+        let group = try XCTUnwrap(relationships["group"] as? [String: Any])
+        let linkage = try XCTUnwrap(group["data"] as? [String: Any])
+
+        XCTAssertEqual(data["type"] as? String, "subscriptions")
+        XCTAssertEqual(attributes["productId"] as? String, definition.productID)
+        XCTAssertEqual(attributes["subscriptionPeriod"] as? String, "ONE_YEAR")
+        XCTAssertEqual(attributes["familySharable"] as? Bool, true)
+        XCTAssertEqual(linkage["type"] as? String, "subscriptionGroups")
+        XCTAssertEqual(linkage["id"] as? String, "group-id")
+    }
+
+    func testSourceDiscoveryRequiresSubscriptionProductContext() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SubscriptionSourceDiscoveryTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try #"let subscriptionProductIDs = ["com.example.app.premium.monthly"]"#.write(
+            to: root.appendingPathComponent("Purchases.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try #"let bundleIdentifier = "com.example.premium.application""#.write(
+            to: root.appendingPathComponent("Identity.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let catalog = try StoreKitSubscriptionDiscoveryService().discover(
+            project: managedProject(at: root),
+            defaultLocale: "en-US"
+        )
+        XCTAssertTrue(catalog.detectedProductIDs.contains("com.example.app.premium.monthly"))
+        XCTAssertFalse(catalog.detectedProductIDs.contains("com.example.premium.application"))
+    }
+
+    func testPublishedOlderVersionSelectsVersionOnlyUpdate() {
+        let versions: [[String: Any]] = [
+            ["attributes": ["versionString": "1.0", "appStoreState": "READY_FOR_SALE"]],
+            ["attributes": ["versionString": "1.1", "appStoreState": "PREPARE_FOR_SUBMISSION"]]
+        ]
+        XCTAssertTrue(
+            AppStoreConnectService.isVersionOnlyUpdate(
+                versions: versions,
+                currentVersion: "1.1"
+            )
+        )
+        XCTAssertFalse(
+            AppStoreConnectService.isVersionOnlyUpdate(
+                versions: Array(versions.suffix(1)),
+                currentVersion: "1.1"
+            )
+        )
     }
 
     private func decodedJWTComponent(_ component: String) throws -> [String: Any] {
@@ -102,5 +311,25 @@ final class AppStorePublishingTests: XCTestCase {
         base64.append(String(repeating: "=", count: (4 - base64.count % 4) % 4))
         let data = try XCTUnwrap(Data(base64Encoded: base64))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func managedProject(at root: URL) -> ManagedProject {
+        ManagedProject(
+            id: UUID(),
+            displayName: "Example",
+            folderPath: root.path,
+            containerPath: root.appendingPathComponent("Example.xcodeproj").path,
+            containerKind: .project,
+            scheme: "Example",
+            configuration: "Debug",
+            availableSchemes: ["Example"],
+            availableConfigurations: ["Debug", "Release"],
+            installMethod: .xcodebuild,
+            installScriptPath: nil,
+            isEnabled: true,
+            marketingVersion: "1.0",
+            buildNumber: "1",
+            bundleIdentifier: "com.example.app"
+        )
     }
 }

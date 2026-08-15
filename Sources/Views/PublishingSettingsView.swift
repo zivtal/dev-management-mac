@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 struct PublishingSettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var openAIAPIKey = ""
+    @State private var demoAccountName = ""
+    @State private var demoAccountPassword = ""
 
     var body: some View {
         Form {
@@ -90,6 +92,73 @@ struct PublishingSettingsView: View {
                 Text("A project Screenshots folder is used first. Missing iPhone or iPad screenshots are captured from an available Simulator after launching the selected scheme. Existing App Store Connect screenshot sets are preserved.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text("On a first publication, local StoreKit configuration files and app-store-publishing.json are used to create and configure subscription groups, products, localizations, availability, pricing, review screenshots, categories, and age ratings. Later app versions reuse that setup.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Use Per-App Configuration in the Publish window to override these defaults and manually configure metadata, screenshots, review details, app setup, and subscriptions for the selected app.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("App Review") {
+                LabeledContent("First name") {
+                    TextField("First name", text: optionalTextBinding(\.appStoreReviewFirstName))
+                        .frame(width: 220)
+                }
+                LabeledContent("Last name") {
+                    TextField("Last name", text: optionalTextBinding(\.appStoreReviewLastName))
+                        .frame(width: 220)
+                }
+                LabeledContent("Phone") {
+                    TextField("Phone", text: optionalTextBinding(\.appStoreReviewPhone))
+                        .frame(width: 220)
+                }
+                LabeledContent("Email") {
+                    TextField("Email", text: optionalTextBinding(\.appStoreReviewEmail))
+                        .frame(width: 300)
+                }
+                LabeledContent("Review notes") {
+                    TextField("Optional instructions for Apple", text: optionalTextBinding(\.appStoreReviewNotes), axis: .vertical)
+                        .lineLimit(2...5)
+                        .frame(width: 380)
+                }
+                Toggle(
+                    "A demo account is required to review the app",
+                    isOn: optionalBoolBinding(\.appStoreReviewDemoAccountRequired, fallback: false)
+                )
+                if model.preferences.appStoreReviewDemoAccountRequired ?? false {
+                    TextField("Demo account username", text: $demoAccountName)
+                        .textContentType(.username)
+                    SecureField("Demo account password", text: $demoAccountPassword)
+                        .textContentType(.password)
+                    HStack {
+                        credentialStatus(
+                            isStored: model.hasAppReviewDemoAccount,
+                            storedText: "Demo account stored in Keychain"
+                        )
+                        Spacer()
+                        if model.hasAppReviewDemoAccount {
+                            Button("Remove", role: .destructive) {
+                                model.removeAppReviewDemoAccount()
+                            }
+                        }
+                        Button(model.hasAppReviewDemoAccount ? "Replace Demo Account" : "Save Demo Account") {
+                            model.saveAppReviewDemoAccount(
+                                name: demoAccountName,
+                                password: demoAccountPassword
+                            )
+                            demoAccountName = ""
+                            demoAccountPassword = ""
+                        }
+                        .disabled(
+                            demoAccountName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                || demoAccountPassword.isEmpty
+                        )
+                    }
+                    Text("Demo credentials are stored only in macOS Keychain and sent directly to App Store Connect for App Review.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if let log = model.publishingLog {

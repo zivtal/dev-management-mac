@@ -12,7 +12,16 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 12) {
             header
 
-            if let publishing = model.publishingProgress {
+            if model.isGeneratingOfferCodes {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Generating subscription offer codes…")
+                        .font(.subheadline.weight(.medium))
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
+            } else if let publishing = model.publishingProgress {
                 publishingProgressSection(publishing)
             } else if let progress = model.progress {
                 progressSection(progress)
@@ -359,6 +368,24 @@ struct MenuBarView: View {
             }
             .disabled(model.isRefreshingDevices || model.hasActiveWork)
 
+            Button {
+                let menuWindow = NSApplication.shared.keyWindow
+                dismiss()
+                menuWindow?.orderOut(nil)
+                Task { @MainActor in
+                    await Task.yield()
+                    PublishingWindowPresenter.shared.show(model: model)
+                }
+            } label: {
+                Label("Publish…", systemImage: "paperplane.fill")
+            }
+            .disabled(
+                model.hasActiveWork
+                    || !model.projects.contains {
+                        !$0.isMacOSApplication && $0.installMethod == .xcodebuild
+                    }
+            )
+
             Spacer(minLength: 8)
 
             Button {
@@ -397,6 +424,7 @@ struct MenuBarView: View {
     }
 
     private var statusText: String {
+        if model.isGeneratingOfferCodes { return L10n.text("Generating subscription offer codes…") }
         if let publishing = model.publishingProgress { return publishing.phase.title }
         if model.progress != nil { return L10n.text("Installation in progress") }
         if !model.preferences.automationEnabled { return L10n.text("Automation is paused") }

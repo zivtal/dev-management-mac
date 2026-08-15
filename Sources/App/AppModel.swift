@@ -28,8 +28,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var installationLog: InstallationLogSession?
     @Published private(set) var publishingProgress: PublishingProgress?
     @Published private(set) var publishingLog: PublishingLogSession?
+    @Published private(set) var isGeneratingOfferCodes = false
     @Published private(set) var hasOpenAIAPIKey = false
     @Published private(set) var hasAppStoreConnectPrivateKey = false
+    @Published private(set) var hasAppReviewDemoAccount = false
     @Published private(set) var isCancellingInstallation = false
     @Published private(set) var isRefreshingDevices = false
     @Published private(set) var isDiscoveringProject = false
@@ -54,7 +56,7 @@ final class AppModel: ObservableObject {
     }
 
     var hasActiveWork: Bool {
-        progress != nil || publishingProgress != nil
+        progress != nil || publishingProgress != nil || isGeneratingOfferCodes
     }
 
     private struct ProjectInstallationTarget {
@@ -144,6 +146,8 @@ final class AppModel: ObservableObject {
         didApplyLaunchAtLoginDefault = true
         hasOpenAIAPIKey = credentialStore.contains(.openAIAPIKey)
         hasAppStoreConnectPrivateKey = credentialStore.contains(.appStoreConnectPrivateKey)
+        hasAppReviewDemoAccount = credentialStore.contains(.appReviewDemoAccountName)
+            && credentialStore.contains(.appReviewDemoAccountPassword)
         isLoading = false
 
         usbConnectionMonitor.onConnectionChanged = { [weak self] in
@@ -440,7 +444,31 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func publish(projectID: UUID) {
+    func saveAppReviewDemoAccount(name: String, password: String) {
+        do {
+            try credentialStore.set(name, for: .appReviewDemoAccountName)
+            try credentialStore.set(password, for: .appReviewDemoAccountPassword)
+            hasAppReviewDemoAccount = true
+        } catch {
+            presentedError = error.localizedDescription
+        }
+    }
+
+    func removeAppReviewDemoAccount() {
+        do {
+            try credentialStore.remove(.appReviewDemoAccountName)
+            try credentialStore.remove(.appReviewDemoAccountPassword)
+            hasAppReviewDemoAccount = false
+        } catch {
+            presentedError = error.localizedDescription
+        }
+    }
+
+    func publish(
+        projectID: UUID,
+        submitForReview submissionOverride: Bool? = nil,
+        releaseAutomatically releaseOverride: Bool? = nil
+    ) {
         guard !hasActiveWork else {
             presentedError = L10n.text("Another build, installation, or publication is already in progress.")
             return
@@ -451,6 +479,16 @@ final class AppModel: ObservableObject {
             presentedError = AppStorePublishingError.unsupportedProject.localizedDescription
             return
         }
+        let perAppConfiguration: AppStorePublicationConfiguration?
+        do {
+            perAppConfiguration = try StoreKitSubscriptionDiscoveryService().discover(
+                project: project,
+                defaultLocale: preferences.appStoreLocale?.nilIfEmpty ?? "en-US"
+            ).publication
+        } catch {
+            presentedError = error.localizedDescription
+            return
+        }
         let issuerID = preferences.appStoreConnectIssuerID?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let keyID = preferences.appStoreConnectKeyID?
@@ -459,26 +497,67 @@ final class AppModel: ObservableObject {
             presentedError = L10n.text("Enter the App Store Connect issuer ID and key ID in Publishing settings.")
             return
         }
-        let copyright = preferences.appStoreCopyright?.nilIfEmpty ?? ""
+        let copyright = perAppConfiguration?.copyright?.nilIfEmpty
+            ?? preferences.appStoreCopyright?.nilIfEmpty
+            ?? ""
         guard !copyright.isEmpty else {
             presentedError = L10n.text("Enter the copyright owner in Publishing settings.")
             return
         }
-        let supportURL = preferences.appStoreSupportURL?.nilIfEmpty ?? ""
+        let supportURL = perAppConfiguration?.supportURL?.nilIfEmpty
+            ?? preferences.appStoreSupportURL?.nilIfEmpty
+            ?? ""
         guard let parsedSupportURL = URL(string: supportURL),
               ["http", "https"].contains(parsedSupportURL.scheme?.lowercased() ?? ""),
               parsedSupportURL.host != nil else {
             presentedError = L10n.text("Enter a valid support URL in Publishing settings.")
             return
         }
-        guard let openAIAPIKey = try? credentialStore.string(for: .openAIAPIKey),
-              !openAIAPIKey.isEmpty else {
-            presentedError = L10n.text("Save an OpenAI API key in Publishing settings.")
+        let openAIAPIKey = (try? credentialStore.string(for: .openAIAPIKey)) ?? ""
+        if perAppConfiguration?.metadata == nil, openAIAPIKey.isEmpty {
+            presentedError = L10n.text("Save an OpenAI API key in Publishing settings or enter manual metadata in the per-app configuration.")
             return
         }
         guard let privateKey = try? credentialStore.string(for: .appStoreConnectPrivateKey),
               !privateKey.isEmpty else {
             presentedError = L10n.text("Import an App Store Connect .p8 private key in Publishing settings.")
+            return
+        }
+
+        let submitForReview = submissionOverride
+            ?? perAppConfiguration?.submitForReview
+            ?? preferences.appStoreSubmitForReview
+            ?? true
+        let releaseAutomatically = releaseOverride
+            ?? perAppConfiguration?.releaseAutomatically
+            ?? preferences.appStoreReleaseAutomatically
+            ?? true
+        let reviewOverrides = perAppConfiguration?.review
+        let reviewFirstName = reviewOverrides?.contactFirstName?.nilIfEmpty
+            ?? preferences.appStoreReviewFirstName?.nilIfEmpty
+            ?? ""
+        let reviewLastName = reviewOverrides?.contactLastName?.nilIfEmpty
+            ?? preferences.appStoreReviewLastName?.nilIfEmpty
+            ?? ""
+        let reviewPhone = reviewOverrides?.contactPhone?.nilIfEmpty
+            ?? preferences.appStoreReviewPhone?.nilIfEmpty
+            ?? ""
+        let reviewEmail = reviewOverrides?.contactEmail?.nilIfEmpty
+            ?? preferences.appStoreReviewEmail?.nilIfEmpty
+            ?? ""
+        if submitForReview,
+           [reviewFirstName, reviewLastName, reviewPhone, reviewEmail].contains(where: \.isEmpty) {
+            presentedError = L10n.text("Complete the App Review contact details in Publishing settings.")
+            return
+        }
+        let demoAccountRequired = reviewOverrides?.demoAccountRequired
+            ?? preferences.appStoreReviewDemoAccountRequired
+            ?? false
+        let demoAccountName = try? credentialStore.string(for: .appReviewDemoAccountName)
+        let demoAccountPassword = try? credentialStore.string(for: .appReviewDemoAccountPassword)
+        if submitForReview, demoAccountRequired,
+           demoAccountName?.nilIfEmpty == nil || demoAccountPassword?.nilIfEmpty == nil {
+            presentedError = L10n.text("Save the App Review demo account in Publishing settings.")
             return
         }
 
@@ -489,11 +568,27 @@ final class AppModel: ObservableObject {
             appStoreConnectIssuerID: issuerID,
             appStoreConnectKeyID: keyID,
             appStoreConnectPrivateKey: privateKey,
-            locale: preferences.appStoreLocale?.nilIfEmpty ?? "en-US",
+            locale: perAppConfiguration?.locale?.nilIfEmpty
+                ?? preferences.appStoreLocale?.nilIfEmpty
+                ?? "en-US",
             copyright: copyright,
             supportURL: supportURL,
-            submitForReview: preferences.appStoreSubmitForReview ?? true,
-            releaseAutomatically: preferences.appStoreReleaseAutomatically ?? true
+            review: AppStoreReviewConfiguration(
+                contactFirstName: reviewFirstName,
+                contactLastName: reviewLastName,
+                contactPhone: reviewPhone,
+                contactEmail: reviewEmail,
+                notes: reviewOverrides?.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    ?? preferences.appStoreReviewNotes?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    ?? "",
+                demoAccountRequired: demoAccountRequired,
+                demoAccountName: demoAccountName?.nilIfEmpty,
+                demoAccountPassword: demoAccountPassword?.nilIfEmpty
+            ),
+            manualMetadata: perAppConfiguration?.metadata?.normalized(),
+            screenshotPaths: perAppConfiguration?.screenshotPaths ?? [],
+            submitForReview: submitForReview,
+            releaseAutomatically: releaseAutomatically
         )
         var log = PublishingLogSession(projectName: project.displayName)
         let logID = log.id
@@ -564,6 +659,105 @@ final class AppModel: ObservableObject {
 
     func cancelPublishing() {
         activePublishingTask?.cancel()
+    }
+
+    func generateSubscriptionOfferCodes(
+        projectID: UUID,
+        request: SubscriptionOfferCodeGenerationRequest
+    ) async throws -> SubscriptionOfferCodeGenerationResult {
+        guard !hasActiveWork else {
+            throw AppStorePublishingError.busy
+        }
+        guard request.offer.referenceName.nilIfEmpty != nil else {
+            throw SubscriptionOfferCodeValidationError.missingReferenceName
+        }
+        guard !request.offer.customerEligibilities.isEmpty else {
+            throw SubscriptionOfferCodeValidationError.missingEligibility
+        }
+        let validCount = request.kind == .oneTime
+            ? (500...25_000).contains(request.numberOfCodes)
+            : (1...25_000).contains(request.numberOfCodes)
+        guard validCount else {
+            throw SubscriptionOfferCodeValidationError.invalidBatchSize
+        }
+        if request.kind == .custom {
+            let code = request.customCode ?? ""
+            guard (1...64).contains(code.count),
+                  code.unicodeScalars.allSatisfy(CharacterSet.alphanumerics.contains) else {
+                throw SubscriptionOfferCodeValidationError.invalidCustomCode
+            }
+        }
+        if request.kind == .oneTime || request.expirationDate != nil {
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: Date())
+            guard let expirationDate = request.expirationDate,
+                  expirationDate > today,
+                  expirationDate <= calendar.date(byAdding: .month, value: 6, to: today) ?? today else {
+                throw SubscriptionOfferCodeValidationError.invalidExpirationDate
+            }
+        }
+
+        refreshProjectVersions()
+        guard let project = projects.first(where: { $0.id == projectID }),
+              !project.isMacOSApplication,
+              project.installMethod == .xcodebuild else {
+            throw AppStorePublishingError.unsupportedProject
+        }
+        guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
+            throw AppStorePublishingError.missingBundleIdentifier
+        }
+        let issuerID = preferences.appStoreConnectIssuerID?.nilIfEmpty ?? ""
+        let keyID = preferences.appStoreConnectKeyID?.nilIfEmpty ?? ""
+        guard !issuerID.isEmpty, !keyID.isEmpty else {
+            throw AppStoreConnectError.requestFailed(
+                0,
+                L10n.text("Enter the App Store Connect issuer ID and key ID in Publishing settings.")
+            )
+        }
+        guard let privateKey = try credentialStore.string(for: .appStoreConnectPrivateKey),
+              !privateKey.isEmpty else {
+            throw AppStoreConnectError.requestFailed(
+                0,
+                L10n.text("Import an App Store Connect .p8 private key in Publishing settings.")
+            )
+        }
+
+        isGeneratingOfferCodes = true
+        defer { isGeneratingOfferCodes = false }
+        addActivity(
+            level: .info,
+            title: L10n.format("Generating subscription offer codes for %@", project.displayName),
+            details: L10n.format("Subscription: %@", request.productID),
+            projectID: project.id
+        )
+        do {
+            let service = try AppStoreConnectService(
+                issuerID: issuerID,
+                keyID: keyID,
+                privateKeyPEM: privateKey
+            )
+            let result = try await service.generateSubscriptionOfferCodes(
+                bundleIdentifier: bundleIdentifier,
+                request: request
+            )
+            addActivity(
+                level: .success,
+                title: request.kind == .oneTime
+                    ? L10n.format("Generated %d one-time subscription codes", request.numberOfCodes)
+                    : L10n.format("Created custom subscription code %@", result.customCode ?? ""),
+                details: L10n.format("Subscription: %@\nOffer: %@\nBatch: %@", request.productID, request.offer.referenceName, result.batchID),
+                projectID: project.id
+            )
+            return result
+        } catch {
+            addActivity(
+                level: .error,
+                title: L10n.format("Could not generate subscription offer codes for %@", project.displayName),
+                details: error.localizedDescription,
+                projectID: project.id
+            )
+            throw error
+        }
     }
 
     private func handlePublishingEvent(_ event: PublishingEvent, logID: UUID) {
@@ -1324,12 +1518,5 @@ final class AppModel: ObservableObject {
     private static func trimmedError(_ text: String, limit: Int = 30_000) -> String {
         guard text.count > limit else { return text }
         return "…\n" + String(text.suffix(limit))
-    }
-}
-
-private extension String {
-    var nilIfEmpty: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }

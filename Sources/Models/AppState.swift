@@ -14,6 +14,12 @@ struct AppPreferences: Codable, Equatable {
     var appStoreLocale: String?
     var appStoreCopyright: String?
     var appStoreSupportURL: String?
+    var appStoreReviewFirstName: String?
+    var appStoreReviewLastName: String?
+    var appStoreReviewPhone: String?
+    var appStoreReviewEmail: String?
+    var appStoreReviewNotes: String?
+    var appStoreReviewDemoAccountRequired: Bool?
     var appStoreSubmitForReview: Bool?
     var appStoreReleaseAutomatically: Bool?
 }
