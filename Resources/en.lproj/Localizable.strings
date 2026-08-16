@@ -562,6 +562,8 @@
 "Apple permits 500–25,000 unique production codes per batch. Generated values will be shown here for copying." = "Apple permits 500–25,000 unique production codes per batch. Generated values will be shown here for copying.";
 "Generate Redeem Code" = "Generate Redeem Code";
 "Create a redeem code for %@…" = "Create a redeem code for %@…";
+"Redeem Codes — %@" = "Redeem Codes — %@";
+"Product ID" = "Product ID";
 "Your Redeem Code" = "Your Redeem Code";
 "Your Redeem Codes" = "Your Redeem Codes";
 "Copy Code" = "Copy Code";

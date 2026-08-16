@@ -558,11 +558,18 @@ struct MenuBarView: View {
         let menuWindow = NSApplication.shared.keyWindow
         Task { @MainActor in
             await Task.yield()
-            PublishingWindowPresenter.shared.show(
-                model: model,
-                projectID: projectID,
-                action: action
-            )
+            if action == .offerCodes, let projectID {
+                RedeemCodesWindowPresenter.shared.show(
+                    model: model,
+                    projectID: projectID
+                )
+            } else {
+                PublishingWindowPresenter.shared.show(
+                    model: model,
+                    projectID: projectID,
+                    action: action
+                )
+            }
             dismiss()
             menuWindow?.orderOut(nil)
             isOpeningPublishingWindow = false

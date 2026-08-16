@@ -562,6 +562,8 @@
 "Apple permits 500–25,000 unique production codes per batch. Generated values will be shown here for copying." = "Apple מאפשרת 500–25,000 קודי ייצור ייחודיים בכל אצווה. הקודים שייווצרו יוצגו כאן להעתקה.";
 "Generate Redeem Code" = "יצירת קוד מימוש";
 "Create a redeem code for %@…" = "צור קוד מימוש עבור %@…";
+"Redeem Codes — %@" = "קודי מימוש — %@";
+"Product ID" = "מזהה מוצר";
 "Your Redeem Code" = "קוד המימוש שלך";
 "Your Redeem Codes" = "קודי המימוש שלך";
 "Copy Code" = "העתקת הקוד";

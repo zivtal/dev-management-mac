@@ -176,10 +176,12 @@ private struct PublishingWindowView: View {
     @State private var submitForReviewSelection = true
     @State private var releaseAutomaticallySelection = true
     @State private var showsPublicationStatus = false
+    private let locksProjectSelection: Bool
 
     init(initialProjectID: UUID?, initialAction: PublishingAction = .release) {
         _selectedProjectID = State(initialValue: initialProjectID)
         _selectedAction = State(initialValue: initialAction)
+        locksProjectSelection = initialProjectID != nil
     }
 
     var body: some View {
@@ -399,6 +401,7 @@ private struct PublishingWindowView: View {
                     Text(candidate.displayName).tag(Optional(candidate.id))
                 }
             }
+            .disabled(locksProjectSelection)
             LabeledContent("Bundle identifier", value: project.bundleIdentifier ?? L10n.text("Unknown"))
             LabeledContent("Version", value: project.marketingVersion ?? L10n.text("Unknown"))
             LabeledContent("Build", value: project.buildNumber ?? L10n.text("Unknown"))

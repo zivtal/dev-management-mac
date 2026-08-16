@@ -153,9 +153,11 @@ Publish performs the complete automatable release pipeline in this order:
 
 The menu-bar application list includes a paper-plane action for every eligible
 iOS app and a ticket action for projects that contain subscription products.
-The ticket opens the same Publish window with that app selected and Redeem Codes
-active. The footer Publish button remains available when the app should be chosen
-inside the release window. A release-readiness panel checks the selected source version against App
+The ticket opens a focused Redeem Codes window for that app without loading the
+release workspace. The paper-plane action opens Publish with that app selected
+and locks the application selector; the footer Publish button keeps the selector
+available when the app should be chosen inside the release window. A
+release-readiness panel checks the selected source version against App
 Store Connect, validates account setup, and summarizes store content,
 screenshots, subscriptions, and review details. An older local checkout is
 treated as a blocker instead of silently building a version behind the live App
