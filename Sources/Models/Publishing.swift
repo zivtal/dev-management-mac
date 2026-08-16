@@ -269,8 +269,16 @@ struct AppStoreConnectConfigurationSnapshot: Equatable, Sendable {
     let licenseTerritoryIDs: [String]
     let appLocalizations: [AppStoreConnectAppLocalizationSnapshot]
     let version: AppStoreConnectVersionSnapshot?
+    let activeReviewVersion: AppStoreConnectVersionReferenceSnapshot?
+    let hasReadyForDistributionVersion: Bool
     let subscriptionGroups: [AppStoreConnectSubscriptionGroupSnapshot]
     let loadedAt: Date
+}
+
+struct AppStoreConnectVersionReferenceSnapshot: Equatable, Sendable {
+    let id: String
+    let versionString: String
+    let state: String
 }
 
 struct AppStoreConnectAppLocalizationSnapshot: Equatable, Sendable, Identifiable {
@@ -297,6 +305,10 @@ struct AppStoreConnectVersionSnapshot: Equatable, Sendable {
         Self.reviewStates.contains(state)
     }
 
+    var isActivelyInReview: Bool {
+        AppStoreVersionLifecycle.isCancellableReviewState(state)
+    }
+
     private static let reviewStates: Set<String> = [
         "WAITING_FOR_REVIEW",
         "IN_REVIEW",
@@ -306,6 +318,40 @@ struct AppStoreConnectVersionSnapshot: Equatable, Sendable {
         "READY_FOR_SALE",
         "PREORDER_READY_FOR_SALE"
     ]
+}
+
+enum AppStoreVersionLifecycle {
+    static let cancellableReviewStates: Set<String> = [
+        "WAITING_FOR_REVIEW",
+        "IN_REVIEW"
+    ]
+
+    static let reusableDraftStates: Set<String> = [
+        "PREPARE_FOR_SUBMISSION",
+        "READY_FOR_REVIEW",
+        "INVALID_BINARY",
+        "REJECTED",
+        "METADATA_REJECTED",
+        "DEVELOPER_REJECTED"
+    ]
+
+    static let readyForDistributionStates: Set<String> = [
+        "READY_FOR_DISTRIBUTION",
+        "READY_FOR_SALE",
+        "PREORDER_READY_FOR_SALE"
+    ]
+
+    static func isCancellableReviewState(_ state: String) -> Bool {
+        cancellableReviewStates.contains(state)
+    }
+
+    static func isReadyForDistributionState(_ state: String) -> Bool {
+        readyForDistributionStates.contains(state)
+    }
+
+    static func isReusableDraftState(_ state: String) -> Bool {
+        reusableDraftStates.contains(state)
+    }
 }
 
 struct AppStoreConnectVersionLocalizationSnapshot: Equatable, Sendable, Identifiable {
@@ -497,6 +543,7 @@ struct PublishingConfiguration: Sendable {
     let replaceScreenshots: Bool
     let submitForReview: Bool
     let releaseAutomatically: Bool
+    let replaceActiveReviewVersion: Bool
 }
 
 struct PublishingResult: Equatable, Sendable {

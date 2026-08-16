@@ -1,6 +1,6 @@
 import Foundation
 
-enum ProjectContainerKind: String, Codable, CaseIterable, Identifiable {
+enum ProjectContainerKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case project
     case workspace
 
@@ -14,7 +14,7 @@ enum ProjectContainerKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-enum InstallMethod: String, Codable, CaseIterable, Identifiable {
+enum InstallMethod: String, Codable, CaseIterable, Identifiable, Sendable {
     case installScript
     case xcodebuild
 
@@ -28,7 +28,7 @@ enum InstallMethod: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-enum ApplicationPlatform: String, Codable, CaseIterable, Identifiable {
+enum ApplicationPlatform: String, Codable, CaseIterable, Identifiable, Sendable {
     case iOS
     case macOS
 
@@ -42,7 +42,7 @@ enum ApplicationPlatform: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-struct ManagedProject: Identifiable, Codable, Equatable {
+struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
     static let localMacInstallationTargetID = "local-mac"
 
     var id: UUID

@@ -468,6 +468,7 @@ final class AppModel: ObservableObject {
         projectID: UUID,
         submitForReview submissionOverride: Bool? = nil,
         releaseAutomatically releaseOverride: Bool? = nil,
+        replaceActiveReviewVersion: Bool = false,
         existingConfiguration: AppStoreConnectConfigurationSnapshot? = nil
     ) {
         guard !hasActiveWork else {
@@ -615,7 +616,8 @@ final class AppModel: ObservableObject {
             reviewAttachmentPaths: perAppConfiguration?.reviewAttachmentPaths ?? [],
             replaceScreenshots: perAppConfiguration?.replaceScreenshots ?? false,
             submitForReview: submitForReview,
-            releaseAutomatically: releaseAutomatically
+            releaseAutomatically: releaseAutomatically,
+            replaceActiveReviewVersion: replaceActiveReviewVersion
         )
         var log = PublishingLogSession(projectID: project.id, projectName: project.displayName)
         let logID = log.id

@@ -9,6 +9,8 @@ struct MenuBarView: View {
     @State private var showsCancelInstallationConfirmation = false
     @State private var isOpeningPublishingWindow = false
     @State private var openingPublishingProjectID: UUID?
+    @State private var openingPublishingAction = PublishingAction.release
+    @State private var subscriptionProjectIDs: Set<UUID> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -38,13 +40,18 @@ struct MenuBarView: View {
             footer
         }
         .padding(14)
-        .frame(width: 585)
+        .frame(width: 615)
         .background {
             MenuBarOpenObserver {
                 Task {
-                    await model.refreshDevices(installWhenDue: true)
+                    async let devices: Void = model.refreshDevices(installWhenDue: true)
+                    async let subscriptions: Void = refreshSubscriptionProjects()
+                    _ = await (devices, subscriptions)
                 }
             }
+        }
+        .task(id: subscriptionDiscoveryKey) {
+            await refreshSubscriptionProjects()
         }
         .onChange(of: model.connectedDevices.isEmpty) { _, isEmpty in
             if isEmpty {
@@ -313,7 +320,7 @@ struct MenuBarView: View {
                             .frame(width: 110, alignment: .leading)
                         Text("Last installed")
                             .frame(width: 135, alignment: .leading)
-                        Color.clear.frame(width: 72, height: 1)
+                        Color.clear.frame(width: 98, height: 1)
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -350,12 +357,40 @@ struct MenuBarView: View {
                                 .lineLimit(1)
 
                             HStack(spacing: 6) {
-                                if canPublish(project) {
+                                if hasSubscriptions(project) {
                                     Button {
-                                        openPublishing(projectID: project.id)
+                                        openPublishing(
+                                            projectID: project.id,
+                                            action: .offerCodes
+                                        )
                                     } label: {
                                         if isOpeningPublishingWindow,
-                                           openingPublishingProjectID == project.id {
+                                           openingPublishingProjectID == project.id,
+                                           openingPublishingAction == .offerCodes {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                                .frame(width: 14)
+                                        } else {
+                                            Image(systemName: "ticket.fill")
+                                                .frame(width: 14)
+                                        }
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .foregroundStyle(.orange)
+                                    .help(L10n.format("Create a redeem code for %@…", project.displayName))
+                                    .accessibilityLabel(L10n.format("Create a redeem code for %@…", project.displayName))
+                                    .disabled(model.hasActiveWork || isOpeningPublishingWindow)
+                                } else if canPublish(project) {
+                                    Color.clear.frame(width: 14, height: 14)
+                                }
+
+                                if canPublish(project) {
+                                    Button {
+                                        openPublishing(projectID: project.id, action: .release)
+                                    } label: {
+                                        if isOpeningPublishingWindow,
+                                           openingPublishingProjectID == project.id,
+                                           openingPublishingAction == .release {
                                             ProgressView()
                                                 .controlSize(.small)
                                                 .frame(width: 14)
@@ -397,7 +432,7 @@ struct MenuBarView: View {
                                         || model.hasActiveWork
                                 )
                             }
-                            .frame(width: 72, alignment: .trailing)
+                            .frame(width: 98, alignment: .trailing)
                         }
                     }
                 }
@@ -422,7 +457,7 @@ struct MenuBarView: View {
             .disabled(model.isRefreshingDevices || model.hasActiveWork)
 
             Button {
-                openPublishing(projectID: nil)
+                openPublishing(projectID: nil, action: .release)
             } label: {
                 if isOpeningPublishingWindow {
                     HStack(spacing: 5) {
@@ -481,18 +516,58 @@ struct MenuBarView: View {
         !project.isMacOSApplication && project.installMethod == .xcodebuild
     }
 
-    private func openPublishing(projectID: UUID?) {
+    private func hasSubscriptions(_ project: ManagedProject) -> Bool {
+        canPublish(project) && subscriptionProjectIDs.contains(project.id)
+    }
+
+    private var subscriptionDiscoveryKey: String {
+        let projects = model.projects
+            .map { "\($0.id.uuidString)|\($0.folderPath)|\($0.installMethod.rawValue)|\($0.applicationPlatform?.rawValue ?? "")" }
+            .joined(separator: ";")
+        return "\(model.preferences.appStoreLocale ?? "")|\(projects)"
+    }
+
+    @MainActor
+    private func refreshSubscriptionProjects() async {
+        let projects = model.projects.filter(canPublish)
+        let locale = model.preferences.appStoreLocale?.nilIfEmpty ?? "en-US"
+        let discoveredIDs = await Task.detached(priority: .utility) {
+            let discovery = StoreKitSubscriptionDiscoveryService()
+            return Set(projects.compactMap { project -> UUID? in
+                guard let catalog = try? discovery.discover(
+                    project: project,
+                    defaultLocale: locale
+                ), catalog.groups.contains(where: { !$0.subscriptions.isEmpty }) else {
+                    return nil
+                }
+                return project.id
+            })
+        }.value
+        guard !Task.isCancelled else { return }
+        subscriptionProjectIDs = discoveredIDs
+    }
+
+    private func openPublishing(
+        projectID: UUID?,
+        action: PublishingAction
+    ) {
         guard !isOpeningPublishingWindow else { return }
         isOpeningPublishingWindow = true
         openingPublishingProjectID = projectID
+        openingPublishingAction = action
         let menuWindow = NSApplication.shared.keyWindow
         Task { @MainActor in
             await Task.yield()
-            PublishingWindowPresenter.shared.show(model: model, projectID: projectID)
+            PublishingWindowPresenter.shared.show(
+                model: model,
+                projectID: projectID,
+                action: action
+            )
             dismiss()
             menuWindow?.orderOut(nil)
             isOpeningPublishingWindow = false
             openingPublishingProjectID = nil
+            openingPublishingAction = .release
         }
     }
 

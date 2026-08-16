@@ -243,6 +243,18 @@ final class AppStorePublishingService {
             privateKeyPEM: configuration.appStoreConnectPrivateKey
         )
 
+        let reusableVersionID: String?
+        if configuration.replaceActiveReviewVersion {
+            eventHandler(.phase(.uploadingMetadata))
+            reusableVersionID = try await appStoreConnect.cancelActiveAppVersionReview(
+                bundleIdentifier: bundleIdentifier,
+                replacingWith: artifact.version,
+                onOutput: { eventHandler(.output($0)) }
+            )
+        } else {
+            reusableVersionID = nil
+        }
+
         eventHandler(.phase(.uploadingMetadata))
         eventHandler(.output(L10n.text("Finding the application and editable version in App Store Connect…\n")))
         let publication = try await appStoreConnect.preparePublication(
@@ -261,7 +273,8 @@ final class AppStorePublishingService {
             privacyChoicesURL: configuration.privacyChoicesURL,
             licenseAgreementText: configuration.licenseAgreementText,
             review: configuration.review,
-            releaseAutomatically: configuration.releaseAutomatically
+            releaseAutomatically: configuration.releaseAutomatically,
+            reusableVersionID: reusableVersionID
         )
         eventHandler(.output(L10n.text("App Store metadata updated.\n")))
 

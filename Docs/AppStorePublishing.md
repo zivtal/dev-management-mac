@@ -135,22 +135,27 @@ Publish performs the complete automatable release pipeline in this order:
 5. Read the bundle identifier, marketing version, and build number from the
    archived application. These archive values remain authoritative when a scheme
    pre-action increments the source version during the build.
-6. Reconcile App Store metadata, availability, pricing, subscriptions, and
+6. When an older app version is still in review and the user confirms an
+   update, cancel that review submission only after the replacement archive has
+   succeeded. The canceled editable version record is reused for the newer
+   marketing version, and all submission items are submitted again.
+7. Reconcile App Store metadata, availability, pricing, subscriptions, and
    screenshots, then validate and upload the IPA.
-7. Wait for Apple to process the exact archived build and attach it to the exact
+8. Wait for Apple to process the exact archived build and attach it to the exact
    archived marketing version.
-8. Add the build to every internal TestFlight group. If the app has no internal
+9. Add the build to every internal TestFlight group. If the app has no internal
    group, create an `Internal Testing` group with access to all builds. App Store
    Connect users still need to be added as testers once; Publish does not invite
    people or change account roles.
-9. Upload configured demo videos and documents to App Review, wait for Apple to
+10. Upload configured demo videos and documents to App Review, wait for Apple to
    finish processing each attachment, and submit the complete version when
    submission is enabled.
 
 The menu-bar application list includes a paper-plane action for every eligible
-iOS app. It opens Publish with that app already selected; the footer Publish
-button remains available when the app should be chosen inside the release
-window. A release-readiness panel checks the selected source version against App
+iOS app and a ticket action for projects that contain subscription products.
+The ticket opens the same Publish window with that app selected and Redeem Codes
+active. The footer Publish button remains available when the app should be chosen
+inside the release window. A release-readiness panel checks the selected source version against App
 Store Connect, validates account setup, and summarizes store content,
 screenshots, subscriptions, and review details. An older local checkout is
 treated as a blocker instead of silently building a version behind the live App
@@ -169,7 +174,19 @@ Subscription cards expose each product's duration, base territory, availability,
 and requested base price. Saved price edits update `app-store-publishing.json`
 and are applied to App Store Connect by the next Publish run. Redeem Codes shows
 existing production offers and creates either Apple one-time code batches or a
-custom reusable code, using the selected subscription.
+custom reusable code, using the selected subscription. Switching tabs preserves
+the release window layout; code creation has its own in-tab action, while the
+footer Publish or Update action belongs to the release workflow. The window also
+remains open when another application or Development Management window receives
+focus.
+
+When App Store Connect reports an older app version in an active review state,
+the release action is labeled **Update** and identifies that version. The final
+confirmation explains that the active submission and all of its items will be
+canceled, the editable version will be replaced, and the review queue will start
+again. If no app version is in review, Update uploads and submits normally. The
+same local version and build already submitted to Apple remain blocked to avoid
+a duplicate upload.
 
 Publish stays open after confirmation and presents five understandable stages:
 Prepare, Build, App Store setup, TestFlight, and Review. The current task,
@@ -203,9 +220,12 @@ offer and then create either:
 
 Offer duration, new/existing/expired subscriber eligibility, introductory-offer
 interaction, renewal behavior, product, code quantity, and expiry are chosen in
-the app. One-time values are downloaded from App Store Connect and saved to a
-user-selected CSV file. Apple requires the app to be ready for distribution and
-the subscription to be approved before production codes can be generated.
+the app. After generation, the setup form is replaced by only the redeemable code
+values and a copy action. One-time CSV responses are parsed in memory and aren't
+written to disk. Code creation is unavailable until App Store Connect reports at
+least one app version ready for distribution and reports the selected
+subscription as approved; the same checks are repeated by the service immediately
+before a production request.
 
 Apple still requires the initial App Store Connect app record, signed legal
 agreements, banking and tax information for paid content, App Privacy answers,

@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
 enum PublishingWindowLayout: Equatable {
     case singleColumn
@@ -30,6 +29,11 @@ private enum PublishingWorkspace: String, CaseIterable {
     }
 }
 
+enum PublishingAction: Hashable {
+    case release
+    case offerCodes
+}
+
 fileprivate enum PublishingConfigurationTab: CaseIterable {
     case listing
     case appSetup
@@ -56,7 +60,11 @@ final class PublishingWindowPresenter {
 
     private init() {}
 
-    func show(model: AppModel, projectID: UUID? = nil) {
+    func show(
+        model: AppModel,
+        projectID: UUID? = nil,
+        action: PublishingAction = .release
+    ) {
         windowController?.close()
         let loadingController = NSHostingController(
             rootView: PublishingWindowLoadingView(projectName: projectName(for: projectID, in: model))
@@ -70,6 +78,7 @@ final class PublishingWindowPresenter {
         panel.title = L10n.text("Publish to the App Store")
         panel.contentViewController = loadingController
         panel.isFloatingPanel = false
+        panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.minSize = NSSize(width: 600, height: 580)
         if let screen = NSApplication.shared.keyWindow?.screen ?? NSScreen.main ?? NSScreen.screens.first {
@@ -91,7 +100,10 @@ final class PublishingWindowPresenter {
             else {
                 return
             }
-            let rootView = PublishingWindowView(initialProjectID: projectID)
+            let rootView = PublishingWindowView(
+                initialProjectID: projectID,
+                initialAction: action
+            )
                 .environmentObject(model)
             panel.contentViewController = NSHostingController(rootView: rootView)
         }
@@ -153,18 +165,21 @@ private struct PublishingWindowView: View {
     @State private var offerEligibilities = Set(SubscriptionOfferCustomerEligibility.allCases)
     @State private var stackWithIntroductoryOffer = false
     @State private var autoRenewEnabled = true
-    @State private var codeKind = SubscriptionOfferCodeKind.oneTime
-    @State private var numberOfCodes = 500
+    @State private var codeKind = SubscriptionOfferCodeKind.custom
+    @State private var numberOfCodes = 100
     @State private var customCode = ""
     @State private var customHasExpiration = false
     @State private var expirationDate = Calendar.current.date(byAdding: .month, value: 6, to: Date()) ?? Date()
     @State private var codeStatus: CodeStatus?
+    @State private var generatedRedeemCodes: [String] = []
+    @State private var generatedCodesWereCopied = false
     @State private var submitForReviewSelection = true
     @State private var releaseAutomaticallySelection = true
     @State private var showsPublicationStatus = false
 
-    init(initialProjectID: UUID?) {
+    init(initialProjectID: UUID?, initialAction: PublishingAction = .release) {
         _selectedProjectID = State(initialValue: initialProjectID)
+        _selectedAction = State(initialValue: initialAction)
     }
 
     var body: some View {
@@ -206,23 +221,21 @@ private struct PublishingWindowView: View {
                     .frame(maxWidth: .infinity)
 
                     if selectedWorkspace == .overview {
-                        if selectedAction == .release {
-                            PublishingReadinessView(
-                                report: releaseReadinessReport(for: project),
-                                target: L10n.format(
-                                    "%@ (%@)",
-                                    project.marketingVersion ?? "—",
-                                    project.buildNumber ?? "—"
-                                ),
-                                onEditApp: {
-                                    configurationEditorStartsWithAI = false
-                                    configurationEditorInitialTab = firstConfigurationTabNeedingAttention
-                                    configurationEditorHighlightsMissingFields = true
-                                    selectedWorkspace = .configuration
-                                },
-                                onOpenSettings: { openSettings() }
-                            )
-                        }
+                        PublishingReadinessView(
+                            report: releaseReadinessReport(for: project),
+                            target: L10n.format(
+                                "%@ (%@)",
+                                project.marketingVersion ?? "—",
+                                project.buildNumber ?? "—"
+                            ),
+                            onEditApp: {
+                                configurationEditorStartsWithAI = false
+                                configurationEditorInitialTab = firstConfigurationTabNeedingAttention
+                                configurationEditorHighlightsMissingFields = true
+                                selectedWorkspace = .configuration
+                            },
+                            onOpenSettings: { openSettings() }
+                        )
                         projectOptions(project)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         footer(project)
@@ -270,23 +283,28 @@ private struct PublishingWindowView: View {
             await refreshAppStoreConfiguration()
         }
         .onChange(of: codeKind) { _, kind in
+            clearGeneratedRedeemCodes()
             if kind == .oneTime, numberOfCodes < 500 {
                 numberOfCodes = 500
             } else if kind == .custom, numberOfCodes == 500 {
                 numberOfCodes = 100
             }
         }
+        .onChange(of: selectedProductID) { _, _ in
+            clearGeneratedRedeemCodes()
+        }
         .confirmationDialog(
-            Text("Publish to the App Store?"),
+            Text(releaseConfirmationTitle),
             isPresented: $showsConfirmation,
             titleVisibility: .visible
         ) {
-            Button(submitForReview ? "Build, upload, and submit" : "Build and upload") {
+            Button(releaseConfirmationActionTitle) {
                 guard let projectID = selectedProjectID else { return }
                 model.publish(
                     projectID: projectID,
                     submitForReview: submitForReview,
                     releaseAutomatically: releaseAutomatically,
+                    replaceActiveReviewVersion: olderActiveReviewVersion != nil,
                     existingConfiguration: currentAppStoreSnapshot
                 )
                 if model.publishingProgress != nil {
@@ -295,7 +313,7 @@ private struct PublishingWindowView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This production action archives and uploads the selected build. First publications also reconcile app setup and subscriptions discovered in the project; later versions reuse the approved setup.")
+            Text(releaseConfirmationMessage)
         }
         .confirmationDialog(
             Text("Generate production offer codes?"),
@@ -908,12 +926,32 @@ private struct PublishingWindowView: View {
                     systemImage: "checkmark.seal.fill"
                 )
                 .foregroundStyle(.blue)
+            } else if let active = olderActiveReviewVersion {
+                Label(
+                    L10n.format(
+                        "Version %@ is %@. Update will ask before canceling that submission and replacing it with %@.",
+                        active.versionString,
+                        friendlyState(active.state),
+                        selectedProject?.marketingVersion ?? L10n.text("the new version")
+                    ),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(.orange)
             }
         }
     }
 
     @ViewBuilder
     private var offerCodeOptions: some View {
+        if generatedRedeemCodes.isEmpty {
+            offerCodeForm
+        } else {
+            generatedRedeemCodeResult
+        }
+    }
+
+    @ViewBuilder
+    private var offerCodeForm: some View {
         Section("Subscription") {
             subscriptionDiscoveryStatus
             if !detectedProductIDs.isEmpty {
@@ -928,103 +966,157 @@ private struct PublishingWindowView: View {
                 .foregroundStyle(.secondary)
         }
 
-        Section("Existing Redeem Codes") {
-            if let subscription = selectedLiveSubscription {
-                if subscription.offers.isEmpty {
-                    Text("No redeem-code offers exist for this subscription yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(subscription.offers) { offer in
-                        VStack(alignment: .leading, spacing: 5) {
-                            HStack {
-                                Text(verbatim: offer.name)
-                                    .font(.subheadline.weight(.medium))
-                                Spacer()
-                                Label(
-                                    offer.active ? L10n.text("Active") : L10n.text("Inactive"),
-                                    systemImage: offer.active ? "checkmark.circle.fill" : "pause.circle.fill"
-                                )
-                                .font(.caption)
-                                .foregroundStyle(offer.active ? .green : .secondary)
-                            }
-                            Text(L10n.format(
-                                "%d production code(s) · %d total redemption(s)",
-                                offer.productionCodeCount,
-                                offer.totalNumberOfCodes
-                            ))
-                            .font(.caption)
+        if let eligibilityIssue = redeemCodeEligibilityIssue {
+            Section("Availability") {
+                Label("Redeem codes are not available yet", systemImage: "lock.fill")
+                    .font(.headline)
+                    .foregroundStyle(.orange)
+                Text(verbatim: eligibilityIssue)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else {
+            Section("Existing Redeem Codes") {
+                if let subscription = selectedLiveSubscription {
+                    if subscription.offers.isEmpty {
+                        Text("No redeem-code offers exist for this subscription yet.")
                             .foregroundStyle(.secondary)
-                            if let duration = offer.duration {
-                                Text(verbatim: friendlyState(duration))
+                    } else {
+                        ForEach(subscription.offers) { offer in
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack {
+                                    Text(verbatim: offer.name)
+                                        .font(.subheadline.weight(.medium))
+                                    Spacer()
+                                    Label(
+                                        offer.active ? L10n.text("Active") : L10n.text("Inactive"),
+                                        systemImage: offer.active ? "checkmark.circle.fill" : "pause.circle.fill"
+                                    )
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(offer.active ? .green : .secondary)
+                                }
+                                Text(L10n.format(
+                                    "%d production code(s) · %d total redemption(s)",
+                                    offer.productionCodeCount,
+                                    offer.totalNumberOfCodes
+                                ))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                if let duration = offer.duration {
+                                    Text(verbatim: friendlyState(duration))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            .padding(.vertical, 4)
                         }
-                        .padding(.vertical, 4)
+                    }
+                } else {
+                    Text("Choose a subscription to view its current redeem codes.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Free Offer") {
+                TextField("Reference name", text: $offerReferenceName)
+                Picker("Free access duration", selection: $offerDuration) {
+                    ForEach(SubscriptionOfferDuration.allCases, id: \.self) { duration in
+                        Text(duration.title).tag(duration)
                     }
                 }
-            } else {
-                Text("Choose a subscription to view its current redeem codes.")
+                LabeledContent("Eligible subscribers") {
+                    HStack(spacing: 14) {
+                        ForEach(SubscriptionOfferCustomerEligibility.allCases, id: \.self) { eligibility in
+                            Toggle(eligibility.title, isOn: eligibilityBinding(eligibility))
+                                .toggleStyle(.checkbox)
+                        }
+                    }
+                }
+                Toggle("Allow the introductory offer before this offer", isOn: $stackWithIntroductoryOffer)
+                Toggle("Automatically renew at the standard price", isOn: $autoRenewEnabled)
+                Text("Apple does not allow an offer's terms to be edited after creation. Reusing the same reference name reuses only an exact match.")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        }
 
-        Section("Free Offer") {
-            TextField("Reference name", text: $offerReferenceName)
-            Picker("Free access duration", selection: $offerDuration) {
-                ForEach(SubscriptionOfferDuration.allCases, id: \.self) { duration in
-                    Text(duration.title).tag(duration)
-                }
-            }
-            LabeledContent("Eligible subscribers") {
-                HStack(spacing: 14) {
-                    ForEach(SubscriptionOfferCustomerEligibility.allCases, id: \.self) { eligibility in
-                        Toggle(eligibility.title, isOn: eligibilityBinding(eligibility))
-                            .toggleStyle(.checkbox)
+            Section("Codes") {
+                Picker("Code type", selection: $codeKind) {
+                    ForEach(SubscriptionOfferCodeKind.allCases, id: \.self) { kind in
+                        Text(kind.title).tag(kind)
                     }
                 }
-            }
-            Toggle("Allow the introductory offer before this offer", isOn: $stackWithIntroductoryOffer)
-            Toggle("Automatically renew at the standard price", isOn: $autoRenewEnabled)
-            Text("Apple does not allow an offer's terms to be edited after creation. Reusing the same reference name reuses only an exact match.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-
-        Section("Codes") {
-            Picker("Code type", selection: $codeKind) {
-                ForEach(SubscriptionOfferCodeKind.allCases, id: \.self) { kind in
-                    Text(kind.title).tag(kind)
+                LabeledContent(codeKind == .oneTime ? "Number of unique codes" : "Redemption cap") {
+                    TextField("Quantity", value: $numberOfCodes, format: .number)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 100)
+                }
+                if codeKind == .custom {
+                    TextField("Custom code", text: $customCode)
+                        .onChange(of: customCode) { _, value in
+                            let uppercased = value.uppercased()
+                            if uppercased != value { customCode = uppercased }
+                        }
+                    Toggle("Set an expiration date", isOn: $customHasExpiration)
+                }
+                if codeKind == .oneTime || customHasExpiration {
+                    DatePicker(
+                        "Expiration date",
+                        selection: $expirationDate,
+                        in: earliestExpirationDate...latestExpirationDate,
+                        displayedComponents: .date
+                    )
+                }
+                Text(codeKind == .oneTime
+                    ? "Apple permits 500–25,000 unique production codes per batch. Generated values will be shown here for copying."
+                    : "Custom codes use letters and numbers only, up to 64 characters, with 1–25,000 redemptions per batch.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let codeStatus {
+                    codeStatusView(codeStatus)
+                }
+                HStack {
+                    Spacer()
+                    Button {
+                        handleGenerateCodesAction()
+                    } label: {
+                        if model.isGeneratingOfferCodes {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Generate Redeem Code", systemImage: "ticket.fill")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.hasActiveWork)
                 }
             }
-            LabeledContent(codeKind == .oneTime ? "Number of unique codes" : "Redemption cap") {
-                TextField("Quantity", value: $numberOfCodes, format: .number)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 100)
+        }
+    }
+
+    @ViewBuilder
+    private var generatedRedeemCodeResult: some View {
+        Section(generatedRedeemCodes.count == 1 ? "Your Redeem Code" : "Your Redeem Codes") {
+            ScrollView {
+                Text(verbatim: generatedRedeemCodes.joined(separator: "\n"))
+                    .font(.system(.body, design: .monospaced).weight(.semibold))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
             }
-            if codeKind == .custom {
-                TextField("Custom code", text: $customCode)
-                    .onChange(of: customCode) { _, value in
-                        let uppercased = value.uppercased()
-                        if uppercased != value { customCode = uppercased }
-                    }
-                Toggle("Set an expiration date", isOn: $customHasExpiration)
-            }
-            if codeKind == .oneTime || customHasExpiration {
-                DatePicker(
-                    "Expiration date",
-                    selection: $expirationDate,
-                    in: earliestExpirationDate...latestExpirationDate,
-                    displayedComponents: .date
+            .frame(maxHeight: 320)
+            .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+            Button {
+                copyGeneratedRedeemCodes()
+            } label: {
+                Label(
+                    generatedCodesWereCopied
+                        ? L10n.text("Copied")
+                        : L10n.text(generatedRedeemCodes.count == 1 ? "Copy Code" : "Copy All Codes"),
+                    systemImage: generatedCodesWereCopied ? "checkmark" : "doc.on.doc"
                 )
             }
-            Text(codeKind == .oneTime
-                ? "Apple permits 500–25,000 unique production codes per batch. The downloaded CSV includes the redeemable values."
-                : "Custom codes use letters and numbers only, up to 64 characters, with 1–25,000 redemptions per batch.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if let codeStatus {
-                codeStatusView(codeStatus)
+            .buttonStyle(.borderedProminent)
+            Button("Create Another Code") {
+                clearGeneratedRedeemCodes()
             }
         }
     }
@@ -1245,28 +1337,19 @@ private struct PublishingWindowView: View {
             Button("Cancel") {
                 PublishingWindowPresenter.shared.close()
             }
-            Button {
-                if selectedAction == .release {
+            if selectedAction == .release {
+                Button {
                     handleReleaseAction(project)
-                } else {
-                    showsCodeConfirmation = true
-                }
-            } label: {
-                if model.isGeneratingOfferCodes {
-                    ProgressView().controlSize(.small)
-                } else {
+                } label: {
                     Label(
-                        selectedAction == .release ? publishButtonTitle : L10n.text("Generate Codes"),
-                        systemImage: selectedAction == .release ? "paperplane.fill" : "ticket.fill"
+                        publishButtonTitle,
+                        systemImage: "paperplane.fill"
                     )
                 }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(model.hasActiveWork)
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
-            .disabled(
-                model.hasActiveWork
-                    || (selectedAction == .offerCodes && !actionIsValid(project))
-            )
         }
     }
 
@@ -1428,11 +1511,6 @@ private struct PublishingWindowView: View {
         var screenshotPreview: AppStoreScreenshotPreview
     }
 
-    private enum PublishingAction: Hashable {
-        case release
-        case offerCodes
-    }
-
     private enum CodeStatus: Equatable {
         case success(String)
         case warning(String)
@@ -1448,6 +1526,29 @@ private struct PublishingWindowView: View {
         currentAppStoreSnapshot?.subscriptionGroups
             .flatMap(\.subscriptions)
             .first(where: { $0.productID == selectedProductID })
+    }
+
+    private var redeemCodeEligibilityIssue: String? {
+        switch appStoreConfiguration {
+        case .loading:
+            return L10n.text("Checking whether this app can create production redeem codes…")
+        case .error(let message):
+            return message
+        case .loaded(let snapshot):
+            guard snapshot.hasReadyForDistributionVersion else {
+                return L10n.text("Redeem codes become available after Apple approves and releases the app.")
+            }
+            guard let subscription = selectedLiveSubscription else {
+                return L10n.text("Choose a subscription that exists in App Store Connect.")
+            }
+            guard subscription.state == "APPROVED" else {
+                return L10n.format(
+                    "The selected subscription must be Approved before redeem codes can be created. Current status: %@.",
+                    subscription.state.map(friendlyState) ?? L10n.text("Unknown")
+                )
+            }
+            return nil
+        }
     }
 
     private var configurationTaskID: String {
@@ -1520,6 +1621,19 @@ private struct PublishingWindowView: View {
                     friendlyState(remote.state)
                 ),
                 state: .blocked
+            )
+        }
+        if let active = olderActiveReviewVersion {
+            return PublishingReadinessItem(
+                id: "source",
+                title: L10n.text("A previous version is in review"),
+                detail: L10n.format(
+                    "Version %@ is %@. Update can cancel it and replace it with %@ after you confirm.",
+                    active.versionString,
+                    friendlyState(active.state),
+                    localVersion
+                ),
+                state: .attention
             )
         }
         return PublishingReadinessItem(
@@ -1833,17 +1947,60 @@ private struct PublishingWindowView: View {
         return version.isUnderReview
     }
 
+    private var olderActiveReviewVersion: AppStoreConnectVersionReferenceSnapshot? {
+        guard let localVersion = selectedProject?.marketingVersion?.nilIfEmpty,
+              let active = currentAppStoreSnapshot?.activeReviewVersion,
+              active.versionString != localVersion else { return nil }
+        return active
+    }
+
     private var publishButtonTitle: String {
-        guard currentVersionIsAlreadySubmitted,
-              let state = currentAppStoreSnapshot?.version?.state else {
-            return L10n.text("Publish")
+        if currentVersionIsAlreadySubmitted,
+           let state = currentAppStoreSnapshot?.version?.state {
+            switch state {
+            case "READY_FOR_SALE", "READY_FOR_DISTRIBUTION", "PREORDER_READY_FOR_SALE":
+                return L10n.text("Already Published")
+            default:
+                return L10n.text("Already in Review")
+            }
         }
-        switch state {
-        case "READY_FOR_SALE", "PREORDER_READY_FOR_SALE":
-            return L10n.text("Already Published")
-        default:
-            return L10n.text("Already in Review")
+        if currentAppStoreSnapshot?.version != nil {
+            return L10n.text("Update")
         }
+        return L10n.text("Publish")
+    }
+
+    private var releaseConfirmationTitle: String {
+        if let active = olderActiveReviewVersion {
+            return L10n.format("Replace version %@ in review?", active.versionString)
+        }
+        return L10n.text(publishButtonTitle == L10n.text("Update")
+            ? "Update on the App Store?"
+            : "Publish to the App Store?")
+    }
+
+    private var releaseConfirmationActionTitle: String {
+        if let active = olderActiveReviewVersion {
+            return L10n.format(
+                submitForReview ? "Cancel %@ and submit %@" : "Cancel %@ and upload %@",
+                active.versionString,
+                selectedProject?.marketingVersion ?? L10n.text("the update")
+            )
+        }
+        return submitForReview ? L10n.text("Build, upload, and submit") : L10n.text("Build and upload")
+    }
+
+    private var releaseConfirmationMessage: String {
+        if let active = olderActiveReviewVersion {
+            return L10n.format(
+                submitForReview
+                    ? "Apple allows one app version per platform in review. Continuing will first build the new app, then cancel version %@ and its submission items, replace it with %@, upload the build to TestFlight, and submit the replacement for review. The review queue starts over."
+                    : "Apple allows one app version per platform in review. Continuing will first build the new app, then cancel version %@ and its submission items, replace it with %@, and upload the build to TestFlight without submitting it for review. The previous review queue position will be lost.",
+                active.versionString,
+                selectedProject?.marketingVersion ?? L10n.text("the new version")
+            )
+        }
+        return L10n.text("This production action archives and uploads the selected build. First publications also reconcile app setup and subscriptions discovered in the project; later versions reuse the approved setup.")
     }
 
     private var earliestExpirationDate: Date {
@@ -1869,41 +2026,45 @@ private struct PublishingWindowView: View {
         )
     }
 
-    private func actionIsValid(_ project: ManagedProject) -> Bool {
-        guard project.bundleIdentifier?.isEmpty == false,
+    private var offerCodeValidationIssue: String? {
+        if let redeemCodeEligibilityIssue { return redeemCodeEligibilityIssue }
+        guard selectedProject?.bundleIdentifier?.isEmpty == false,
               !subscriptionSummary.hasError,
-              currentAppStoreSnapshot != nil else {
-            return false
+              currentAppStoreSnapshot != nil,
+              !selectedProductID.isEmpty else {
+            return L10n.text("Choose an available App Store subscription.")
         }
-        if selectedAction == .release {
-            return releaseReadinessReport(for: project).allowsPublication
+        guard offerReferenceName.nilIfEmpty != nil else {
+            return SubscriptionOfferCodeValidationError.missingReferenceName.localizedDescription
         }
-        guard !selectedProductID.isEmpty,
-              offerReferenceName.nilIfEmpty != nil,
-              !offerEligibilities.isEmpty else { return false }
+        guard !offerEligibilities.isEmpty else {
+            return SubscriptionOfferCodeValidationError.missingEligibility.localizedDescription
+        }
         if codeKind == .oneTime {
             return (500...25_000).contains(numberOfCodes)
+                ? nil
+                : SubscriptionOfferCodeValidationError.invalidBatchSize.localizedDescription
         }
-        return (1...25_000).contains(numberOfCodes)
-            && (1...64).contains(customCode.count)
-            && customCode.unicodeScalars.allSatisfy(CharacterSet.alphanumerics.contains)
+        guard (1...25_000).contains(numberOfCodes) else {
+            return SubscriptionOfferCodeValidationError.invalidBatchSize.localizedDescription
+        }
+        guard (1...64).contains(customCode.count),
+              customCode.unicodeScalars.allSatisfy(CharacterSet.alphanumerics.contains) else {
+            return SubscriptionOfferCodeValidationError.invalidCustomCode.localizedDescription
+        }
+        return nil
+    }
+
+    private func handleGenerateCodesAction() {
+        if let issue = offerCodeValidationIssue {
+            codeStatus = .failure(issue)
+            return
+        }
+        showsCodeConfirmation = true
     }
 
     private func generateOfferCodes() async {
         guard let projectID = selectedProjectID else { return }
-        let saveURL: URL?
-        if codeKind == .oneTime {
-            let panel = NSSavePanel()
-            panel.title = L10n.text("Save One-Time Offer Codes")
-            panel.allowedContentTypes = [.commaSeparatedText]
-            panel.canCreateDirectories = true
-            panel.nameFieldStringValue = "\(selectedProductID.replacingOccurrences(of: ".", with: "-"))-offer-codes.csv"
-            guard panel.runModal() == .OK, let url = panel.url else { return }
-            saveURL = url
-        } else {
-            saveURL = nil
-        }
-
         codeStatus = nil
         let request = SubscriptionOfferCodeGenerationRequest(
             productID: selectedProductID,
@@ -1924,17 +2085,34 @@ private struct PublishingWindowView: View {
                 projectID: projectID,
                 request: request
             )
-            if let csv = result.oneTimeCodeCSV, let saveURL {
-                try csv.write(to: saveURL, options: .atomic)
-                codeStatus = .success(L10n.format("Generated %d codes and saved %@.", numberOfCodes, saveURL.lastPathComponent))
+            if let csv = result.oneTimeCodeCSV {
+                let values = SubscriptionOfferCodeCSV.values(from: csv)
+                if values.isEmpty {
+                    codeStatus = .warning(L10n.text("Apple created the batch but has not made its redeem codes available yet. Open App Store Connect later to retrieve them."))
+                } else {
+                    generatedRedeemCodes = values
+                }
             } else if codeKind == .oneTime {
-                codeStatus = .warning(L10n.format("The batch was created, but Apple is still preparing its CSV. Batch ID: %@", result.batchID))
+                codeStatus = .warning(L10n.text("Apple created the batch but has not made its redeem codes available yet. Open App Store Connect later to retrieve them."))
             } else {
-                codeStatus = .success(L10n.format("Custom code %@ was created with %d redemptions.", result.customCode ?? customCode, numberOfCodes))
+                generatedRedeemCodes = [result.customCode ?? customCode]
             }
         } catch {
             codeStatus = .failure(error.localizedDescription)
         }
+    }
+
+    private func copyGeneratedRedeemCodes() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(generatedRedeemCodes.joined(separator: "\n"), forType: .string)
+        generatedCodesWereCopied = true
+    }
+
+    private func clearGeneratedRedeemCodes() {
+        generatedRedeemCodes = []
+        generatedCodesWereCopied = false
+        codeStatus = nil
     }
 
     @ViewBuilder

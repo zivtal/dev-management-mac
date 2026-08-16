@@ -111,6 +111,10 @@ enum AppStoreConnectError: LocalizedError {
     case missingSubscriptionReviewScreenshot(String)
     case subscriptionNotFound(String)
     case offerCodeReferenceNameConflict(String)
+    case offerCodesRequireReadyApp
+    case offerCodesRequireApprovedSubscription(String, String?)
+    case activeReviewSubmissionNotFound(String)
+    case activeReviewCancellationTimedOut(String)
 
     var errorDescription: String? {
         switch self {
@@ -136,6 +140,18 @@ enum AppStoreConnectError: LocalizedError {
             return L10n.format("Subscription %@ does not exist in App Store Connect. Publish the app and subscription before generating production offer codes.", productID)
         case .offerCodeReferenceNameConflict(let referenceName):
             return L10n.format("Offer %@ already exists with different terms. Offer terms cannot be edited; choose a new reference name.", referenceName)
+        case .offerCodesRequireReadyApp:
+            return L10n.text("Redeem codes become available after Apple approves and releases the app.")
+        case .offerCodesRequireApprovedSubscription(let productID, let state):
+            return L10n.format(
+                "Subscription %@ must be Approved before redeem codes can be created. Current status: %@.",
+                productID,
+                state ?? L10n.text("Unknown")
+            )
+        case .activeReviewSubmissionNotFound(let version):
+            return L10n.format("Version %@ is in review, but its active review submission could not be found.", version)
+        case .activeReviewCancellationTimedOut(let version):
+            return L10n.format("Apple accepted the cancellation for version %@, but it is still processing. Try Update again shortly.", version)
         }
     }
 }
@@ -237,6 +253,8 @@ final class AppStoreConnectService {
             versions,
             preferredVersion: preferredVersion
         )
+        let activeReviewVersion = Self.activeReviewVersion(in: versions)
+        let hasReadyForDistributionVersion = Self.hasReadyForDistributionVersion(in: versions)
         let version: AppStoreConnectVersionSnapshot? = if let selectedVersion {
             try await versionSnapshot(selectedVersion)
         } else {
@@ -267,6 +285,8 @@ final class AppStoreConnectService {
             licenseTerritoryIDs: licenseTerritoryIDs,
             appLocalizations: appLocalizations,
             version: version,
+            activeReviewVersion: activeReviewVersion,
+            hasReadyForDistributionVersion: hasReadyForDistributionVersion,
             subscriptionGroups: groups.sorted {
                 $0.referenceName.localizedCaseInsensitiveCompare($1.referenceName) == .orderedAscending
             },
@@ -304,6 +324,53 @@ final class AppStoreConnectService {
             return activeStates.contains(state)
         }
         return newest(active) ?? newest(versions)
+    }
+
+    static func activeReviewVersion(
+        in versions: [[String: Any]]
+    ) -> AppStoreConnectVersionReferenceSnapshot? {
+        versions.compactMap { resource -> AppStoreConnectVersionReferenceSnapshot? in
+            guard let id = resource["id"] as? String else { return nil }
+            let attributes = Self.attributes(resource)
+            guard let state = attributes["appStoreState"] as? String,
+                  AppStoreVersionLifecycle.isCancellableReviewState(state) else { return nil }
+            return AppStoreConnectVersionReferenceSnapshot(
+                id: id,
+                versionString: attributes["versionString"] as? String ?? L10n.text("Unknown"),
+                state: state
+            )
+        }
+        .max { lhs, rhs in
+            AppStoreVersionComparison.compare(lhs.versionString, rhs.versionString) == .orderedAscending
+        }
+    }
+
+    static func hasReadyForDistributionVersion(in versions: [[String: Any]]) -> Bool {
+        versions.contains { resource in
+            guard let state = Self.attributes(resource)["appStoreState"] as? String else {
+                return false
+            }
+            return AppStoreVersionLifecycle.isReadyForDistributionState(state)
+        }
+    }
+
+    static func reusableDraftVersion(
+        in versions: [[String: Any]]
+    ) -> AppStoreConnectVersionReferenceSnapshot? {
+        versions.compactMap { resource -> AppStoreConnectVersionReferenceSnapshot? in
+            guard let id = resource["id"] as? String else { return nil }
+            let attributes = Self.attributes(resource)
+            guard let state = attributes["appStoreState"] as? String,
+                  AppStoreVersionLifecycle.isReusableDraftState(state) else { return nil }
+            return AppStoreConnectVersionReferenceSnapshot(
+                id: id,
+                versionString: attributes["versionString"] as? String ?? L10n.text("Unknown"),
+                state: state
+            )
+        }
+        .max { lhs, rhs in
+            AppStoreVersionComparison.compare(lhs.versionString, rhs.versionString) == .orderedAscending
+        }
     }
 
     private func versionSnapshot(
@@ -646,7 +713,8 @@ final class AppStoreConnectService {
         privacyChoicesURL: String?,
         licenseAgreementText: String?,
         review: AppStoreReviewConfiguration,
-        releaseAutomatically: Bool
+        releaseAutomatically: Bool,
+        reusableVersionID: String? = nil
     ) async throws -> AppStoreConnectPublication {
         let appID = try await findApplication(bundleIdentifier: bundleIdentifier)
         let isVersionOnlyUpdate = try await hasPublishedVersion(appID: appID, otherThan: version)
@@ -654,7 +722,8 @@ final class AppStoreConnectService {
             appID: appID,
             version: version,
             copyright: copyright,
-            releaseAutomatically: releaseAutomatically
+            releaseAutomatically: releaseAutomatically,
+            reusableVersionID: reusableVersionID
         )
         let fallbackListing = AppStoreLocalizedMetadata(
             locale: locale,
@@ -1029,10 +1098,29 @@ final class AppStoreConnectService {
         request generation: SubscriptionOfferCodeGenerationRequest
     ) async throws -> SubscriptionOfferCodeGenerationResult {
         let appID = try await findApplication(bundleIdentifier: bundleIdentifier)
+        let versions = try await pagedData(
+            path: "/v1/apps/\(appID)/appStoreVersions",
+            query: ["filter[platform]": "IOS", "limit": "200"]
+        )
+        guard Self.hasReadyForDistributionVersion(in: versions) else {
+            throw AppStoreConnectError.offerCodesRequireReadyApp
+        }
         let subscriptionID = try await findSubscription(
             appID: appID,
             productID: generation.productID
         )
+        let subscriptionResponse = try await request(
+            method: "GET",
+            path: "/v1/subscriptions/\(subscriptionID)"
+        )
+        let subscriptionResource = subscriptionResponse["data"] as? [String: Any]
+        let subscriptionState = subscriptionResource.map(Self.attributes)?["state"] as? String
+        guard subscriptionState == "APPROVED" else {
+            throw AppStoreConnectError.offerCodesRequireApprovedSubscription(
+                generation.productID,
+                subscriptionState
+            )
+        }
         let existingOffers = try await pagedData(
             path: "/v1/subscriptions/\(subscriptionID)/offerCodes",
             query: ["limit": "200"]
@@ -1402,6 +1490,92 @@ final class AppStoreConnectService {
             408,
             L10n.format("App Review attachment %@ did not finish processing in time.", filename)
         )
+    }
+
+    func cancelActiveAppVersionReview(
+        bundleIdentifier: String,
+        replacingWith version: String,
+        onOutput: @escaping @Sendable (String) -> Void
+    ) async throws -> String? {
+        let appID = try await findApplication(bundleIdentifier: bundleIdentifier)
+        let versions = try await pagedData(
+            path: "/v1/apps/\(appID)/appStoreVersions",
+            query: ["filter[platform]": "IOS", "limit": "200"]
+        )
+        guard let activeVersion = Self.activeReviewVersion(in: versions),
+              activeVersion.versionString != version else {
+            return nil
+        }
+
+        let submissions = try await pagedData(
+            path: "/v1/apps/\(appID)/reviewSubmissions",
+            query: ["limit": "200"]
+        )
+        let cancellableSubmissionStates: Set<String> = ["WAITING_FOR_REVIEW", "IN_REVIEW"]
+        var submissionID: String?
+        for submission in submissions {
+            guard let id = submission["id"] as? String,
+                  let state = Self.attributes(submission)["state"] as? String,
+                  cancellableSubmissionStates.contains(state) else { continue }
+            let response = try await request(
+                method: "GET",
+                path: "/v1/reviewSubmissions/\(id)/items",
+                query: ["include": "appStoreVersion", "limit": "200"]
+            )
+            let items = response["data"] as? [[String: Any]] ?? []
+            let included = response["included"] as? [[String: Any]] ?? []
+            let containsVersion = items.contains {
+                let relationships = $0["relationships"] as? [String: Any]
+                return Self.relationshipID(relationships?["appStoreVersion"]) == activeVersion.id
+            } || included.contains {
+                $0["type"] as? String == "appStoreVersions"
+                    && $0["id"] as? String == activeVersion.id
+            }
+            if containsVersion {
+                submissionID = id
+                break
+            }
+        }
+        guard let submissionID else {
+            throw AppStoreConnectError.activeReviewSubmissionNotFound(activeVersion.versionString)
+        }
+
+        onOutput(L10n.format(
+            "Canceling the App Review submission for version %@ before replacing it…\n",
+            activeVersion.versionString
+        ))
+        _ = try await request(
+            method: "PATCH",
+            path: "/v1/reviewSubmissions/\(submissionID)",
+            body: [
+                "data": [
+                    "type": "reviewSubmissions",
+                    "id": submissionID,
+                    "attributes": ["canceled": true]
+                ]
+            ]
+        )
+        for attempt in 0..<30 {
+            try Task.checkCancellation()
+            let response = try await request(
+                method: "GET",
+                path: "/v1/appStoreVersions/\(activeVersion.id)"
+            )
+            let resource = response["data"] as? [String: Any] ?? [:]
+            let state = Self.attributes(resource)["appStoreState"] as? String ?? ""
+            if !AppStoreVersionLifecycle.isCancellableReviewState(state)
+                && state != "PROCESSING_FOR_APP_STORE" {
+                onOutput(L10n.format(
+                    "Version %@ was removed from review and can now be replaced.\n",
+                    activeVersion.versionString
+                ))
+                return activeVersion.id
+            }
+            if attempt < 29 {
+                try await Task.sleep(for: .seconds(2))
+            }
+        }
+        throw AppStoreConnectError.activeReviewCancellationTimedOut(activeVersion.versionString)
     }
 
     func submitForReview(
@@ -2374,14 +2548,18 @@ final class AppStoreConnectService {
         appID: String,
         version: String,
         copyright: String,
-        releaseAutomatically: Bool
+        releaseAutomatically: Bool,
+        reusableVersionID: String?
     ) async throws -> String {
         let response = try await request(
             method: "GET",
             path: "/v1/apps/\(appID)/appStoreVersions",
-            query: ["filter[platform]": "IOS", "filter[versionString]": version, "limit": "10"]
+            query: ["filter[platform]": "IOS", "limit": "200"]
         )
-        if let existing = (response["data"] as? [[String: Any]])?.first,
+        let versions = response["data"] as? [[String: Any]] ?? []
+        if let existing = versions.first(where: {
+            Self.attributes($0)["versionString"] as? String == version
+        }),
            let id = existing["id"] as? String {
             _ = try await request(
                 method: "PATCH",
@@ -2398,6 +2576,26 @@ final class AppStoreConnectService {
                 ]
             )
             return id
+        }
+        let versionIDToReuse = reusableVersionID
+            ?? Self.reusableDraftVersion(in: versions)?.id
+        if let versionIDToReuse {
+            _ = try await request(
+                method: "PATCH",
+                path: "/v1/appStoreVersions/\(versionIDToReuse)",
+                body: [
+                    "data": [
+                        "type": "appStoreVersions",
+                        "id": versionIDToReuse,
+                        "attributes": [
+                            "versionString": version,
+                            "releaseType": releaseAutomatically ? "AFTER_APPROVAL" : "MANUAL",
+                            "copyright": copyright
+                        ]
+                    ]
+                ]
+            )
+            return versionIDToReuse
         }
         let created = try await request(
             method: "POST",

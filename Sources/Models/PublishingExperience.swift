@@ -172,3 +172,71 @@ enum AppStoreVersionComparison {
         value.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
     }
 }
+
+enum SubscriptionOfferCodeCSV {
+    static func values(from data: Data) -> [String] {
+        guard var text = String(data: data, encoding: .utf8) else { return [] }
+        if text.first == "\u{feff}" { text.removeFirst() }
+        let rows = text
+            .split(whereSeparator: \.isNewline)
+            .map { fields(in: String($0)) }
+            .filter { !$0.isEmpty }
+        guard let first = rows.first else { return [] }
+        let headerIndex = first.firstIndex { field in
+            let normalized = field.lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return normalized == "code"
+                || normalized == "offer code"
+                || normalized == "redemption code"
+        }
+        let hasHeader = headerIndex != nil || first.contains {
+            $0.lowercased().contains("redemption url")
+        }
+        let candidateRows = hasHeader ? Array(rows.dropFirst()) : rows
+        var seen = Set<String>()
+        return candidateRows.compactMap { row in
+            let preferred = headerIndex.flatMap { $0 < row.count ? row[$0] : nil }
+            let value = preferred?.nilIfEmpty
+                ?? row.first(where: { !$0.lowercased().hasPrefix("http") })?.nilIfEmpty
+                ?? row.compactMap(codeFromRedemptionURL).first
+            guard let value,
+                  seen.insert(value).inserted else { return nil }
+            return value
+        }
+    }
+
+    private static func fields(in row: String) -> [String] {
+        var fields: [String] = []
+        var field = ""
+        var quoted = false
+        var index = row.startIndex
+        while index < row.endIndex {
+            let character = row[index]
+            if character == "\"" {
+                let next = row.index(after: index)
+                if quoted, next < row.endIndex, row[next] == "\"" {
+                    field.append("\"")
+                    index = row.index(after: next)
+                    continue
+                }
+                quoted.toggle()
+            } else if character == ",", !quoted {
+                fields.append(field.trimmingCharacters(in: .whitespacesAndNewlines))
+                field = ""
+            } else {
+                field.append(character)
+            }
+            index = row.index(after: index)
+        }
+        fields.append(field.trimmingCharacters(in: .whitespacesAndNewlines))
+        return fields
+    }
+
+    private static func codeFromRedemptionURL(_ value: String) -> String? {
+        guard let components = URLComponents(string: value),
+              let code = components.queryItems?.first(where: { $0.name == "code" })?.value else {
+            return nil
+        }
+        return code.nilIfEmpty
+    }
+}

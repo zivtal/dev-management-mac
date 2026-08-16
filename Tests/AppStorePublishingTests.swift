@@ -487,6 +487,84 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(selected["id"] as? String, "local-version")
     }
 
+    func testSnapshotFindsActiveReviewVersionSeparatelyFromPreferredVersion() throws {
+        let versions: [[String: Any]] = [
+            [
+                "id": "review-version",
+                "attributes": [
+                    "versionString": "1.9.8",
+                    "appStoreState": "WAITING_FOR_REVIEW"
+                ]
+            ],
+            [
+                "id": "draft-version",
+                "attributes": [
+                    "versionString": "1.9.9",
+                    "appStoreState": "PREPARE_FOR_SUBMISSION"
+                ]
+            ]
+        ]
+
+        let active = try XCTUnwrap(AppStoreConnectService.activeReviewVersion(in: versions))
+
+        XCTAssertEqual(active.id, "review-version")
+        XCTAssertEqual(active.versionString, "1.9.8")
+    }
+
+    func testDraftVersionDoesNotTriggerReviewCancellationWarning() {
+        let versions: [[String: Any]] = [[
+            "id": "draft-version",
+            "attributes": [
+                "versionString": "1.9.9",
+                "appStoreState": "READY_FOR_REVIEW"
+            ]
+        ]]
+
+        XCTAssertNil(AppStoreConnectService.activeReviewVersion(in: versions))
+    }
+
+    func testRedeemCodeAppEligibilityRequiresReadyForDistributionVersion() {
+        XCTAssertFalse(AppStoreConnectService.hasReadyForDistributionVersion(in: [
+            ["attributes": ["appStoreState": "WAITING_FOR_REVIEW"]]
+        ]))
+        XCTAssertTrue(AppStoreConnectService.hasReadyForDistributionVersion(in: [
+            ["attributes": ["appStoreState": "READY_FOR_DISTRIBUTION"]]
+        ]))
+        XCTAssertTrue(AppStoreConnectService.hasReadyForDistributionVersion(in: [
+            ["attributes": ["appStoreState": "READY_FOR_SALE"]]
+        ]))
+    }
+
+    func testReusableDraftVersionChoosesNewestEditableVersion() throws {
+        let versions: [[String: Any]] = [
+            [
+                "id": "released",
+                "attributes": [
+                    "versionString": "1.8.0",
+                    "appStoreState": "READY_FOR_DISTRIBUTION"
+                ]
+            ],
+            [
+                "id": "older-draft",
+                "attributes": [
+                    "versionString": "1.9.0",
+                    "appStoreState": "DEVELOPER_REJECTED"
+                ]
+            ],
+            [
+                "id": "newer-draft",
+                "attributes": [
+                    "versionString": "1.9.1",
+                    "appStoreState": "PREPARE_FOR_SUBMISSION"
+                ]
+            ]
+        ]
+
+        let draft = try XCTUnwrap(AppStoreConnectService.reusableDraftVersion(in: versions))
+        XCTAssertEqual(draft.id, "newer-draft")
+        XCTAssertEqual(draft.versionString, "1.9.1")
+    }
+
     private func decodedJWTComponent(_ component: String) throws -> [String: Any] {
         var base64 = component.replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")

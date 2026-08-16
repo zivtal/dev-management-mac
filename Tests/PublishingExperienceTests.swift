@@ -133,6 +133,8 @@ final class PublishingExperienceTests: XCTestCase {
                 ],
                 review: review
             ),
+            activeReviewVersion: nil,
+            hasReadyForDistributionVersion: false,
             subscriptionGroups: [],
             loadedAt: Date()
         )
@@ -142,6 +144,21 @@ final class PublishingExperienceTests: XCTestCase {
         XCTAssertEqual(fallback.supportURL, "https://example.com/he/support")
         XCTAssertEqual(fallback.copyright, "2026 Example")
         XCTAssertEqual(fallback.review, review)
+    }
+
+    func testOfferCodeCSVReturnsOnlyCopyableCodes() {
+        let csv = Data("Offer Code,Redemption URL\nFREECODE2026,https://apps.apple.com/redeem?code=FREECODE2026\nSECOND2026,https://apps.apple.com/redeem?code=SECOND2026\n".utf8)
+
+        XCTAssertEqual(
+            SubscriptionOfferCodeCSV.values(from: csv),
+            ["FREECODE2026", "SECOND2026"]
+        )
+    }
+
+    func testOfferCodeCSVHandlesQuotedFieldsAndURLOnlyRows() {
+        let csv = Data("\"Redemption URL\"\n\"https://apps.apple.com/redeem?code=COPYME\"\n".utf8)
+
+        XCTAssertEqual(SubscriptionOfferCodeCSV.values(from: csv), ["COPYME"])
     }
 
     func testSubscriptionPriceValidationNormalizesCommaDecimalSeparator() {
