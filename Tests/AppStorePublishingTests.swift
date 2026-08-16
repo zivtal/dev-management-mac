@@ -75,8 +75,37 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertNotNil(properties["subtitle"])
         XCTAssertNotNil(properties["primaryCategory"])
         XCTAssertNotNil(properties["secondaryCategory"])
+        XCTAssertNil(properties["supportURL"])
+        XCTAssertNil(properties["marketingURL"])
+        XCTAssertNil(properties["privacyPolicyURL"])
+        XCTAssertNil(properties["termsURL"])
+        XCTAssertNil(properties["contentRightsDeclaration"])
         let required = try XCTUnwrap(schema["required"] as? [String])
         XCTAssertTrue(required.contains("primaryCategory"))
+    }
+
+    func testOpenAIGenerationPolicyKeepsURLsManualAndRequiresVerifiedThirdPartyFacts() {
+        let policy = OpenAIStoreMetadataService.generationPolicy
+
+        XCTAssertTrue(policy.contains("third-party services"))
+        XCTAssertTrue(policy.contains("explicitly verified"))
+        XCTAssertTrue(policy.contains("URLs are manual publishing fields"))
+        XCTAssertTrue(policy.contains("Never generate, guess, replace, or return those URLs"))
+    }
+
+    func testListingDescriptionAppendsManualPrivacyAndTermsLinksWithinLimit() {
+        let privacyURL = "https://example.com/privacy"
+        let termsURL = "https://example.com/terms"
+        let description = AppStoreConnectService.listingDescription(
+            String(repeating: "A", count: 4_000),
+            locale: "en-US",
+            privacyPolicyURL: privacyURL,
+            termsURL: termsURL
+        )
+
+        XCTAssertEqual(description.count, 4_000)
+        XCTAssertTrue(description.contains("Privacy Policy: \(privacyURL)"))
+        XCTAssertTrue(description.contains("Terms of Use: \(termsURL)"))
     }
 
     func testOpenAIRequestGeneratesOneEditableListingForEveryDetectedLanguage() throws {

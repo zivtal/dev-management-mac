@@ -809,3 +809,11 @@
 "Enter a valid HTTP or HTTPS URL." = "Enter a valid HTTP or HTTPS URL.";
 "This field is required for App Review." = "This field is required for App Review.";
 "Complete every highlighted App Review contact field." = "Complete every highlighted App Review contact field.";
+"Privacy Policy" = "Privacy Policy";
+"Review contact, manual support and legal URLs, and copyright are available." = "Review contact, manual support and legal URLs, and copyright are available.";
+"OpenAI generates listing copy and category suggestions only. Support, marketing, privacy, and Terms of Use URLs are entered manually and are never replaced." = "OpenAI generates listing copy and category suggestions only. Support, marketing, privacy, and Terms of Use URLs are entered manually and are never replaced.";
+"Privacy policy URL is required." = "Privacy policy URL is required.";
+"Terms of Use URL is required for apps with subscriptions." = "Terms of Use URL is required for apps with subscriptions.";
+"publication.privacyPolicyURL must be a valid HTTP or HTTPS URL." = "publication.privacyPolicyURL must be a valid HTTP or HTTPS URL.";
+"Enter a valid privacy policy URL in App Settings." = "Enter a valid privacy policy URL in App Settings.";
+"Enter a valid Terms of Use URL in App Settings for subscription apps." = "Enter a valid Terms of Use URL in App Settings for subscription apps.";

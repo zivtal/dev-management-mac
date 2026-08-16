@@ -481,12 +481,14 @@ final class AppModel: ObservableObject {
             presentedError = AppStorePublishingError.unsupportedProject.localizedDescription
             return
         }
+        let catalog: AppStoreSubscriptionCatalog
         let perAppConfiguration: AppStorePublicationConfiguration?
         do {
-            perAppConfiguration = try StoreKitSubscriptionDiscoveryService().discover(
+            catalog = try StoreKitSubscriptionDiscoveryService().discover(
                 project: project,
                 defaultLocale: preferences.appStoreLocale?.nilIfEmpty ?? "en-US"
-            ).publication
+            )
+            perAppConfiguration = catalog.publication
         } catch {
             presentedError = error.localizedDescription
             return
@@ -520,6 +522,23 @@ final class AppModel: ObservableObject {
               parsedSupportURL.host != nil else {
             presentedError = L10n.text("Enter a valid support URL in Publishing settings.")
             return
+        }
+        let privacyPolicyURL = perAppConfiguration?.privacyPolicyURL?.nilIfEmpty ?? ""
+        guard let parsedPrivacyPolicyURL = URL(string: privacyPolicyURL),
+              ["http", "https"].contains(parsedPrivacyPolicyURL.scheme?.lowercased() ?? ""),
+              parsedPrivacyPolicyURL.host != nil else {
+            presentedError = L10n.text("Enter a valid privacy policy URL in App Settings.")
+            return
+        }
+        let termsURL = perAppConfiguration?.termsURL?.nilIfEmpty
+        if catalog.subscriptionCount > 0 {
+            guard let termsURL,
+                  let parsedTermsURL = URL(string: termsURL),
+                  ["http", "https"].contains(parsedTermsURL.scheme?.lowercased() ?? ""),
+                  parsedTermsURL.host != nil else {
+                presentedError = L10n.text("Enter a valid Terms of Use URL in App Settings for subscription apps.")
+                return
+            }
         }
         let openAIAPIKey = (try? credentialStore.string(for: .openAIAPIKey)) ?? ""
         if perAppConfiguration?.metadata == nil,
@@ -587,8 +606,8 @@ final class AppModel: ObservableObject {
             copyright: copyright,
             supportURL: supportURL,
             marketingURL: perAppConfiguration?.marketingURL?.nilIfEmpty,
-            termsURL: perAppConfiguration?.termsURL?.nilIfEmpty,
-            privacyPolicyURL: perAppConfiguration?.privacyPolicyURL?.nilIfEmpty,
+            termsURL: termsURL,
+            privacyPolicyURL: privacyPolicyURL,
             privacyChoicesURL: perAppConfiguration?.privacyChoicesURL?.nilIfEmpty,
             appName: perAppConfiguration?.appName?.nilIfEmpty,
             subtitle: perAppConfiguration?.subtitle?.nilIfEmpty,

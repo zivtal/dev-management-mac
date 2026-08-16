@@ -809,3 +809,11 @@
 "Enter a valid HTTP or HTTPS URL." = "יש להזין כתובת HTTP או HTTPS תקינה.";
 "This field is required for App Review." = "שדה זה נדרש לבדיקת Apple.";
 "Complete every highlighted App Review contact field." = "יש להשלים את כל שדות איש הקשר המודגשים לבדיקת Apple.";
+"Privacy Policy" = "מדיניות פרטיות";
+"Review contact, manual support and legal URLs, and copyright are available." = "איש הקשר לבדיקה, כתובות התמיכה והמסמכים המשפטיים הידניות וזכויות היוצרים זמינים.";
+"OpenAI generates listing copy and category suggestions only. Support, marketing, privacy, and Terms of Use URLs are entered manually and are never replaced." = "OpenAI יוצר רק תוכן לרישום והצעות לקטגוריות. כתובות התמיכה, השיווק, הפרטיות ותנאי השימוש מוזנות ידנית ולעולם אינן מוחלפות.";
+"Privacy policy URL is required." = "נדרשת כתובת למדיניות הפרטיות.";
+"Terms of Use URL is required for apps with subscriptions." = "נדרשת כתובת לתנאי השימוש עבור יישומים עם מינויים.";
+"publication.privacyPolicyURL must be a valid HTTP or HTTPS URL." = "publication.privacyPolicyURL חייבת להיות כתובת HTTP או HTTPS תקינה.";
+"Enter a valid privacy policy URL in App Settings." = "יש להזין כתובת תקינה למדיניות הפרטיות בהגדרות היישום.";
+"Enter a valid Terms of Use URL in App Settings for subscription apps." = "יש להזין כתובת תקינה לתנאי השימוש בהגדרות היישום עבור יישומים עם מינויים.";

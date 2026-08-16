@@ -70,10 +70,20 @@ does this):
 }
 ```
 
-When `metadata` is omitted, Publish generates the four fields with OpenAI. The
-remaining app-specific settings are always deterministic and manually editable;
-AI never chooses pricing, availability, family sharing, age ratings, review
-credentials, release behavior, or offer-code terms.
+When `metadata` is omitted, Publish generates the listing fields with OpenAI.
+Descriptions cover verified features, audience, value, privacy-relevant behavior,
+and named third-party providers found in the supplied project documentation.
+The remaining app-specific settings are deterministic and manually editable; AI
+never chooses content-rights declarations, public URLs, legal text, pricing,
+availability, family sharing, age ratings, review credentials, release behavior,
+or offer-code terms.
+
+Support, marketing, privacy-policy, privacy-choices, and Terms of Use URLs are
+manual fields. Support and privacy-policy URLs are required, and Terms of Use is
+also required for apps with subscriptions. Marketing and privacy-choices URLs
+remain optional. Publish appends the manually supplied Privacy Policy and Terms
+of Use links to every localized description while preserving Apple's 4,000
+character limit; OpenAI does not create or replace those links.
 
 If an app doesn't use a local StoreKit configuration, the manifest can contain
 the complete subscription catalog:

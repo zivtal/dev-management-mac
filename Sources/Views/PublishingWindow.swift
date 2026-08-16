@@ -1784,12 +1784,16 @@ private struct PublishingWindowView: View {
         let requirements = reviewRequirements(publication: publication)
         guard requirements.contactIsComplete,
               requirements.supportURLIsComplete,
+              requirements.privacyPolicyURLIsComplete,
+              requirements.termsURLIsComplete,
               requirements.copyrightIsComplete else {
             var missing: [String] = []
             if !requirements.contactIsComplete {
                 missing.append(L10n.text("review contact"))
             }
             if !requirements.supportURLIsComplete { missing.append(L10n.text("support URL")) }
+            if !requirements.privacyPolicyURLIsComplete { missing.append(L10n.text("privacy policy")) }
+            if !requirements.termsURLIsComplete { missing.append(L10n.text("Terms of Use")) }
             if !requirements.copyrightIsComplete { missing.append(L10n.text("copyright owner")) }
             return PublishingReadinessItem(
                 id: "review",
@@ -1804,14 +1808,20 @@ private struct PublishingWindowView: View {
         return PublishingReadinessItem(
             id: "review",
             title: L10n.text("App Review is ready"),
-            detail: L10n.text("Review contact, support URL, and copyright are available. Existing App Store Connect values are reused when needed."),
+            detail: L10n.text("Review contact, manual support and legal URLs, and copyright are available."),
             state: .ready
         )
     }
 
     private func reviewRequirements(
         publication: AppStorePublicationConfiguration?
-    ) -> (contactIsComplete: Bool, supportURLIsComplete: Bool, copyrightIsComplete: Bool) {
+    ) -> (
+        contactIsComplete: Bool,
+        supportURLIsComplete: Bool,
+        privacyPolicyURLIsComplete: Bool,
+        termsURLIsComplete: Bool,
+        copyrightIsComplete: Bool
+    ) {
         let review = publication?.review
         let preferredLocale = publication?.locale?.nilIfEmpty
             ?? model.preferences.appStoreLocale?.nilIfEmpty
@@ -1836,16 +1846,22 @@ private struct PublishingWindowView: View {
         let copyright = publication?.copyright?.nilIfEmpty
             ?? model.preferences.appStoreCopyright?.nilIfEmpty
             ?? existing?.copyright
+        let requiresTermsURL = (localPublishingPreview?.catalog.subscriptionCount ?? 0) > 0
         return (
             contactValues.allSatisfy { $0 != nil },
             supportURL != nil,
+            publication?.privacyPolicyURL?.nilIfEmpty != nil,
+            !requiresTermsURL || publication?.termsURL?.nilIfEmpty != nil,
             copyright != nil
         )
     }
 
     private var firstConfigurationTabNeedingAttention: PublishingConfigurationTab {
         let requirements = reviewRequirements(publication: localPublishingPreview?.catalog.publication)
-        if !requirements.supportURLIsComplete || !requirements.copyrightIsComplete {
+        if !requirements.supportURLIsComplete
+            || !requirements.privacyPolicyURLIsComplete
+            || !requirements.termsURLIsComplete
+            || !requirements.copyrightIsComplete {
             return .listing
         }
         if !requirements.contactIsComplete { return .review }
@@ -2364,9 +2380,24 @@ private struct PerAppPublishingConfigurationEditor: View {
                         validation: supportURLValidation
                     )
                     TextField("Marketing URL", text: $marketingURL)
-                    TextField("Privacy policy URL", text: $privacyPolicyURL)
+                    requiredTextField(
+                        "Privacy policy URL",
+                        text: $privacyPolicyURL,
+                        validation: privacyPolicyURLValidation
+                    )
                     TextField("Privacy choices URL", text: $privacyChoicesURL)
-                    TextField("Terms of Use URL", text: $termsURL)
+                    if requiresTermsURL {
+                        requiredTextField(
+                            "Terms of Use URL",
+                            text: $termsURL,
+                            validation: termsURLValidation
+                        )
+                    } else {
+                        TextField("Terms of Use URL", text: $termsURL)
+                    }
+                    Text("OpenAI generates listing copy and category suggestions only. Support, marketing, privacy, and Terms of Use URLs are entered manually and are never replaced.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     requiredTextField(
                         "Copyright",
                         text: $copyright,
@@ -2554,6 +2585,34 @@ private struct PerAppPublishingConfigurationEditor: View {
             return L10n.text("Enter a valid HTTP or HTTPS URL.")
         }
         return nil
+    }
+
+    private var privacyPolicyURLValidation: String? {
+        requiredURLValidation(
+            privacyPolicyURL,
+            missingMessage: L10n.text("Privacy policy URL is required.")
+        )
+    }
+
+    private var termsURLValidation: String? {
+        requiredURLValidation(
+            termsURL,
+            missingMessage: L10n.text("Terms of Use URL is required for apps with subscriptions.")
+        )
+    }
+
+    private func requiredURLValidation(_ value: String, missingMessage: String) -> String? {
+        guard let value = value.nilIfEmpty else { return missingMessage }
+        guard let url = URL(string: value),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              url.host != nil else {
+            return L10n.text("Enter a valid HTTP or HTTPS URL.")
+        }
+        return nil
+    }
+
+    private var requiresTermsURL: Bool {
+        (baseManifest?.subscriptions?.groups ?? []).contains { !$0.subscriptions.isEmpty }
     }
 
     private func requiredReviewMessage(for value: String) -> String? {
@@ -2984,6 +3043,27 @@ private struct PerAppPublishingConfigurationEditor: View {
         } else {
             selectedTab = .listing
             throw ConfigurationEditorError.invalid(L10n.text("Support URL is required."))
+        }
+        guard let privacyPolicyURL = manifest.publication?.privacyPolicyURL?.nilIfEmpty else {
+            selectedTab = .listing
+            throw ConfigurationEditorError.invalid(L10n.text("Privacy policy URL is required."))
+        }
+        guard let privacyURL = URL(string: privacyPolicyURL),
+              ["http", "https"].contains(privacyURL.scheme?.lowercased() ?? ""),
+              privacyURL.host != nil else {
+            selectedTab = .listing
+            throw ConfigurationEditorError.invalid(
+                L10n.text("publication.privacyPolicyURL must be a valid HTTP or HTTPS URL.")
+            )
+        }
+        let hasSubscriptions = (manifest.subscriptions?.groups ?? []).contains {
+            !$0.subscriptions.isEmpty
+        }
+        if hasSubscriptions, manifest.publication?.termsURL?.nilIfEmpty == nil {
+            selectedTab = .listing
+            throw ConfigurationEditorError.invalid(
+                L10n.text("Terms of Use URL is required for apps with subscriptions.")
+            )
         }
         guard manifest.publication?.copyright?.nilIfEmpty != nil else {
             selectedTab = .listing

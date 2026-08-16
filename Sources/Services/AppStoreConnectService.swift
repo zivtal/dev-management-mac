@@ -760,7 +760,9 @@ final class AppStoreConnectService {
                     metadata: localizedStoreMetadata,
                     supportURL: supportURL,
                     marketingURL: marketingURL,
+                    privacyPolicyURL: privacyPolicyURL,
                     termsURL: termsURL,
+                    locale: listing.locale,
                     includesReleaseNotes: true
                 )
             } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 || status == 422 {
@@ -770,7 +772,9 @@ final class AppStoreConnectService {
                     metadata: localizedStoreMetadata,
                     supportURL: supportURL,
                     marketingURL: marketingURL,
+                    privacyPolicyURL: privacyPolicyURL,
                     termsURL: termsURL,
+                    locale: listing.locale,
                     includesReleaseNotes: false
                 )
             }
@@ -2510,15 +2514,17 @@ final class AppStoreConnectService {
         metadata: AppStoreMetadata,
         supportURL: String,
         marketingURL: String?,
+        privacyPolicyURL: String?,
         termsURL: String?,
+        locale: String,
         includesReleaseNotes: Bool
     ) async throws {
-        var description = metadata.description
-        if let termsURL = termsURL?.nilIfEmpty,
-           !description.localizedCaseInsensitiveContains(termsURL) {
-            let suffix = "\n\n\(L10n.text("Terms of Use")): \(termsURL)"
-            description = String((description + suffix).prefix(4_000))
-        }
+        let description = Self.listingDescription(
+            metadata.description,
+            locale: locale,
+            privacyPolicyURL: privacyPolicyURL,
+            termsURL: termsURL
+        )
         var attributes: [String: Any] = [
             "description": description,
             "keywords": metadata.keywords,
@@ -2542,6 +2548,33 @@ final class AppStoreConnectService {
                 ]
             ]
         )
+    }
+
+    static func listingDescription(
+        _ rawDescription: String,
+        locale: String,
+        privacyPolicyURL: String?,
+        termsURL: String?
+    ) -> String {
+        let description = rawDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        let links: [(String, String)] = [
+            (L10n.text("Privacy Policy", localeIdentifier: locale), privacyPolicyURL?.nilIfEmpty),
+            (L10n.text("Terms of Use", localeIdentifier: locale), termsURL?.nilIfEmpty)
+        ].compactMap { label, value in
+            guard let value, !description.localizedCaseInsensitiveContains(value) else { return nil }
+            return (label, value)
+        }
+        guard !links.isEmpty else { return String(description.prefix(4_000)) }
+
+        let legalText = links.map { "\($0): \($1)" }.joined(separator: "\n")
+        guard legalText.count < 4_000 else { return String(legalText.prefix(4_000)) }
+        let separator = description.isEmpty ? "" : "\n\n"
+        let availableDescriptionLength = max(0, 4_000 - separator.count - legalText.count)
+        let shortenedDescription = String(description.prefix(availableDescriptionLength))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return shortenedDescription
+            + (shortenedDescription.isEmpty ? "" : "\n\n")
+            + legalText
     }
 
     private func findOrCreateVersion(
