@@ -30,6 +30,24 @@ private enum PublishingWorkspace: String, CaseIterable {
     }
 }
 
+fileprivate enum PublishingConfigurationTab: CaseIterable {
+    case listing
+    case appSetup
+    case review
+    case subscriptions
+    case advanced
+
+    var title: String {
+        switch self {
+        case .listing: L10n.text("Store Listing")
+        case .appSetup: L10n.text("App Setup")
+        case .review: L10n.text("Review")
+        case .subscriptions: L10n.text("Subscriptions")
+        case .advanced: L10n.text("Advanced JSON")
+        }
+    }
+}
+
 @MainActor
 final class PublishingWindowPresenter {
     static let shared = PublishingWindowPresenter()
@@ -40,9 +58,9 @@ final class PublishingWindowPresenter {
 
     func show(model: AppModel, projectID: UUID? = nil) {
         windowController?.close()
-        let rootView = PublishingWindowView(initialProjectID: projectID)
-            .environmentObject(model)
-        let hostingController = NSHostingController(rootView: rootView)
+        let loadingController = NSHostingController(
+            rootView: PublishingWindowLoadingView(projectName: projectName(for: projectID, in: model))
+        )
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 680, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .utilityWindow],
@@ -50,7 +68,7 @@ final class PublishingWindowPresenter {
             defer: false
         )
         panel.title = L10n.text("Publish to the App Store")
-        panel.contentViewController = hostingController
+        panel.contentViewController = loadingController
         panel.isFloatingPanel = false
         panel.isReleasedWhenClosed = false
         panel.minSize = NSSize(width: 600, height: 580)
@@ -64,10 +82,49 @@ final class PublishingWindowPresenter {
         NSApplication.shared.activate(ignoringOtherApps: true)
         windowController?.showWindow(nil)
         panel.makeKeyAndOrderFront(nil)
+
+        Task { @MainActor [weak self, weak panel] in
+            await Task.yield()
+            guard let self,
+                  let panel,
+                  self.windowController?.window === panel
+            else {
+                return
+            }
+            let rootView = PublishingWindowView(initialProjectID: projectID)
+                .environmentObject(model)
+            panel.contentViewController = NSHostingController(rootView: rootView)
+        }
     }
 
     func close() {
         windowController?.close()
+    }
+
+    private func projectName(for projectID: UUID?, in model: AppModel) -> String? {
+        guard let projectID else { return nil }
+        return model.projects.first(where: { $0.id == projectID })?.displayName
+    }
+}
+
+private struct PublishingWindowLoadingView: View {
+    let projectName: String?
+
+    var body: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .controlSize(.large)
+            Text("Opening Publish…")
+                .font(.title2.weight(.semibold))
+            Text(projectName.map { L10n.format("Preparing %@ for publishing…", $0) }
+                ?? L10n.text("Preparing your applications for publishing…"))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -82,6 +139,12 @@ private struct PublishingWindowView: View {
     @State private var configurationRevision = 0
     @State private var selectedWorkspace = PublishingWorkspace.overview
     @State private var configurationEditorStartsWithAI = false
+    @State private var configurationEditorInitialTab = PublishingConfigurationTab.listing
+    @State private var configurationEditorHighlightsMissingFields = false
+    @State private var subscriptionPriceDrafts: [String: String] = [:]
+    @State private var savedSubscriptionPrices: [String: String] = [:]
+    @State private var subscriptionPriceSaveStatus: SubscriptionPriceSaveStatus?
+    @State private var isSavingSubscriptionPrices = false
     @State private var showsConfirmation = false
     @State private var showsCodeConfirmation = false
     @State private var selectedProductID = ""
@@ -98,6 +161,7 @@ private struct PublishingWindowView: View {
     @State private var codeStatus: CodeStatus?
     @State private var submitForReviewSelection = true
     @State private var releaseAutomaticallySelection = true
+    @State private var showsPublicationStatus = false
 
     init(initialProjectID: UUID?) {
         _selectedProjectID = State(initialValue: initialProjectID)
@@ -105,45 +169,85 @@ private struct PublishingWindowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            header
-            Divider()
-            if eligibleProjects.isEmpty {
-                ContentUnavailableView(
-                    "No publishable application",
-                    systemImage: "shippingbox",
-                    description: Text("Add an iOS application that uses Direct Xcode build.")
-                )
-            } else if let project = selectedProject {
-                Picker("Workspace", selection: $selectedWorkspace) {
-                    ForEach(PublishingWorkspace.allCases, id: \.self) { workspace in
-                        Text(workspace.title).tag(workspace)
+            if let log = presentedPublicationLog {
+                PublishingProgressView(
+                    log: log,
+                    progress: model.publishingProgress,
+                    onCancel: model.cancelPublishing,
+                    onBackToReview: {
+                        model.presentedError = nil
+                        showsPublicationStatus = false
+                        selectedProjectID = log.projectID
+                        selectedWorkspace = .overview
+                    },
+                    onDone: {
+                        model.presentedError = nil
+                        PublishingWindowPresenter.shared.close()
                     }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-
-                if selectedWorkspace == .overview {
-                    projectOptions(project)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    footer(project)
-                } else {
-                    PerAppPublishingConfigurationEditor(
-                        project: project,
-                        defaults: model.preferences,
-                        currentConfiguration: currentAppStoreSnapshot,
-                        generateAIDraftOnOpen: configurationEditorStartsWithAI,
-                        onCancel: {
-                            configurationEditorStartsWithAI = false
-                            selectedWorkspace = .overview
-                        },
-                        onSave: {
-                            configurationRevision += 1
-                            configurationEditorStartsWithAI = false
-                            selectedWorkspace = .overview
-                        }
+                )
+                .padding(-20)
+            } else {
+                header
+                Divider()
+                if eligibleProjects.isEmpty {
+                    ContentUnavailableView(
+                        "No publishable application",
+                        systemImage: "shippingbox",
+                        description: Text("Add an iOS application that uses Direct Xcode build.")
                     )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let project = selectedProject {
+                    Picker("Workspace", selection: $selectedWorkspace) {
+                        ForEach(PublishingWorkspace.allCases, id: \.self) { workspace in
+                            Text(workspace.title).tag(workspace)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
+
+                    if selectedWorkspace == .overview {
+                        if selectedAction == .release {
+                            PublishingReadinessView(
+                                report: releaseReadinessReport(for: project),
+                                target: L10n.format(
+                                    "%@ (%@)",
+                                    project.marketingVersion ?? "—",
+                                    project.buildNumber ?? "—"
+                                ),
+                                onEditApp: {
+                                    configurationEditorStartsWithAI = false
+                                    configurationEditorInitialTab = firstConfigurationTabNeedingAttention
+                                    configurationEditorHighlightsMissingFields = true
+                                    selectedWorkspace = .configuration
+                                },
+                                onOpenSettings: { openSettings() }
+                            )
+                        }
+                        projectOptions(project)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        footer(project)
+                    } else {
+                        PerAppPublishingConfigurationEditor(
+                            project: project,
+                            defaults: model.preferences,
+                            currentConfiguration: currentAppStoreSnapshot,
+                            generateAIDraftOnOpen: configurationEditorStartsWithAI,
+                            initialTab: configurationEditorInitialTab,
+                            highlightMissingFields: configurationEditorHighlightsMissingFields,
+                            onCancel: {
+                                configurationEditorStartsWithAI = false
+                                configurationEditorHighlightsMissingFields = false
+                                selectedWorkspace = .overview
+                            },
+                            onSave: {
+                                configurationRevision += 1
+                                configurationEditorStartsWithAI = false
+                                configurationEditorHighlightsMissingFields = false
+                                selectedWorkspace = .overview
+                            }
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 }
             }
         }
@@ -151,6 +255,10 @@ private struct PublishingWindowView: View {
         .frame(minWidth: 540, minHeight: 460)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
+            if let log = model.publishingLog, log.state == .inProgress {
+                selectedProjectID = log.projectID
+                showsPublicationStatus = true
+            }
             if selectedProject == nil {
                 selectedProjectID = eligibleProjects.first?.id
             }
@@ -178,10 +286,11 @@ private struct PublishingWindowView: View {
                 model.publish(
                     projectID: projectID,
                     submitForReview: submitForReview,
-                    releaseAutomatically: releaseAutomatically
+                    releaseAutomatically: releaseAutomatically,
+                    existingConfiguration: currentAppStoreSnapshot
                 )
                 if model.publishingProgress != nil {
-                    PublishingWindowPresenter.shared.close()
+                    showsPublicationStatus = true
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -224,7 +333,6 @@ private struct PublishingWindowView: View {
                 HStack(alignment: .top, spacing: 16) {
                     publishingColumn {
                         applicationSection(project)
-                        actionPicker
                         localPublishSummary(project)
                     }
                     publishingColumn {
@@ -238,7 +346,6 @@ private struct PublishingWindowView: View {
                 HStack(alignment: .top, spacing: 16) {
                     publishingColumn {
                         applicationSection(project)
-                        actionPicker
                         localPublishSummary(project)
                     }
                     publishingColumn {
@@ -249,7 +356,6 @@ private struct PublishingWindowView: View {
             case .singleColumn:
                 publishingColumn {
                     applicationSection(project)
-                    actionPicker
                     localPublishSummary(project)
                     appStoreConnectOptions
                     selectedActionOptions
@@ -280,12 +386,16 @@ private struct PublishingWindowView: View {
             LabeledContent("Build", value: project.buildNumber ?? L10n.text("Unknown"))
             Button {
                 configurationEditorStartsWithAI = false
+                configurationEditorInitialTab = .listing
+                configurationEditorHighlightsMissingFields = false
                 selectedWorkspace = .configuration
             } label: {
                 Label("Edit Full Publishing Configuration…", systemImage: "doc.badge.gearshape")
             }
             Button {
                 configurationEditorStartsWithAI = true
+                configurationEditorInitialTab = .listing
+                configurationEditorHighlightsMissingFields = false
                 selectedWorkspace = .configuration
             } label: {
                 Label("Generate Settings with OpenAI…", systemImage: "sparkles")
@@ -295,14 +405,18 @@ private struct PublishingWindowView: View {
 
     private var actionPicker: some View {
         Picker("Action", selection: $selectedAction) {
-            Text("App Release").tag(PublishingAction.release)
-            Text("Offer Codes").tag(PublishingAction.offerCodes)
+            Text("Subscriptions").tag(PublishingAction.release)
+            Text("Redeem Codes").tag(PublishingAction.offerCodes)
         }
         .pickerStyle(.segmented)
+        .labelsHidden()
     }
 
     @ViewBuilder
     private var selectedActionOptions: some View {
+        Section("Manage") {
+            actionPicker
+        }
         if selectedAction == .release {
             releaseOptions
         } else {
@@ -769,6 +883,16 @@ private struct PublishingWindowView: View {
     private var releaseOptions: some View {
         Section("Subscriptions") {
             subscriptionDiscoveryStatus
+            if let groups = localPublishingPreview?.catalog.groups, !groups.isEmpty {
+                SubscriptionPricingCardsView(
+                    groups: groups,
+                    prices: $subscriptionPriceDrafts,
+                    hasChanges: subscriptionPriceDrafts != savedSubscriptionPrices,
+                    isSaving: isSavingSubscriptionPrices,
+                    saveStatus: subscriptionPriceSaveStatus,
+                    onSave: saveSubscriptionPrices
+                )
+            }
             Text("For a first publication, local .storekit files and app-store-publishing.json are reconciled with App Store Connect. If an older version is already published, these resources are preserved and only the new version is uploaded and submitted.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -802,6 +926,47 @@ private struct PublishingWindowView: View {
             Text("Production codes require an app that is ready for distribution and an approved subscription.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+
+        Section("Existing Redeem Codes") {
+            if let subscription = selectedLiveSubscription {
+                if subscription.offers.isEmpty {
+                    Text("No redeem-code offers exist for this subscription yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(subscription.offers) { offer in
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text(verbatim: offer.name)
+                                    .font(.subheadline.weight(.medium))
+                                Spacer()
+                                Label(
+                                    offer.active ? L10n.text("Active") : L10n.text("Inactive"),
+                                    systemImage: offer.active ? "checkmark.circle.fill" : "pause.circle.fill"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(offer.active ? .green : .secondary)
+                            }
+                            Text(L10n.format(
+                                "%d production code(s) · %d total redemption(s)",
+                                offer.productionCodeCount,
+                                offer.totalNumberOfCodes
+                            ))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            if let duration = offer.duration {
+                                Text(verbatim: friendlyState(duration))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            } else {
+                Text("Choose a subscription to view its current redeem codes.")
+                    .foregroundStyle(.secondary)
+            }
         }
 
         Section("Free Offer") {
@@ -1082,7 +1247,7 @@ private struct PublishingWindowView: View {
             }
             Button {
                 if selectedAction == .release {
-                    showsConfirmation = true
+                    handleReleaseAction(project)
                 } else {
                     showsCodeConfirmation = true
                 }
@@ -1098,7 +1263,10 @@ private struct PublishingWindowView: View {
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .disabled(model.hasActiveWork || !actionIsValid(project))
+            .disabled(
+                model.hasActiveWork
+                    || (selectedAction == .offerCodes && !actionIsValid(project))
+            )
         }
     }
 
@@ -1143,6 +1311,13 @@ private struct PublishingWindowView: View {
                     screenshots: localScreenshots
                 )
             )
+            let configuredPrices = Dictionary(
+                uniqueKeysWithValues: catalog.groups
+                    .flatMap(\.subscriptions)
+                    .map { ($0.productID, $0.basePrice ?? "") }
+            )
+            subscriptionPriceDrafts = configuredPrices
+            savedSubscriptionPrices = configuredPrices
             submitForReviewSelection = catalog.publication?.submitForReview
                 ?? model.preferences.appStoreSubmitForReview
                 ?? true
@@ -1269,6 +1444,12 @@ private struct PublishingWindowView: View {
         return productIDs
     }
 
+    private var selectedLiveSubscription: AppStoreConnectSubscriptionSnapshot? {
+        currentAppStoreSnapshot?.subscriptionGroups
+            .flatMap(\.subscriptions)
+            .first(where: { $0.productID == selectedProductID })
+    }
+
     private var configurationTaskID: String {
         "\(selectedProjectID?.uuidString ?? "none")-\(configurationRevision)"
     }
@@ -1280,6 +1461,369 @@ private struct PublishingWindowView: View {
     private var currentAppStoreSnapshot: AppStoreConnectConfigurationSnapshot? {
         guard case .loaded(let snapshot) = appStoreConfiguration else { return nil }
         return snapshot
+    }
+
+    private var presentedPublicationLog: PublishingLogSession? {
+        guard let log = model.publishingLog,
+              log.state == .inProgress || showsPublicationStatus else { return nil }
+        return log
+    }
+
+    private func releaseReadinessReport(for project: ManagedProject) -> PublishingReadinessReport {
+        PublishingReadinessReport(items: [
+            sourceReadiness(for: project),
+            accountReadiness,
+            contentReadiness,
+            screenshotReadiness,
+            reviewReadiness
+        ])
+    }
+
+    private func sourceReadiness(for project: ManagedProject) -> PublishingReadinessItem {
+        guard let localVersion = project.marketingVersion?.nilIfEmpty,
+              let localBuild = project.buildNumber?.nilIfEmpty else {
+            return PublishingReadinessItem(
+                id: "source",
+                title: L10n.text("Source version"),
+                detail: L10n.text("The selected project does not provide a version and build number."),
+                state: .blocked
+            )
+        }
+        if let remote = currentAppStoreSnapshot?.version,
+           AppStoreVersionComparison.localArtifactIsOlder(
+            localVersion: localVersion,
+            localBuild: localBuild,
+            remoteVersion: remote.versionString,
+            remoteBuild: remote.buildNumber
+           ) {
+            return PublishingReadinessItem(
+                id: "source",
+                title: L10n.text("Source checkout is out of date"),
+                detail: L10n.format(
+                    "Local %@ (%@) is older than App Store Connect %@ (%@). Update the selected checkout before publishing.",
+                    localVersion,
+                    localBuild,
+                    remote.versionString,
+                    remote.buildNumber ?? "—"
+                ),
+                state: .blocked
+            )
+        }
+        if currentVersionIsAlreadySubmitted, let remote = currentAppStoreSnapshot?.version {
+            return PublishingReadinessItem(
+                id: "source",
+                title: L10n.text("This release is already with Apple"),
+                detail: L10n.format(
+                    "Version %@ (%@) is %@. Wait for Apple or advance the source version before another upload.",
+                    remote.versionString,
+                    remote.buildNumber ?? "—",
+                    friendlyState(remote.state)
+                ),
+                state: .blocked
+            )
+        }
+        return PublishingReadinessItem(
+            id: "source",
+            title: L10n.text("Source version is ready"),
+            detail: L10n.format(
+                "%@ (%@) is selected. The scheme may advance it once during archive.",
+                localVersion,
+                localBuild
+            ),
+            state: .ready
+        )
+    }
+
+    private var accountReadiness: PublishingReadinessItem {
+        switch appStoreConfiguration {
+        case .loading:
+            return PublishingReadinessItem(
+                id: "account",
+                title: L10n.text("App Store Connect access"),
+                detail: L10n.text("Checking credentials and the live app record…"),
+                state: .checking
+            )
+        case .error(let message):
+            return PublishingReadinessItem(
+                id: "account",
+                title: L10n.text("App Store Connect needs attention"),
+                detail: message,
+                state: .blocked
+            )
+        case .loaded:
+            let hasIdentifiers = model.preferences.appStoreConnectIssuerID?.nilIfEmpty != nil
+                && model.preferences.appStoreConnectKeyID?.nilIfEmpty != nil
+            return PublishingReadinessItem(
+                id: "account",
+                title: L10n.text("App Store Connect is ready"),
+                detail: hasIdentifiers && model.hasAppStoreConnectPrivateKey
+                    ? L10n.text("The API key works and the current app record was loaded.")
+                    : L10n.text("Complete the API key configuration before publishing."),
+                state: hasIdentifiers && model.hasAppStoreConnectPrivateKey ? .ready : .blocked
+            )
+        }
+    }
+
+    private var contentReadiness: PublishingReadinessItem {
+        guard let project = selectedProject, let preview = localPublishingPreview else {
+            if case .error(let message) = subscriptionSummary {
+                return PublishingReadinessItem(
+                    id: "content",
+                    title: L10n.text("Project content needs attention"),
+                    detail: message,
+                    state: .blocked
+                )
+            }
+            return PublishingReadinessItem(
+                id: "content",
+                title: L10n.text("Store content"),
+                detail: L10n.text("Inspecting metadata and subscription products…"),
+                state: .checking
+            )
+        }
+        let publication = preview.catalog.publication
+        let hasManualMetadata = publication?.metadata != nil
+            || publication?.localizations?.isEmpty == false
+        guard hasManualMetadata || model.hasOpenAIAPIKey else {
+            return PublishingReadinessItem(
+                id: "content",
+                title: L10n.text("Store listing needs content"),
+                detail: L10n.text("Add editable metadata or configure OpenAI to generate the listing."),
+                state: .blocked
+            )
+        }
+        let localeCount = max(
+            publication?.localizations?.count ?? 0,
+            ProjectLocalizationDiscoveryService().discover(
+                project: project,
+                defaultLocale: publication?.locale ?? model.preferences.appStoreLocale ?? "en-US"
+            ).count
+        )
+        return PublishingReadinessItem(
+            id: "content",
+            title: L10n.text("Store content is ready"),
+            detail: L10n.format(
+                "%d language(s) and %d subscription product(s) will be reconciled.",
+                localeCount,
+                preview.catalog.subscriptionCount
+            ),
+            state: .ready
+        )
+    }
+
+    private var screenshotReadiness: PublishingReadinessItem {
+        guard let preview = localPublishingPreview else {
+            return PublishingReadinessItem(
+                id: "screenshots",
+                title: L10n.text("Screenshots"),
+                detail: L10n.text("Checking supplied assets and available simulators…"),
+                state: .checking
+            )
+        }
+        let screenshots = preview.screenshotPreview.screenshots.count
+        let devices = preview.screenshotPreview.devices
+        if screenshots == 0, devices.isEmpty {
+            return PublishingReadinessItem(
+                id: "screenshots",
+                title: L10n.text("Screenshots"),
+                detail: L10n.text("Detecting supported screenshot devices…"),
+                state: .checking
+            )
+        }
+        let canCapture = devices.contains { device in
+            switch device.state {
+            case .provided, .ready, .capturing, .captured: true
+            case .unavailable, .failed: false
+            }
+        }
+        guard screenshots > 0 || canCapture else {
+            return PublishingReadinessItem(
+                id: "screenshots",
+                title: L10n.text("Screenshots need attention"),
+                detail: L10n.text("No supplied screenshots or compatible simulator runtimes were found."),
+                state: .blocked
+            )
+        }
+        return PublishingReadinessItem(
+            id: "screenshots",
+            title: L10n.text("Screenshots are ready"),
+            detail: screenshots > 0
+                ? L10n.format("%d screenshot(s) are prepared; missing sizes will be captured automatically.", screenshots)
+                : L10n.text("Compatible simulators are ready to capture every required device family."),
+            state: .ready
+        )
+    }
+
+    private var reviewReadiness: PublishingReadinessItem {
+        guard submitForReview else {
+            return PublishingReadinessItem(
+                id: "review",
+                title: L10n.text("Upload only"),
+                detail: L10n.text("The build will reach App Store Connect and TestFlight but will not be sent to App Review."),
+                state: .attention
+            )
+        }
+        let publication = localPublishingPreview?.catalog.publication
+        let requirements = reviewRequirements(publication: publication)
+        guard requirements.contactIsComplete,
+              requirements.supportURLIsComplete,
+              requirements.copyrightIsComplete else {
+            var missing: [String] = []
+            if !requirements.contactIsComplete {
+                missing.append(L10n.text("review contact"))
+            }
+            if !requirements.supportURLIsComplete { missing.append(L10n.text("support URL")) }
+            if !requirements.copyrightIsComplete { missing.append(L10n.text("copyright owner")) }
+            return PublishingReadinessItem(
+                id: "review",
+                title: L10n.text("Review information is incomplete"),
+                detail: L10n.format(
+                    "Missing: %@. Open App Settings or Account Settings to complete it.",
+                    missing.joined(separator: ", ")
+                ),
+                state: .blocked
+            )
+        }
+        return PublishingReadinessItem(
+            id: "review",
+            title: L10n.text("App Review is ready"),
+            detail: L10n.text("Review contact, support URL, and copyright are available. Existing App Store Connect values are reused when needed."),
+            state: .ready
+        )
+    }
+
+    private func reviewRequirements(
+        publication: AppStorePublicationConfiguration?
+    ) -> (contactIsComplete: Bool, supportURLIsComplete: Bool, copyrightIsComplete: Bool) {
+        let review = publication?.review
+        let preferredLocale = publication?.locale?.nilIfEmpty
+            ?? model.preferences.appStoreLocale?.nilIfEmpty
+        let existing = currentAppStoreSnapshot?.publicationFallback(preferredLocale: preferredLocale)
+        let contactValues = [
+            review?.contactFirstName?.nilIfEmpty
+                ?? model.preferences.appStoreReviewFirstName?.nilIfEmpty
+                ?? existing?.review?.contactFirstName?.nilIfEmpty,
+            review?.contactLastName?.nilIfEmpty
+                ?? model.preferences.appStoreReviewLastName?.nilIfEmpty
+                ?? existing?.review?.contactLastName?.nilIfEmpty,
+            review?.contactPhone?.nilIfEmpty
+                ?? model.preferences.appStoreReviewPhone?.nilIfEmpty
+                ?? existing?.review?.contactPhone?.nilIfEmpty,
+            review?.contactEmail?.nilIfEmpty
+                ?? model.preferences.appStoreReviewEmail?.nilIfEmpty
+                ?? existing?.review?.contactEmail?.nilIfEmpty
+        ]
+        let supportURL = publication?.supportURL?.nilIfEmpty
+            ?? model.preferences.appStoreSupportURL?.nilIfEmpty
+            ?? existing?.supportURL
+        let copyright = publication?.copyright?.nilIfEmpty
+            ?? model.preferences.appStoreCopyright?.nilIfEmpty
+            ?? existing?.copyright
+        return (
+            contactValues.allSatisfy { $0 != nil },
+            supportURL != nil,
+            copyright != nil
+        )
+    }
+
+    private var firstConfigurationTabNeedingAttention: PublishingConfigurationTab {
+        let requirements = reviewRequirements(publication: localPublishingPreview?.catalog.publication)
+        if !requirements.supportURLIsComplete || !requirements.copyrightIsComplete {
+            return .listing
+        }
+        if !requirements.contactIsComplete { return .review }
+        if let selectedProject,
+           releaseReadinessReport(for: selectedProject).blockers.contains(where: {
+               $0.id == "content" || $0.id == "screenshots"
+           }) {
+            return .listing
+        }
+        return .review
+    }
+
+    private func handleReleaseAction(_ project: ManagedProject) {
+        let report = releaseReadinessReport(for: project)
+        guard !report.isChecking else {
+            model.presentedError = L10n.text("Release checks are still running. Please try again in a moment.")
+            return
+        }
+        guard report.blockers.isEmpty else {
+            let blockerIDs = Set(report.blockers.map(\.id))
+            if !blockerIDs.isDisjoint(with: ["review", "content", "screenshots"]) {
+                configurationEditorStartsWithAI = false
+                configurationEditorInitialTab = firstConfigurationTabNeedingAttention
+                configurationEditorHighlightsMissingFields = true
+                selectedWorkspace = .configuration
+            } else if blockerIDs.contains("account") {
+                openSettings()
+            } else {
+                model.presentedError = report.blockers
+                    .map { "\($0.title): \($0.detail)" }
+                    .joined(separator: "\n\n")
+            }
+            return
+        }
+        showsConfirmation = true
+    }
+
+    private func saveSubscriptionPrices() {
+        guard let preview = localPublishingPreview else { return }
+        isSavingSubscriptionPrices = true
+        defer { isSavingSubscriptionPrices = false }
+        do {
+            let normalized = try Dictionary(uniqueKeysWithValues: subscriptionPriceDrafts.map { productID, value in
+                guard let price = SubscriptionPriceValidation.normalized(value) else {
+                    throw SubscriptionPriceSaveError.invalidPrice(productID)
+                }
+                return (productID, price)
+            })
+            let configurationURL = selectedProject?.folderURL
+                .appendingPathComponent("app-store-publishing.json")
+            guard let configurationURL else { return }
+            var manifest: AppStorePublishingManifest
+            if FileManager.default.fileExists(atPath: configurationURL.path) {
+                manifest = try JSONDecoder().decode(
+                    AppStorePublishingManifest.self,
+                    from: Data(contentsOf: configurationURL)
+                )
+            } else {
+                manifest = AppStorePublishingManifest(
+                    schemaVersion: 1,
+                    publication: preview.catalog.publication,
+                    application: preview.catalog.application,
+                    subscriptions: nil
+                )
+            }
+            var groups = preview.catalog.groups
+            for groupIndex in groups.indices {
+                for subscriptionIndex in groups[groupIndex].subscriptions.indices {
+                    let productID = groups[groupIndex].subscriptions[subscriptionIndex].productID
+                    groups[groupIndex].subscriptions[subscriptionIndex].basePrice = normalized[productID]
+                }
+            }
+            let existing = manifest.subscriptions
+            manifest.subscriptions = AppStoreSubscriptionsConfiguration(
+                baseTerritory: existing?.baseTerritory
+                    ?? groups.flatMap(\.subscriptions).compactMap(\.baseTerritory).first,
+                availableInAllTerritories: existing?.availableInAllTerritories
+                    ?? groups.flatMap(\.subscriptions).allSatisfy { $0.availableInAllTerritories == true },
+                reviewScreenshot: existing?.reviewScreenshot,
+                groups: groups
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+            var data = try encoder.encode(manifest)
+            data.append(0x0A)
+            try data.write(to: configurationURL, options: .atomic)
+            subscriptionPriceDrafts = normalized
+            savedSubscriptionPrices = normalized
+            subscriptionPriceSaveStatus = .success(
+                L10n.text("Subscription prices were saved and will be applied during Publish.")
+            )
+            configurationRevision += 1
+        } catch {
+            subscriptionPriceSaveStatus = .failure(error.localizedDescription)
+        }
     }
 
     private var currentVersionIsAlreadySubmitted: Bool {
@@ -1332,9 +1876,7 @@ private struct PublishingWindowView: View {
             return false
         }
         if selectedAction == .release {
-            return project.marketingVersion?.isEmpty == false
-                && project.buildNumber?.isEmpty == false
-                && !currentVersionIsAlreadySubmitted
+            return releaseReadinessReport(for: project).allowsPublication
         }
         guard !selectedProductID.isEmpty,
               offerReferenceName.nilIfEmpty != nil,
@@ -1418,15 +1960,18 @@ private struct PerAppPublishingConfigurationEditor: View {
     let defaults: AppPreferences
     let currentConfiguration: AppStoreConnectConfigurationSnapshot?
     let generateAIDraftOnOpen: Bool
+    let initialTab: PublishingConfigurationTab
+    let highlightMissingFields: Bool
     let onCancel: () -> Void
     let onSave: () -> Void
 
-    @State private var selectedTab = ConfigurationTab.listing
+    @State private var selectedTab = PublishingConfigurationTab.listing
     @State private var baseManifest: AppStorePublishingManifest?
     @State private var json = ""
     @State private var validationMessage: String?
     @State private var isLoading = true
     @State private var isGeneratingAI = false
+    @State private var showsRequiredFieldErrors = false
 
     @State private var locale = "en-US"
     @State private var appName = ""
@@ -1500,7 +2045,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 .foregroundStyle(.secondary)
 
             Picker("Configuration", selection: $selectedTab) {
-                ForEach(ConfigurationTab.allCases, id: \.self) { tab in
+                ForEach(PublishingConfigurationTab.allCases, id: \.self) { tab in
                     Text(tab.title).tag(tab)
                 }
             }
@@ -1538,6 +2083,8 @@ private struct PerAppPublishingConfigurationEditor: View {
         .frame(minWidth: 860, minHeight: 760)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
+            selectedTab = initialTab
+            showsRequiredFieldErrors = highlightMissingFields
             load()
             if generateAIDraftOnOpen, validationMessage == nil {
                 await generateAIDraft()
@@ -1630,12 +2177,22 @@ private struct PerAppPublishingConfigurationEditor: View {
                     }
                 }
                 Section("URLs and Rights") {
-                    TextField("Support URL", text: $supportURL)
+                    requiredTextField(
+                        "Support URL",
+                        text: $supportURL,
+                        validation: supportURLValidation
+                    )
                     TextField("Marketing URL", text: $marketingURL)
                     TextField("Privacy policy URL", text: $privacyPolicyURL)
                     TextField("Privacy choices URL", text: $privacyChoicesURL)
                     TextField("Terms of Use URL", text: $termsURL)
-                    TextField("Copyright", text: $copyright)
+                    requiredTextField(
+                        "Copyright",
+                        text: $copyright,
+                        validation: copyright.nilIfEmpty == nil
+                            ? L10n.text("Copyright owner is required.")
+                            : nil
+                    )
                 }
                 Section("Screenshots") {
                     configurationTextEditor("Paths (one file or folder per line)", text: $screenshotPaths, height: 80)
@@ -1693,10 +2250,26 @@ private struct PerAppPublishingConfigurationEditor: View {
         case .review:
             Form {
                 Section("App Review Contact") {
-                    TextField("First name", text: $reviewFirstName)
-                    TextField("Last name", text: $reviewLastName)
-                    TextField("Phone", text: $reviewPhone)
-                    TextField("Email", text: $reviewEmail)
+                    requiredTextField(
+                        "First name",
+                        text: $reviewFirstName,
+                        validation: requiredReviewMessage(for: reviewFirstName)
+                    )
+                    requiredTextField(
+                        "Last name",
+                        text: $reviewLastName,
+                        validation: requiredReviewMessage(for: reviewLastName)
+                    )
+                    requiredTextField(
+                        "Phone",
+                        text: $reviewPhone,
+                        validation: requiredReviewMessage(for: reviewPhone)
+                    )
+                    requiredTextField(
+                        "Email",
+                        text: $reviewEmail,
+                        validation: requiredReviewMessage(for: reviewEmail)
+                    )
                     configurationTextEditor("Review notes", text: $reviewNotes, height: 100)
                     Toggle("A demo account is required", isOn: $demoAccountRequired)
                     Text("Demo credentials are managed in Publishing Settings and stored only in Keychain.")
@@ -1765,6 +2338,47 @@ private struct PerAppPublishingConfigurationEditor: View {
                 .padding(5)
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
         }
+    }
+
+    private func requiredTextField(
+        _ title: String,
+        text: Binding<String>,
+        validation: String?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField(L10n.text(title), text: text)
+                .textFieldStyle(.roundedBorder)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(
+                            showsRequiredFieldErrors && validation != nil ? Color.red : Color.clear,
+                            lineWidth: 1.5
+                        )
+                }
+            if showsRequiredFieldErrors, let validation {
+                Label(validation, systemImage: "exclamationmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private var supportURLValidation: String? {
+        guard let value = supportURL.nilIfEmpty else {
+            return L10n.text("Support URL is required.")
+        }
+        guard let url = URL(string: value),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              url.host != nil else {
+            return L10n.text("Enter a valid HTTP or HTTPS URL.")
+        }
+        return nil
+    }
+
+    private func requiredReviewMessage(for value: String) -> String? {
+        submitForReview && value.nilIfEmpty == nil
+            ? L10n.text("This field is required for App Review.")
+            : nil
     }
 
     private var configurationURL: URL {
@@ -2157,6 +2771,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     }
 
     private func save() {
+        showsRequiredFieldErrors = true
         do {
             let manifest: AppStorePublishingManifest
             if selectedTab == .advanced {
@@ -2184,6 +2799,28 @@ private struct PerAppPublishingConfigurationEditor: View {
                   ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
                   url.host != nil else {
                 throw ConfigurationEditorError.invalid(L10n.text("publication.supportURL must be a valid HTTP or HTTPS URL."))
+            }
+        } else {
+            selectedTab = .listing
+            throw ConfigurationEditorError.invalid(L10n.text("Support URL is required."))
+        }
+        guard manifest.publication?.copyright?.nilIfEmpty != nil else {
+            selectedTab = .listing
+            throw ConfigurationEditorError.invalid(L10n.text("Copyright owner is required."))
+        }
+        if manifest.publication?.submitForReview != false {
+            let review = manifest.publication?.review
+            let contact = [
+                review?.contactFirstName?.nilIfEmpty,
+                review?.contactLastName?.nilIfEmpty,
+                review?.contactPhone?.nilIfEmpty,
+                review?.contactEmail?.nilIfEmpty
+            ]
+            guard contact.allSatisfy({ $0 != nil }) else {
+                selectedTab = .review
+                throw ConfigurationEditorError.invalid(
+                    L10n.text("Complete every highlighted App Review contact field.")
+                )
             }
         }
         for (name, rawURL) in [
@@ -2278,24 +2915,6 @@ private struct PerAppPublishingConfigurationEditor: View {
 
     private func friendlyCategory(_ identifier: String) -> String {
         identifier.split(separator: "_").map { $0.lowercased().capitalized }.joined(separator: " ")
-    }
-
-    private enum ConfigurationTab: CaseIterable {
-        case listing
-        case appSetup
-        case review
-        case subscriptions
-        case advanced
-
-        var title: String {
-            switch self {
-            case .listing: L10n.text("Store Listing")
-            case .appSetup: L10n.text("App Setup")
-            case .review: L10n.text("Review")
-            case .subscriptions: L10n.text("Subscriptions")
-            case .advanced: L10n.text("Advanced JSON")
-            }
-        }
     }
 
     private static let categoryIdentifiers = [

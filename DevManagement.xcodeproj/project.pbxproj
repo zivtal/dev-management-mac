@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		027C50AFA8B0805A1D272090 /* KeychainCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8217125EF1A7EDC42D724E6 /* KeychainCredentialStore.swift */; };
 		0690A247F796B6DE1221DC4C /* Publishing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1907348C889C1CB74F76247 /* Publishing.swift */; };
+		10B73E068A2930D8B63CD51A /* PublishingExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEB7006C83FBE963AE4FD977 /* PublishingExperience.swift */; };
 		121804B98A7161635E126A7F /* ProjectVersionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 456F7738EAE617528B0F3D42 /* ProjectVersionServiceTests.swift */; };
 		1766C77D192322DDFE013B52 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D190FC0A3C788DB8CD0DA91D /* AppModel.swift */; };
 		186176281EFB29233526C564 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B9D31026AFB1960E78BA7E7B /* UserNotifications.framework */; };
@@ -26,6 +27,7 @@
 		4349D459F2E4B2C4F17EA0E1 /* AppStorePublishingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA9DEC991B43F6B915C1712 /* AppStorePublishingTests.swift */; };
 		4C0613B0ABF394EB4A0C8B3D /* StoreKitSubscriptionDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25055FBACD7B5FDD275AF0E0 /* StoreKitSubscriptionDiscoveryService.swift */; };
 		586865366583D21C8E8EF961 /* USBConnectionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EE52232D5DB1CF4FF3954EE /* USBConnectionMonitor.swift */; };
+		5A0A5C5DC670DB27092EEA59 /* PublishingExperienceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35E9A1A9B6FDB5D74804A1F1 /* PublishingExperienceTests.swift */; };
 		5ABA067966EE5ADBBB2DFBEC /* MacOSInstallationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D085DB26020DCCCA468F3EA7 /* MacOSInstallationTests.swift */; };
 		5FBF32C8DE8C0A0D70999AA2 /* DeveloperTeamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20FE1B7E5F176778282E80E /* DeveloperTeamService.swift */; };
 		614EB1AC385AB547B28CACE4 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92BA78CBDD2A9BB9E2A7417E /* SettingsView.swift */; };
@@ -41,6 +43,7 @@
 		83CFCF32E6A27D8E46FD0830 /* ProjectDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A274BABF591ED945D7895E6 /* ProjectDiscoveryService.swift */; };
 		888253A11CA00C81D01AEDC3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C19A08F5E6B9B95BCCBB61FB /* Assets.xcassets */; };
 		8E203327032B650A64BF8924 /* ProjectLocalizationDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F58FBC7AF5A7D51D823487C5 /* ProjectLocalizationDiscoveryService.swift */; };
+		95B6832D1AD4A1A98A759720 /* PublishingReadinessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E6B368943210F206DF5C9E6 /* PublishingReadinessView.swift */; };
 		9632C4EDAFFF50F0AA2F4FEE /* SchedulingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EB3B7AB29B4412F47C54292 /* SchedulingPolicyTests.swift */; };
 		9A6ED0392C47FB0214A93417 /* DirectXcodeInstallationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0994C5CD237B832074C055 /* DirectXcodeInstallationTests.swift */; };
 		9B40DB677026BBB23FF93EC8 /* ProjectsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E551EDA5AB8441BCD618FA /* ProjectsSettingsView.swift */; };
@@ -48,7 +51,9 @@
 		A8D413789388A0BF23682C35 /* OpenAIStoreMetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41B846AE2D38B1B7E7AC1C25 /* OpenAIStoreMetadataService.swift */; };
 		B1EBEC96A382A7896C968CD4 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4BD224F76E01A19DEBB6020 /* MenuBarView.swift */; };
 		B24A7569EE19C148FEE36102 /* PublishingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC02EA04969F48B7CB14ED49 /* PublishingWindow.swift */; };
+		B83A4EAA414165468AF70F69 /* SubscriptionPricingCardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2560EED79D4F38A53DDABAB1 /* SubscriptionPricingCardsView.swift */; };
 		C0820A8CA20DBBA4BE058884 /* InstallationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8648AB030DDA915B7137674A /* InstallationService.swift */; };
+		C11CA83D503599C3076DB02C /* PublishingProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B7096F249D3F3EBC32EEAF2 /* PublishingProgressView.swift */; };
 		CEB5F920493A8DDB3DE1EE4A /* AppStorePublishingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BD6608F16060C2A947AB416 /* AppStorePublishingService.swift */; };
 		D65D97E3585DFF4F4C1B1409 /* ConnectedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0958EDE18F62F4A209B64D6 /* ConnectedDevice.swift */; };
 		E102DDBCE6CBE4913170B88D /* InstallationNotificationTextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86BBDE915B650D7851ACEB46 /* InstallationNotificationTextTests.swift */; };
@@ -79,11 +84,14 @@
 		01B153B0F3FC4FFB61D3C31C /* he */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = he; path = he.lproj/Localizable.strings; sourceTree = "<group>"; };
 		0A2312160D3CCF96B05FCD4C /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		16304D3C5216A6E329FC687D /* ProjectVersionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectVersionService.swift; sourceTree = "<group>"; };
+		1B7096F249D3F3EBC32EEAF2 /* PublishingProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingProgressView.swift; sourceTree = "<group>"; };
 		1CB256DC4A73BE90711652A1 /* ProcessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessRunner.swift; sourceTree = "<group>"; };
 		1EE52232D5DB1CF4FF3954EE /* USBConnectionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USBConnectionMonitor.swift; sourceTree = "<group>"; };
 		25055FBACD7B5FDD275AF0E0 /* StoreKitSubscriptionDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitSubscriptionDiscoveryService.swift; sourceTree = "<group>"; };
+		2560EED79D4F38A53DDABAB1 /* SubscriptionPricingCardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionPricingCardsView.swift; sourceTree = "<group>"; };
 		25700C1E26331F9B6C65EBC7 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		2BD6608F16060C2A947AB416 /* AppStorePublishingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStorePublishingService.swift; sourceTree = "<group>"; };
+		35E9A1A9B6FDB5D74804A1F1 /* PublishingExperienceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingExperienceTests.swift; sourceTree = "<group>"; };
 		3AEB1BCEB0B82ED6D7E33965 /* ProjectIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIconView.swift; sourceTree = "<group>"; };
 		3BBE583F20FCC937D9A94803 /* InstallationLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationLogTests.swift; sourceTree = "<group>"; };
 		41B846AE2D38B1B7E7AC1C25 /* OpenAIStoreMetadataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIStoreMetadataService.swift; sourceTree = "<group>"; };
@@ -109,6 +117,7 @@
 		92BA78CBDD2A9BB9E2A7417E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		960A2EC9E613818529E77D09 /* PublishingSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingSettingsView.swift; sourceTree = "<group>"; };
 		9A274BABF591ED945D7895E6 /* ProjectDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDiscoveryService.swift; sourceTree = "<group>"; };
+		9E6B368943210F206DF5C9E6 /* PublishingReadinessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingReadinessView.swift; sourceTree = "<group>"; };
 		A1907348C889C1CB74F76247 /* Publishing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Publishing.swift; sourceTree = "<group>"; };
 		A22ABD6C88F410A71DC9F716 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 		A59E1559E63A3643555DC751 /* ProjectIconServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIconServiceTests.swift; sourceTree = "<group>"; };
@@ -128,6 +137,7 @@
 		E6526534493A80657384E6ED /* AppStorePublicationURLValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStorePublicationURLValidator.swift; sourceTree = "<group>"; };
 		E8217125EF1A7EDC42D724E6 /* KeychainCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCredentialStore.swift; sourceTree = "<group>"; };
 		EE36EEE9705302CF6B6190C7 /* DevManagementApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevManagementApp.swift; sourceTree = "<group>"; };
+		EEB7006C83FBE963AE4FD977 /* PublishingExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingExperience.swift; sourceTree = "<group>"; };
 		F0958EDE18F62F4A209B64D6 /* ConnectedDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedDevice.swift; sourceTree = "<group>"; };
 		F20FE1B7E5F176778282E80E /* DeveloperTeamService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperTeamService.swift; sourceTree = "<group>"; };
 		F58FBC7AF5A7D51D823487C5 /* ProjectLocalizationDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectLocalizationDiscoveryService.swift; sourceTree = "<group>"; };
@@ -216,9 +226,12 @@
 				B4BD224F76E01A19DEBB6020 /* MenuBarView.swift */,
 				3AEB1BCEB0B82ED6D7E33965 /* ProjectIconView.swift */,
 				D4E551EDA5AB8441BCD618FA /* ProjectsSettingsView.swift */,
+				1B7096F249D3F3EBC32EEAF2 /* PublishingProgressView.swift */,
+				9E6B368943210F206DF5C9E6 /* PublishingReadinessView.swift */,
 				960A2EC9E613818529E77D09 /* PublishingSettingsView.swift */,
 				AC02EA04969F48B7CB14ED49 /* PublishingWindow.swift */,
 				92BA78CBDD2A9BB9E2A7417E /* SettingsView.swift */,
+				2560EED79D4F38A53DDABAB1 /* SubscriptionPricingCardsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -248,6 +261,7 @@
 				46CA950089CCC0AD6A4134BC /* DeveloperTeam.swift */,
 				F664ECE9636F677E8254178A /* ManagedProject.swift */,
 				A1907348C889C1CB74F76247 /* Publishing.swift */,
+				EEB7006C83FBE963AE4FD977 /* PublishingExperience.swift */,
 				C70F5F43D187C2F2650E2E67 /* SchedulingPolicy.swift */,
 			);
 			path = Models;
@@ -277,6 +291,7 @@
 				D085DB26020DCCCA468F3EA7 /* MacOSInstallationTests.swift */,
 				A59E1559E63A3643555DC751 /* ProjectIconServiceTests.swift */,
 				456F7738EAE617528B0F3D42 /* ProjectVersionServiceTests.swift */,
+				35E9A1A9B6FDB5D74804A1F1 /* PublishingExperienceTests.swift */,
 				7EB3B7AB29B4412F47C54292 /* SchedulingPolicyTests.swift */,
 			);
 			path = Tests;
@@ -418,6 +433,9 @@
 				333B2C5902BEB7FA416E5E91 /* ProjectVersionService.swift in Sources */,
 				9B40DB677026BBB23FF93EC8 /* ProjectsSettingsView.swift in Sources */,
 				0690A247F796B6DE1221DC4C /* Publishing.swift in Sources */,
+				10B73E068A2930D8B63CD51A /* PublishingExperience.swift in Sources */,
+				C11CA83D503599C3076DB02C /* PublishingProgressView.swift in Sources */,
+				95B6832D1AD4A1A98A759720 /* PublishingReadinessView.swift in Sources */,
 				6A959F01BA7F8BE032126ECB /* PublishingSettingsView.swift in Sources */,
 				B24A7569EE19C148FEE36102 /* PublishingWindow.swift in Sources */,
 				202D345134232293697DEBBE /* SchedulingPolicy.swift in Sources */,
@@ -425,6 +443,7 @@
 				614EB1AC385AB547B28CACE4 /* SettingsView.swift in Sources */,
 				4C0613B0ABF394EB4A0C8B3D /* StoreKitSubscriptionDiscoveryService.swift in Sources */,
 				2A1BA4E8DAD016908AD34443 /* String+NonEmpty.swift in Sources */,
+				B83A4EAA414165468AF70F69 /* SubscriptionPricingCardsView.swift in Sources */,
 				586865366583D21C8E8EF961 /* USBConnectionMonitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -445,6 +464,7 @@
 				5ABA067966EE5ADBBB2DFBEC /* MacOSInstallationTests.swift in Sources */,
 				30BE0C471F8EE7AA7B72A601 /* ProjectIconServiceTests.swift in Sources */,
 				121804B98A7161635E126A7F /* ProjectVersionServiceTests.swift in Sources */,
+				5A0A5C5DC670DB27092EEA59 /* PublishingExperienceTests.swift in Sources */,
 				9632C4EDAFFF50F0AA2F4FEE /* SchedulingPolicyTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -566,7 +586,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 38;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -586,7 +606,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3.5;
+				MARKETING_VERSION = 1.3.7;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -633,7 +653,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 38;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -647,7 +667,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3.5;
+				MARKETING_VERSION = 1.3.7;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

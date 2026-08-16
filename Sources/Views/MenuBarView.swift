@@ -7,6 +7,8 @@ struct MenuBarView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isDeviceListExpanded = false
     @State private var showsCancelInstallationConfirmation = false
+    @State private var isOpeningPublishingWindow = false
+    @State private var openingPublishingProjectID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -113,12 +115,25 @@ struct MenuBarView: View {
     }
 
     private func publishingProgressSection(_ progress: PublishingProgress) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack {
                 ProgressView().controlSize(.small)
                 Text(progress.phase.title)
                     .font(.subheadline.weight(.medium))
                 Spacer()
+                Button("View") {
+                    let menuWindow = NSApplication.shared.keyWindow
+                    dismiss()
+                    menuWindow?.orderOut(nil)
+                    Task { @MainActor in
+                        await Task.yield()
+                        PublishingWindowPresenter.shared.show(
+                            model: model,
+                            projectID: progress.projectID
+                        )
+                    }
+                }
+                .controlSize(.small)
                 Button {
                     model.cancelPublishing()
                 } label: {
@@ -132,6 +147,21 @@ struct MenuBarView: View {
             Text(L10n.format("Publishing %@ to the App Store", progress.projectName))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            ProgressView(value: progress.phase.completionFraction)
+                .progressViewStyle(.linear)
+            HStack {
+                Text(progress.phase.friendlyDetail)
+                    .lineLimit(2)
+                Spacer()
+                Text(L10n.format(
+                    "Step %d of %d",
+                    progress.phase.journeyStage.rawValue + 1,
+                    PublishingJourneyStage.allCases.count
+                ))
+                .monospacedDigit()
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
             if !progress.latestOutput.isEmpty {
                 Text(progress.latestOutput)
                     .font(.caption2.monospaced())
@@ -283,7 +313,7 @@ struct MenuBarView: View {
                             .frame(width: 110, alignment: .leading)
                         Text("Last installed")
                             .frame(width: 135, alignment: .leading)
-                        Color.clear.frame(width: 48, height: 1)
+                        Color.clear.frame(width: 72, height: 1)
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -320,6 +350,29 @@ struct MenuBarView: View {
                                 .lineLimit(1)
 
                             HStack(spacing: 6) {
+                                if canPublish(project) {
+                                    Button {
+                                        openPublishing(projectID: project.id)
+                                    } label: {
+                                        if isOpeningPublishingWindow,
+                                           openingPublishingProjectID == project.id {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                                .frame(width: 14)
+                                        } else {
+                                            Image(systemName: "paperplane.fill")
+                                                .frame(width: 14)
+                                        }
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .foregroundStyle(.blue)
+                                    .help(L10n.format("Publish %@…", project.displayName))
+                                    .accessibilityLabel(L10n.format("Publish %@…", project.displayName))
+                                    .disabled(model.hasActiveWork || isOpeningPublishingWindow)
+                                } else {
+                                    Color.clear.frame(width: 14, height: 14)
+                                }
+
                                 Button {
                                     model.setProjectEnabled(!project.isEnabled, projectID: project.id)
                                 } label: {
@@ -344,7 +397,7 @@ struct MenuBarView: View {
                                         || model.hasActiveWork
                                 )
                             }
-                            .frame(width: 48, alignment: .trailing)
+                            .frame(width: 72, alignment: .trailing)
                         }
                     }
                 }
@@ -369,18 +422,19 @@ struct MenuBarView: View {
             .disabled(model.isRefreshingDevices || model.hasActiveWork)
 
             Button {
-                let menuWindow = NSApplication.shared.keyWindow
-                dismiss()
-                menuWindow?.orderOut(nil)
-                Task { @MainActor in
-                    await Task.yield()
-                    PublishingWindowPresenter.shared.show(model: model)
-                }
+                openPublishing(projectID: nil)
             } label: {
-                Label("Publish…", systemImage: "paperplane.fill")
+                if isOpeningPublishingWindow {
+                    HStack(spacing: 5) {
+                        ProgressView().controlSize(.small)
+                        Text("Opening Publish…")
+                    }
+                } else {
+                    Label("Publish…", systemImage: "paperplane.fill")
+                }
             }
             .disabled(
-                model.hasActiveWork
+                model.hasActiveWork || isOpeningPublishingWindow
                     || !model.projects.contains {
                         !$0.isMacOSApplication && $0.installMethod == .xcodebuild
                     }
@@ -421,6 +475,25 @@ struct MenuBarView: View {
             }
         }
         .controlSize(.small)
+    }
+
+    private func canPublish(_ project: ManagedProject) -> Bool {
+        !project.isMacOSApplication && project.installMethod == .xcodebuild
+    }
+
+    private func openPublishing(projectID: UUID?) {
+        guard !isOpeningPublishingWindow else { return }
+        isOpeningPublishingWindow = true
+        openingPublishingProjectID = projectID
+        let menuWindow = NSApplication.shared.keyWindow
+        Task { @MainActor in
+            await Task.yield()
+            PublishingWindowPresenter.shared.show(model: model, projectID: projectID)
+            dismiss()
+            menuWindow?.orderOut(nil)
+            isOpeningPublishingWindow = false
+            openingPublishingProjectID = nil
+        }
     }
 
     private var statusText: String {

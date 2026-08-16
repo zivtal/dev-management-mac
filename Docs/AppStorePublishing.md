@@ -147,6 +147,38 @@ Publish performs the complete automatable release pipeline in this order:
    finish processing each attachment, and submit the complete version when
    submission is enabled.
 
+The menu-bar application list includes a paper-plane action for every eligible
+iOS app. It opens Publish with that app already selected; the footer Publish
+button remains available when the app should be chosen inside the release
+window. A release-readiness panel checks the selected source version against App
+Store Connect, validates account setup, and summarizes store content,
+screenshots, subscriptions, and review details. An older local checkout is
+treated as a blocker instead of silently building a version behind the live App
+Store record.
+
+Opening Publish gives immediate feedback in the menu and presents a lightweight
+loading window before project, App Store Connect, subscription, and screenshot
+checks begin. Existing App Store Connect support, copyright, and review-contact
+values are reused when a per-app or account default does not override them.
+The action remains clickable when editable data is incomplete: Publish opens the
+relevant configuration tab and marks each missing required field with a red
+border and an inline explanation.
+
+The right-hand workspace switches between **Subscriptions** and **Redeem Codes**.
+Subscription cards expose each product's duration, base territory, availability,
+and requested base price. Saved price edits update `app-store-publishing.json`
+and are applied to App Store Connect by the next Publish run. Redeem Codes shows
+existing production offers and creates either Apple one-time code batches or a
+custom reusable code, using the selected subscription.
+
+Publish stays open after confirmation and presents five understandable stages:
+Prepare, Build, App Store setup, TestFlight, and Review. The current task,
+overall completion, elapsed time, and friendly explanation remain visible.
+Technical command output is available on demand. The same determinate progress
+appears in the menu bar, where **View** reopens the full release window. A failed
+run keeps its exact failure step and offers a direct return to the readiness
+screen; a successful run shows the archived version, build, and destination.
+
 Review attachments can be entered in **Per-App Configuration → App Review** or
 placed under `AppStore/ReviewAttachments` in the managed project. Supported
 project files are MP4, MOV, PDF, DOC, DOCX, RTF, TXT, and ZIP. Relative paths are

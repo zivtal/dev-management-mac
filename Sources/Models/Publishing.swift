@@ -499,7 +499,7 @@ struct PublishingConfiguration: Sendable {
     let releaseAutomatically: Bool
 }
 
-struct PublishingResult: Sendable {
+struct PublishingResult: Equatable, Sendable {
     let version: String
     let buildNumber: String
     let submittedForReview: Bool
@@ -568,18 +568,26 @@ struct PublishingLogSession: Equatable, Identifiable {
     }
 
     let id: UUID
+    let projectID: UUID
     let projectName: String
     let startedAt: Date
     var phase: PublishingProgress.Phase
     var state: State
+    var finishedAt: Date?
+    var result: PublishingResult?
+    var failureMessage: String?
     private(set) var output: String
 
-    init(projectName: String) {
+    init(projectID: UUID, projectName: String) {
         id = UUID()
+        self.projectID = projectID
         self.projectName = projectName
         startedAt = Date()
         phase = .preparing
         state = .inProgress
+        finishedAt = nil
+        result = nil
+        failureMessage = nil
         output = ""
     }
 

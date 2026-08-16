@@ -61,6 +61,10 @@ configurable number of days.
   TestFlight access, uploads project-owned review attachments, and optionally
   submits the release for App Review. See
   [One-click App Store publishing](Docs/AppStorePublishing.md).
+- A guided publishing experience with per-app publish actions, release-readiness
+  checks, understandable progress stages, recoverable failure details, and a
+  clear completion summary. Subscription price cards, redeem-code management,
+  and inline required-field errors keep corrective work in the same flow.
 
 ## System requirements
 

@@ -467,7 +467,8 @@ final class AppModel: ObservableObject {
     func publish(
         projectID: UUID,
         submitForReview submissionOverride: Bool? = nil,
-        releaseAutomatically releaseOverride: Bool? = nil
+        releaseAutomatically releaseOverride: Bool? = nil,
+        existingConfiguration: AppStoreConnectConfigurationSnapshot? = nil
     ) {
         guard !hasActiveWork else {
             presentedError = L10n.text("Another build, installation, or publication is already in progress.")
@@ -497,8 +498,13 @@ final class AppModel: ObservableObject {
             presentedError = L10n.text("Enter the App Store Connect issuer ID and key ID in Publishing settings.")
             return
         }
+        let preferredLocale = perAppConfiguration?.locale?.nilIfEmpty
+            ?? preferences.appStoreLocale?.nilIfEmpty
+            ?? "en-US"
+        let existing = existingConfiguration?.publicationFallback(preferredLocale: preferredLocale)
         let copyright = perAppConfiguration?.copyright?.nilIfEmpty
             ?? preferences.appStoreCopyright?.nilIfEmpty
+            ?? existing?.copyright
             ?? ""
         guard !copyright.isEmpty else {
             presentedError = L10n.text("Enter the copyright owner in Publishing settings.")
@@ -506,6 +512,7 @@ final class AppModel: ObservableObject {
         }
         let supportURL = perAppConfiguration?.supportURL?.nilIfEmpty
             ?? preferences.appStoreSupportURL?.nilIfEmpty
+            ?? existing?.supportURL
             ?? ""
         guard let parsedSupportURL = URL(string: supportURL),
               ["http", "https"].contains(parsedSupportURL.scheme?.lowercased() ?? ""),
@@ -537,15 +544,19 @@ final class AppModel: ObservableObject {
         let reviewOverrides = perAppConfiguration?.review
         let reviewFirstName = reviewOverrides?.contactFirstName?.nilIfEmpty
             ?? preferences.appStoreReviewFirstName?.nilIfEmpty
+            ?? existing?.review?.contactFirstName?.nilIfEmpty
             ?? ""
         let reviewLastName = reviewOverrides?.contactLastName?.nilIfEmpty
             ?? preferences.appStoreReviewLastName?.nilIfEmpty
+            ?? existing?.review?.contactLastName?.nilIfEmpty
             ?? ""
         let reviewPhone = reviewOverrides?.contactPhone?.nilIfEmpty
             ?? preferences.appStoreReviewPhone?.nilIfEmpty
+            ?? existing?.review?.contactPhone?.nilIfEmpty
             ?? ""
         let reviewEmail = reviewOverrides?.contactEmail?.nilIfEmpty
             ?? preferences.appStoreReviewEmail?.nilIfEmpty
+            ?? existing?.review?.contactEmail?.nilIfEmpty
             ?? ""
         if submitForReview,
            [reviewFirstName, reviewLastName, reviewPhone, reviewEmail].contains(where: \.isEmpty) {
@@ -554,6 +565,7 @@ final class AppModel: ObservableObject {
         }
         let demoAccountRequired = reviewOverrides?.demoAccountRequired
             ?? preferences.appStoreReviewDemoAccountRequired
+            ?? existing?.review?.demoAccountRequired
             ?? false
         let demoAccountName = try? credentialStore.string(for: .appReviewDemoAccountName)
         let demoAccountPassword = try? credentialStore.string(for: .appReviewDemoAccountPassword)
@@ -570,9 +582,7 @@ final class AppModel: ObservableObject {
             appStoreConnectIssuerID: issuerID,
             appStoreConnectKeyID: keyID,
             appStoreConnectPrivateKey: privateKey,
-            locale: perAppConfiguration?.locale?.nilIfEmpty
-                ?? preferences.appStoreLocale?.nilIfEmpty
-                ?? "en-US",
+            locale: preferredLocale,
             copyright: copyright,
             supportURL: supportURL,
             marketingURL: perAppConfiguration?.marketingURL?.nilIfEmpty,
@@ -589,6 +599,7 @@ final class AppModel: ObservableObject {
                 contactEmail: reviewEmail,
                 notes: reviewOverrides?.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
                     ?? preferences.appStoreReviewNotes?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    ?? existing?.review?.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
                     ?? "",
                 demoAccountRequired: demoAccountRequired,
                 demoAccountName: demoAccountName?.nilIfEmpty,
@@ -598,9 +609,7 @@ final class AppModel: ObservableObject {
             manualLocalizations: perAppConfiguration?.localizations?.map { $0.normalized() } ?? [],
             detectedLocales: ProjectLocalizationDiscoveryService().discover(
                 project: project,
-                defaultLocale: perAppConfiguration?.locale?.nilIfEmpty
-                    ?? preferences.appStoreLocale?.nilIfEmpty
-                    ?? "en-US"
+                defaultLocale: preferredLocale
             ),
             screenshotPaths: perAppConfiguration?.screenshotPaths ?? [],
             reviewAttachmentPaths: perAppConfiguration?.reviewAttachmentPaths ?? [],
@@ -608,7 +617,7 @@ final class AppModel: ObservableObject {
             submitForReview: submitForReview,
             releaseAutomatically: releaseAutomatically
         )
-        var log = PublishingLogSession(projectName: project.displayName)
+        var log = PublishingLogSession(projectID: project.id, projectName: project.displayName)
         let logID = log.id
         log.append(L10n.format("Starting App Store publication for %@ %@ (%@).\n", project.displayName, project.marketingVersion ?? "—", project.buildNumber ?? "—"))
         publishingLog = log
@@ -639,6 +648,8 @@ final class AppModel: ObservableObject {
                 guard !Task.isCancelled else { throw CancellationError() }
                 if var currentLog = publishingLog, currentLog.id == logID {
                     currentLog.state = .succeeded
+                    currentLog.finishedAt = Date()
+                    currentLog.result = result
                     currentLog.append(L10n.text("Publication completed successfully.\n"))
                     publishingLog = currentLog
                 }
@@ -657,6 +668,8 @@ final class AppModel: ObservableObject {
                 let cancelled = Task.isCancelled || error is CancellationError
                 if var currentLog = publishingLog, currentLog.id == logID {
                     currentLog.state = cancelled ? .cancelled : .failed
+                    currentLog.finishedAt = Date()
+                    currentLog.failureMessage = cancelled ? nil : error.localizedDescription
                     currentLog.append("\n\(cancelled ? L10n.text("Publication canceled by user.") : error.localizedDescription)\n")
                     publishingLog = currentLog
                 }
