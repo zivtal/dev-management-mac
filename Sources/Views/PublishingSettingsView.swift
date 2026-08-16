@@ -98,7 +98,7 @@ struct PublishingSettingsView: View {
                     "Release automatically after Apple approves it",
                     isOn: optionalBoolBinding(\.appStoreReleaseAutomatically, fallback: true)
                 )
-                Text("A project Screenshots folder is used first. Missing iPhone or iPad screenshots are captured from an available Simulator after launching the selected scheme. Existing App Store Connect screenshot sets are preserved.")
+                Text("A project Screenshots folder is used first. Missing screenshots are captured automatically on the newest available Simulator for every supported family, including iPhone, iPad, Apple Watch, Apple TV, and Apple Vision Pro. Existing App Store Connect screenshot sets are preserved.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("On a first publication, local StoreKit configuration files and app-store-publishing.json are used to create and configure subscription groups, products, localizations, availability, pricing, review screenshots, categories, and age ratings. Later app versions reuse that setup.")

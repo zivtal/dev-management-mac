@@ -142,7 +142,59 @@ final class AppStorePublishingTests: XCTestCase {
             AppStorePublishingService.screenshotDisplayType(width: 2_752, height: 2_064),
             "APP_IPAD_PRO_3GEN_129"
         )
+        XCTAssertEqual(
+            AppStorePublishingService.screenshotDisplayType(
+                width: 422,
+                height: 514,
+                platform: .appleWatch
+            ),
+            "APP_WATCH_ULTRA"
+        )
+        XCTAssertEqual(
+            AppStorePublishingService.screenshotDisplayType(
+                width: 1_920,
+                height: 1_080,
+                platform: .appleTV
+            ),
+            "APP_APPLE_TV"
+        )
+        XCTAssertEqual(
+            AppStorePublishingService.screenshotDisplayType(
+                width: 3_840,
+                height: 2_160,
+                platform: .appleVisionPro
+            ),
+            "APP_APPLE_VISION_PRO"
+        )
         XCTAssertNil(AppStorePublishingService.screenshotDisplayType(width: 800, height: 600))
+    }
+
+    func testScreenshotPreparationDetectsCompanionWatchApp() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ScreenshotTargetTests-\(UUID().uuidString)", isDirectory: true)
+        let watchDirectory = root.appendingPathComponent("ExampleWatch", isDirectory: true)
+        try FileManager.default.createDirectory(at: watchDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let plist: [String: Any] = [
+            "WKApplication": true,
+            "WKCompanionAppBundleIdentifier": "com.example.app"
+        ]
+        let plistData = try PropertyListSerialization.data(
+            fromPropertyList: plist,
+            format: .xml,
+            options: 0
+        )
+        try plistData.write(to: watchDirectory.appendingPathComponent("Info.plist"))
+
+        var project = managedProject(at: root)
+        project.availableSchemes = ["Example", "ExampleWatch"]
+        project.supportedDeviceFamilies = [.iPhone, .iPad]
+
+        XCTAssertEqual(
+            AppStorePublishingService().supportedScreenshotPlatforms(for: project),
+            [.iPhone, .iPad, .appleWatch]
+        )
     }
 
     func testAppStoreConnectJWTContainsExpectedClaims() throws {

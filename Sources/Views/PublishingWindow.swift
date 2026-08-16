@@ -438,37 +438,50 @@ private struct PublishingWindowView: View {
                     }
                 }
 
-                DisclosureGroup(L10n.format("Local Screenshots (%d)", preview.screenshots.count)) {
-                    if preview.screenshots.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(L10n.format(
+                        "Screenshot Devices (%d)",
+                        preview.screenshotPreview.devices.count
+                    ))
+                    .font(.subheadline.bold())
+
+                    if preview.screenshotPreview.devices.isEmpty {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Detecting supported screenshot devices and installed Simulators…")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        ForEach(preview.screenshotPreview.devices) { device in
+                            screenshotDeviceRow(device)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(L10n.format(
+                        "Screenshot Preview (%d)",
+                        preview.screenshotPreview.screenshots.count
+                    ))
+                    .font(.subheadline.bold())
+
+                    if preview.screenshotPreview.screenshots.isEmpty {
                         Label(
-                            "No valid local screenshot was found; missing supported device families will be captured automatically in Simulator.",
-                            systemImage: "iphone.gen3.badge.play"
+                            "Screenshots are being extracted automatically from every supported Simulator family.",
+                            systemImage: "camera.viewfinder"
                         )
                         .foregroundStyle(.secondary)
                     } else {
-                        ScrollView(.horizontal) {
-                            HStack(alignment: .top, spacing: 12) {
-                                ForEach(preview.screenshots, id: \.url) { screenshot in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        if let image = NSImage(contentsOf: screenshot.url) {
-                                            Image(nsImage: image)
-                                                .resizable()
-                                                .scaledToFit()
-                                                .frame(width: 92, height: 150)
-                                                .background(.black.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
-                                        }
-                                        Text(verbatim: screenshot.url.lastPathComponent)
-                                            .font(.caption)
-                                            .lineLimit(2)
-                                            .frame(width: 110, alignment: .leading)
-                                        Text(verbatim: friendlyState(screenshot.displayType))
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 150), spacing: 12)],
+                            alignment: .leading,
+                            spacing: 12
+                        ) {
+                            ForEach(preview.screenshotPreview.screenshots, id: \.url) { screenshot in
+                                screenshotPreviewCard(screenshot)
                             }
-                            .padding(.vertical, 4)
                         }
+                        .padding(.vertical, 4)
                     }
                 }
             } else {
@@ -485,6 +498,74 @@ private struct PublishingWindowView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         }
+    }
+
+    private func screenshotDeviceRow(_ device: AppStoreScreenshotCaptureDevice) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: device.platform.symbolName)
+                .frame(width: 22)
+                .foregroundStyle(.blue)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: device.platform.title)
+                    .fontWeight(.medium)
+                if let name = device.name {
+                    Text(verbatim: [name, device.runtime].compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            switch device.state {
+            case .provided:
+                Label("Provided", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            case .ready:
+                Label("Queued", systemImage: "clock")
+                    .foregroundStyle(.secondary)
+            case .capturing:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Capturing…")
+                }
+            case .captured:
+                Label("Captured", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            case .unavailable:
+                Label("Runtime unavailable", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            case .failed(let message):
+                Label("Capture failed", systemImage: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+                    .help(message)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private func screenshotPreviewCard(_ screenshot: AppStoreScreenshotAsset) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let image = NSImage(contentsOf: screenshot.url) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, minHeight: 110, maxHeight: 230)
+                    .background(.black.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+            }
+            Label(screenshot.platform.title, systemImage: screenshot.platform.symbolName)
+                .font(.caption.bold())
+            if let deviceName = screenshot.deviceName {
+                Text(verbatim: deviceName)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Text(verbatim: friendlyState(screenshot.displayType))
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(8)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
     }
 
     @ViewBuilder
@@ -1050,11 +1131,16 @@ private struct PublishingWindowView: View {
                 project: project,
                 defaultLocale: model.preferences.appStoreLocale?.nilIfEmpty ?? "en-US"
             )
+            let screenshotService = AppStorePublishingService()
+            let localScreenshots = screenshotService.localScreenshotAssets(
+                project: project,
+                configuredPaths: catalog.publication?.screenshotPaths ?? []
+            )
             localPublishingPreview = LocalPublishingPreview(
                 catalog: catalog,
-                screenshots: AppStorePublishingService().localScreenshotAssets(
-                    project: project,
-                    configuredPaths: catalog.publication?.screenshotPaths ?? []
+                screenshotPreview: AppStoreScreenshotPreview(
+                    devices: [],
+                    screenshots: localScreenshots
                 )
             )
             submitForReviewSelection = catalog.publication?.submitForReview
@@ -1075,6 +1161,51 @@ private struct PublishingWindowView: View {
                 if !productIDs.contains(selectedProductID) {
                     selectedProductID = productIDs.first ?? ""
                 }
+            }
+
+            do {
+                let projectID = project.id
+                let prepared = try await screenshotService.prepareScreenshotPreview(
+                    project: project,
+                    configuredPaths: catalog.publication?.screenshotPaths ?? [],
+                    onUpdate: { updated in
+                        Task { @MainActor in
+                            guard selectedProjectID == projectID,
+                                  var current = localPublishingPreview
+                            else {
+                                return
+                            }
+                            current.screenshotPreview = updated
+                            localPublishingPreview = current
+                        }
+                    }
+                )
+                guard selectedProjectID == project.id,
+                      var current = localPublishingPreview
+                else {
+                    return
+                }
+                current.screenshotPreview = prepared
+                localPublishingPreview = current
+            } catch is CancellationError {
+                return
+            } catch {
+                guard var current = localPublishingPreview else { return }
+                let platforms = screenshotService.supportedScreenshotPlatforms(for: project)
+                current.screenshotPreview = AppStoreScreenshotPreview(
+                    devices: AppStoreScreenshotPlatform.allCases
+                        .filter(platforms.contains)
+                        .map {
+                            AppStoreScreenshotCaptureDevice(
+                                platform: $0,
+                                name: nil,
+                                runtime: nil,
+                                state: .failed(error.localizedDescription)
+                            )
+                        },
+                    screenshots: localScreenshots
+                )
+                localPublishingPreview = current
             }
         } catch {
             localPublishingPreview = nil
@@ -1119,7 +1250,7 @@ private struct PublishingWindowView: View {
 
     private struct LocalPublishingPreview: Equatable {
         let catalog: AppStoreSubscriptionCatalog
-        let screenshots: [AppStoreScreenshotAsset]
+        var screenshotPreview: AppStoreScreenshotPreview
     }
 
     private enum PublishingAction: Hashable {
@@ -1508,7 +1639,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 Section("Screenshots") {
                     configurationTextEditor("Paths (one file or folder per line)", text: $screenshotPaths, height: 80)
                     Toggle("Replace existing screenshots for matching device sizes", isOn: $replaceScreenshots)
-                    Text("Relative paths are resolved from the app project. Missing device-family screenshots are captured automatically in Simulator.")
+                    Text("Relative paths are resolved from the app project. The Publish overview automatically extracts and previews missing screenshots on every supported Simulator family.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

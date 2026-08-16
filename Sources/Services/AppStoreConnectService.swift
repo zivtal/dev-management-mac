@@ -1,9 +1,95 @@
 import CryptoKit
 import Foundation
 
+enum AppStoreScreenshotPlatform: String, CaseIterable, Equatable, Hashable, Sendable, Identifiable {
+    case iPhone
+    case iPad
+    case appleWatch
+    case appleTV
+    case appleVisionPro
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .iPhone: L10n.text("iPhone")
+        case .iPad: L10n.text("iPad")
+        case .appleWatch: L10n.text("Apple Watch")
+        case .appleTV: L10n.text("Apple TV")
+        case .appleVisionPro: L10n.text("Apple Vision Pro")
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .iPhone: "iphone"
+        case .iPad: "ipad"
+        case .appleWatch: "applewatch"
+        case .appleTV: "appletv"
+        case .appleVisionPro: "visionpro"
+        }
+    }
+
+    init?(displayType: String) {
+        if displayType.hasPrefix("APP_IPHONE") {
+            self = .iPhone
+        } else if displayType.hasPrefix("APP_IPAD") {
+            self = .iPad
+        } else if displayType.hasPrefix("APP_WATCH") {
+            self = .appleWatch
+        } else if displayType == "APP_APPLE_TV" {
+            self = .appleTV
+        } else if displayType == "APP_APPLE_VISION_PRO" {
+            self = .appleVisionPro
+        } else {
+            return nil
+        }
+    }
+}
+
 struct AppStoreScreenshotAsset: Equatable, Sendable {
     let url: URL
     let displayType: String
+    let platform: AppStoreScreenshotPlatform
+    let deviceName: String?
+    let automaticallyCaptured: Bool
+
+    init(
+        url: URL,
+        displayType: String,
+        platform: AppStoreScreenshotPlatform? = nil,
+        deviceName: String? = nil,
+        automaticallyCaptured: Bool = false
+    ) {
+        self.url = url
+        self.displayType = displayType
+        self.platform = platform ?? AppStoreScreenshotPlatform(displayType: displayType) ?? .iPhone
+        self.deviceName = deviceName
+        self.automaticallyCaptured = automaticallyCaptured
+    }
+}
+
+struct AppStoreScreenshotCaptureDevice: Equatable, Sendable, Identifiable {
+    enum State: Equatable, Sendable {
+        case provided
+        case ready
+        case capturing
+        case captured
+        case unavailable
+        case failed(String)
+    }
+
+    var id: String { platform.rawValue }
+
+    let platform: AppStoreScreenshotPlatform
+    let name: String?
+    let runtime: String?
+    let state: State
+}
+
+struct AppStoreScreenshotPreview: Equatable, Sendable {
+    let devices: [AppStoreScreenshotCaptureDevice]
+    let screenshots: [AppStoreScreenshotAsset]
 }
 
 struct AppStoreConnectPublication: Sendable {
