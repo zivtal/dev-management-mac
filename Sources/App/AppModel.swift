@@ -942,11 +942,7 @@ final class AppModel: ObservableObject {
             }
         }
         if request.kind == .oneTime || request.expirationDate != nil {
-            let calendar = Calendar.current
-            let today = calendar.startOfDay(for: Date())
-            guard let expirationDate = request.expirationDate,
-                  expirationDate > today,
-                  expirationDate <= calendar.date(byAdding: .month, value: 6, to: today) ?? today else {
+            guard SubscriptionOfferCodeExpiration.isValid(request.expirationDate) else {
                 throw SubscriptionOfferCodeValidationError.invalidExpirationDate
             }
         }

@@ -258,8 +258,9 @@ Codes window without loading the release workspace. It shows existing production
 offers and creates either one-time batches of 500–25,000 codes or reusable custom
 codes with 1–25,000 redemptions. Production code creation remains disabled until
 App Store Connect reports a released app version and an approved subscription.
-Returned one-time CSV data is parsed in memory; only the redeemable values are
-shown for copying and no CSV is written to disk.
+For one-time batches, choose a destination before generation. Development
+Management saves Apple's returned CSV directly so large batches and their
+redemption URLs are ready to distribute without filling the window with codes.
 
 The full archive, metadata, screenshot, TestFlight, review-attachment, and
 submission pipeline is documented in

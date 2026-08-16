@@ -260,10 +260,11 @@ offer and then create either:
 
 Offer duration, new/existing/expired subscriber eligibility, introductory-offer
 interaction, renewal behavior, product, code quantity, and expiry are chosen in
-the app. After generation, the setup form is replaced by only the redeemable code
-values and a copy action. One-time CSV responses are parsed in memory and aren't
-written to disk. Code creation is unavailable until App Store Connect reports at
-least one app version ready for distribution and reports the selected
+the app. Custom-code generation replaces the setup form with the reusable code
+and a copy action. One-time batches prompt for a destination before the
+production request and save Apple's returned CSV directly to disk. Code creation
+is unavailable until App Store Connect reports at least one app version ready
+for distribution and reports the selected
 subscription as approved; the same checks are repeated by the service immediately
 before a production request.
 

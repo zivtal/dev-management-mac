@@ -423,6 +423,7 @@
 "Save One-Time Offer Codes" = "Save One-Time Offer Codes";
 "Generated %d codes and saved %@." = "Generated %d codes and saved %@.";
 "The batch was created, but Apple is still preparing its CSV. Batch ID: %@" = "The batch was created, but Apple is still preparing its CSV. Batch ID: %@";
+"Batch %@ was created, but the CSV could not be saved: %@" = "Batch %@ was created, but the CSV could not be saved: %@";
 "Custom code %@ was created with %d redemptions." = "Custom code %@ was created with %d redemptions.";
 "3 days" = "3 days";
 "1 week" = "1 week";

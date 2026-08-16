@@ -423,6 +423,7 @@
 "Save One-Time Offer Codes" = "שמירת קודי הטבה חד־פעמיים";
 "Generated %d codes and saved %@." = "נוצרו %d קודים והם נשמרו ב־%@.";
 "The batch was created, but Apple is still preparing its CSV. Batch ID: %@" = "האצווה נוצרה, אך Apple עדיין מכינה את קובץ ה־CSV שלה. מזהה אצווה: %@";
+"Batch %@ was created, but the CSV could not be saved: %@" = "האצווה %@ נוצרה, אך לא ניתן היה לשמור את קובץ ה־CSV: %@";
 "Custom code %@ was created with %d redemptions." = "הקוד המותאם %@ נוצר עם %d מימושים.";
 "3 days" = "3 ימים";
 "1 week" = "שבוע אחד";

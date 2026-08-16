@@ -167,6 +167,45 @@ final class PublishingExperienceTests: XCTestCase {
         XCTAssertEqual(SubscriptionOfferCodeCSV.values(from: csv), ["COPYME"])
     }
 
+    func testOfferCodeExpirationTreatsDisplayedSixMonthDateAsValid() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Jerusalem"))
+        let referenceDate = try XCTUnwrap(calendar.date(
+            from: DateComponents(year: 2026, month: 8, day: 17, hour: 15, minute: 30)
+        ))
+        let displayedExpiration = try XCTUnwrap(calendar.date(
+            from: DateComponents(year: 2027, month: 2, day: 17, hour: 15, minute: 30)
+        ))
+
+        XCTAssertTrue(SubscriptionOfferCodeExpiration.isValid(
+            displayedExpiration,
+            relativeTo: referenceDate,
+            calendar: calendar
+        ))
+    }
+
+    func testOfferCodeExpirationRejectsTodayAndDateAfterSixMonthLimit() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Jerusalem"))
+        let referenceDate = try XCTUnwrap(calendar.date(
+            from: DateComponents(year: 2026, month: 8, day: 17, hour: 15, minute: 30)
+        ))
+        let afterLimit = try XCTUnwrap(calendar.date(
+            from: DateComponents(year: 2027, month: 2, day: 18)
+        ))
+
+        XCTAssertFalse(SubscriptionOfferCodeExpiration.isValid(
+            referenceDate,
+            relativeTo: referenceDate,
+            calendar: calendar
+        ))
+        XCTAssertFalse(SubscriptionOfferCodeExpiration.isValid(
+            afterLimit,
+            relativeTo: referenceDate,
+            calendar: calendar
+        ))
+    }
+
     func testSubscriptionPriceValidationNormalizesCommaDecimalSeparator() {
         XCTAssertEqual(SubscriptionPriceValidation.normalized(" 89,90 "), "89.90")
         XCTAssertEqual(SubscriptionPriceValidation.normalized("9.9"), "9.9")

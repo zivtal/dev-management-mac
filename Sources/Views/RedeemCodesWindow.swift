@@ -56,18 +56,15 @@ private struct RedeemCodesWindowView: View {
     @State private var offerEligibilities = Set(SubscriptionOfferCustomerEligibility.allCases)
     @State private var stackWithIntroductoryOffer = false
     @State private var autoRenewEnabled = true
-    @State private var codeKind = SubscriptionOfferCodeKind.custom
-    @State private var numberOfCodes = 100
+    @State private var codeKind = SubscriptionOfferCodeKind.oneTime
+    @State private var numberOfCodes = 500
     @State private var customCode = ""
     @State private var customHasExpiration = false
-    @State private var expirationDate = Calendar.current.date(
-        byAdding: .month,
-        value: 6,
-        to: Date()
-    ) ?? Date()
+    @State private var expirationDate = SubscriptionOfferCodeExpiration.latestDate()
     @State private var status: RedeemCodeStatus?
     @State private var generatedCodes: [String] = []
     @State private var generatedCodesWereCopied = false
+    @State private var oneTimeCodeSaveURL: URL?
     @State private var showsConfirmation = false
 
     var body: some View {
@@ -297,7 +294,7 @@ private struct RedeemCodesWindowView: View {
                 )
             }
             Text(codeKind == .oneTime
-                ? "Apple permits 500–25,000 unique production codes per batch. Generated values will be shown here for copying."
+                ? "Apple permits 500–25,000 unique production codes per batch. The downloaded CSV includes the redeemable values."
                 : "Custom codes use letters and numbers only, up to 64 characters, with 1–25,000 redemptions per batch.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -312,7 +309,10 @@ private struct RedeemCodesWindowView: View {
                     if model.isGeneratingOfferCodes {
                         ProgressView().controlSize(.small)
                     } else {
-                        Label("Generate Redeem Code", systemImage: "ticket.fill")
+                        Label(
+                            codeKind == .oneTime ? "Generate Codes" : "Generate Redeem Code",
+                            systemImage: "ticket.fill"
+                        )
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -408,6 +408,10 @@ private struct RedeemCodesWindowView: View {
         guard !offerEligibilities.isEmpty else {
             return SubscriptionOfferCodeValidationError.missingEligibility.localizedDescription
         }
+        if codeKind == .oneTime || customHasExpiration,
+           !SubscriptionOfferCodeExpiration.isValid(expirationDate) {
+            return SubscriptionOfferCodeValidationError.invalidExpirationDate.localizedDescription
+        }
         if codeKind == .oneTime {
             return (500...25_000).contains(numberOfCodes)
                 ? nil
@@ -424,19 +428,11 @@ private struct RedeemCodesWindowView: View {
     }
 
     private var earliestExpirationDate: Date {
-        Calendar.current.date(
-            byAdding: .day,
-            value: 1,
-            to: Calendar.current.startOfDay(for: Date())
-        ) ?? Date()
+        SubscriptionOfferCodeExpiration.earliestDate()
     }
 
     private var latestExpirationDate: Date {
-        Calendar.current.date(
-            byAdding: .month,
-            value: 6,
-            to: Calendar.current.startOfDay(for: Date())
-        ) ?? Date()
+        SubscriptionOfferCodeExpiration.latestDate()
     }
 
     private func eligibilityBinding(
@@ -483,6 +479,17 @@ private struct RedeemCodesWindowView: View {
             status = .failure(validationIssue)
             return
         }
+        if codeKind == .oneTime {
+            let panel = NSSavePanel()
+            panel.title = L10n.text("Save One-Time Offer Codes")
+            panel.allowedContentTypes = [.commaSeparatedText]
+            panel.canCreateDirectories = true
+            panel.nameFieldStringValue = "\(selectedProductID.replacingOccurrences(of: ".", with: "-"))-offer-codes.csv"
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            oneTimeCodeSaveURL = url
+        } else {
+            oneTimeCodeSaveURL = nil
+        }
         showsConfirmation = true
     }
 
@@ -507,15 +514,27 @@ private struct RedeemCodesWindowView: View {
                 projectID: projectID,
                 request: request
             )
-            if let csv = result.oneTimeCodeCSV {
-                let values = SubscriptionOfferCodeCSV.values(from: csv)
-                if values.isEmpty {
-                    status = .warning(L10n.text("Apple created the batch but has not made its redeem codes available yet. Open App Store Connect later to retrieve them."))
-                } else {
-                    generatedCodes = values
+            if let csv = result.oneTimeCodeCSV, let oneTimeCodeSaveURL {
+                do {
+                    try csv.write(to: oneTimeCodeSaveURL, options: .atomic)
+                } catch {
+                    status = .failure(L10n.format(
+                        "Batch %@ was created, but the CSV could not be saved: %@",
+                        result.batchID,
+                        error.localizedDescription
+                    ))
+                    return
                 }
+                status = .success(L10n.format(
+                    "Generated %d codes and saved %@.",
+                    numberOfCodes,
+                    oneTimeCodeSaveURL.lastPathComponent
+                ))
             } else if codeKind == .oneTime {
-                status = .warning(L10n.text("Apple created the batch but has not made its redeem codes available yet. Open App Store Connect later to retrieve them."))
+                status = .warning(L10n.format(
+                    "The batch was created, but Apple is still preparing its CSV. Batch ID: %@",
+                    result.batchID
+                ))
             } else {
                 generatedCodes = [result.customCode ?? customCode]
             }
@@ -534,6 +553,7 @@ private struct RedeemCodesWindowView: View {
     private func clearGeneratedCodes() {
         generatedCodes = []
         generatedCodesWereCopied = false
+        oneTimeCodeSaveURL = nil
         status = nil
     }
 
@@ -547,6 +567,9 @@ private struct RedeemCodesWindowView: View {
     @ViewBuilder
     private func statusView(_ status: RedeemCodeStatus) -> some View {
         switch status {
+        case .success(let message):
+            Label(message, systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
         case .warning(let message):
             Label(message, systemImage: "clock.badge.exclamationmark")
                 .foregroundStyle(.orange)
@@ -558,6 +581,7 @@ private struct RedeemCodesWindowView: View {
 }
 
 private enum RedeemCodeStatus: Equatable {
+    case success(String)
     case warning(String)
     case failure(String)
 }

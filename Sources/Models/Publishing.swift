@@ -529,6 +529,37 @@ enum SubscriptionOfferCodeValidationError: LocalizedError {
     }
 }
 
+enum SubscriptionOfferCodeExpiration {
+    static func earliestDate(
+        from referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Date {
+        let today = calendar.startOfDay(for: referenceDate)
+        return calendar.date(byAdding: .day, value: 1, to: today) ?? today
+    }
+
+    static func latestDate(
+        from referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Date {
+        let today = calendar.startOfDay(for: referenceDate)
+        return calendar.date(byAdding: .month, value: 6, to: today) ?? today
+    }
+
+    static func isValid(
+        _ expirationDate: Date?,
+        relativeTo referenceDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let expirationDate else { return false }
+        let expirationDay = calendar.startOfDay(for: expirationDate)
+        return earliestDate(from: referenceDate, calendar: calendar)...latestDate(
+            from: referenceDate,
+            calendar: calendar
+        ) ~= expirationDay
+    }
+}
+
 enum PublishingIntent: Equatable, Sendable {
     case publish
     case testFlight
