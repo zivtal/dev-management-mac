@@ -40,7 +40,7 @@ struct PublishingReadinessView: View {
 
             if !report.allowsPublication {
                 HStack {
-                    Text("Resolve the highlighted items, then the Publish button will become available.")
+                    Text("Resolve the highlighted items before publishing to the App Store. TestFlight upload only requires a valid source build and account.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -95,7 +95,7 @@ struct PublishingReadinessView: View {
 
     private var summaryDetail: String {
         if !report.blockers.isEmpty {
-            return L10n.text("Nothing will be uploaded until every required item is ready.")
+            return L10n.text("App Store publication will wait until every required item is ready.")
         }
         if report.isChecking {
             return L10n.text("Reading the project and its current App Store Connect status.")

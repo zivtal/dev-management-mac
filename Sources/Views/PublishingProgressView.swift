@@ -147,6 +147,9 @@ struct PublishingProgressView: View {
                             ? L10n.text("TestFlight and App Review")
                             : L10n.text("App Store Connect and TestFlight")
                     )
+                    if result.reusedExistingBuild {
+                        resultValue("Build source", L10n.text("Existing TestFlight build"))
+                    }
                 }
             }
         }
@@ -209,7 +212,10 @@ struct PublishingProgressView: View {
     }
 
     private var currentStage: PublishingJourneyStage {
-        log.state == .succeeded ? .review : log.phase.journeyStage
+        if log.state == .succeeded {
+            return log.result?.intent == .testFlight ? .testFlight : .review
+        }
+        return log.phase.journeyStage
     }
 
     private var completionFraction: Double {
@@ -236,7 +242,7 @@ struct PublishingProgressView: View {
         case .succeeded:
             log.result?.submittedForReview == true
                 ? L10n.text("The build is available in TestFlight and the release was submitted to Apple.")
-                : L10n.text("The build is available in App Store Connect and internal TestFlight.")
+                : L10n.text("The build is available to internal TestFlight testers and was not submitted for App Review.")
         case .failed:
             log.failureMessage?.nilIfEmpty
                 ?? L10n.text("Review the issue below, adjust the settings, and try again.")
@@ -248,7 +254,10 @@ struct PublishingProgressView: View {
     private var currentWorkTitle: String {
         switch log.state {
         case .inProgress: progress?.phase.title ?? log.phase.title
-        case .succeeded: L10n.text("Publication completed successfully")
+        case .succeeded:
+            L10n.text(log.result?.intent == .testFlight
+                ? "TestFlight upload completed successfully"
+                : "Publication completed successfully")
         case .failed: L10n.text("Stopped at this step")
         case .cancelled: L10n.text("Publication canceled")
         }
@@ -292,8 +301,8 @@ struct PublishingProgressView: View {
 
     private func visualState(for stage: PublishingJourneyStage) -> StageVisualState {
         if log.state == .succeeded,
-           stage == .review,
-           log.result?.submittedForReview == false {
+           log.result?.intent == .testFlight,
+           stage == .configure || stage == .review {
             return StageVisualState(symbol: "minus.circle.fill", color: .secondary, isCurrent: false)
         }
         if log.state == .succeeded || stage.rawValue < currentStage.rawValue {

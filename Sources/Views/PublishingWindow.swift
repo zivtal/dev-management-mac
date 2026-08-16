@@ -173,8 +173,8 @@ private struct PublishingWindowView: View {
     @State private var codeStatus: CodeStatus?
     @State private var generatedRedeemCodes: [String] = []
     @State private var generatedCodesWereCopied = false
-    @State private var submitForReviewSelection = true
     @State private var releaseAutomaticallySelection = true
+    @State private var pendingPublishingIntent = PublishingIntent.publish
     @State private var showsPublicationStatus = false
     private let locksProjectSelection: Bool
 
@@ -304,9 +304,10 @@ private struct PublishingWindowView: View {
                 guard let projectID = selectedProjectID else { return }
                 model.publish(
                     projectID: projectID,
-                    submitForReview: submitForReview,
+                    intent: pendingPublishingIntent,
                     releaseAutomatically: releaseAutomatically,
-                    replaceActiveReviewVersion: olderActiveReviewVersion != nil,
+                    replaceActiveReviewVersion: pendingPublishingIntent == .publish
+                        && olderActiveReviewVersion != nil,
                     existingConfiguration: currentAppStoreSnapshot
                 )
                 if model.publishingProgress != nil {
@@ -942,9 +943,17 @@ private struct PublishingWindowView: View {
         }
 
         Section("Submission") {
-            Toggle("Submit the uploaded version for App Review", isOn: $submitForReviewSelection)
             Toggle("Release automatically after Apple approves it", isOn: $releaseAutomaticallySelection)
-                .disabled(!submitForReview)
+            Text("Publish creates or updates the App Store version, makes the exact build available to internal TestFlight testers, and submits it for App Review. Upload to TestFlight stops before the App Store version and review steps.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let build = matchingTestFlightBuild {
+                Label(
+                    L10n.format("TestFlight already has version %@ (%@). Publish will reuse it without another archive or upload.", build.version, build.buildNumber),
+                    systemImage: "checkmark.circle.fill"
+                )
+                .foregroundStyle(.blue)
+            }
             if currentVersionIsAlreadySubmitted, let version = currentAppStoreSnapshot?.version {
                 Label(
                     L10n.format("Version %@ is already %@; no duplicate upload will be started.", version.versionString, friendlyState(version.state)),
@@ -1364,7 +1373,13 @@ private struct PublishingWindowView: View {
             }
             if selectedAction == .release {
                 Button {
-                    handleReleaseAction(project)
+                    handleReleaseAction(project, intent: .testFlight)
+                } label: {
+                    Label("Upload to TestFlight", systemImage: "airplane")
+                }
+                .disabled(model.hasActiveWork)
+                Button {
+                    handleReleaseAction(project, intent: .publish)
                 } label: {
                     Label(
                         publishButtonTitle,
@@ -1385,10 +1400,6 @@ private struct PublishingWindowView: View {
     private var selectedProject: ManagedProject? {
         guard let selectedProjectID else { return nil }
         return eligibleProjects.first(where: { $0.id == selectedProjectID })
-    }
-
-    private var submitForReview: Bool {
-        submitForReviewSelection
     }
 
     private var releaseAutomatically: Bool {
@@ -1426,9 +1437,6 @@ private struct PublishingWindowView: View {
             )
             subscriptionPriceDrafts = configuredPrices
             savedSubscriptionPrices = configuredPrices
-            submitForReviewSelection = catalog.publication?.submitForReview
-                ?? model.preferences.appStoreSubmitForReview
-                ?? true
             releaseAutomaticallySelection = catalog.publication?.releaseAutomatically
                 ?? model.preferences.appStoreReleaseAutomatically
                 ?? true
@@ -1589,6 +1597,14 @@ private struct PublishingWindowView: View {
         return snapshot
     }
 
+    private var matchingTestFlightBuild: AppStoreConnectBuildReference? {
+        guard let project = selectedProject,
+              let build = currentAppStoreSnapshot?.testFlightBuild,
+              build.version == project.marketingVersion,
+              build.buildNumber == project.buildNumber else { return nil }
+        return build
+    }
+
     private var presentedPublicationLog: PublishingLogSession? {
         guard let log = model.publishingLog,
               log.state == .inProgress || showsPublicationStatus else { return nil }
@@ -1602,6 +1618,13 @@ private struct PublishingWindowView: View {
             contentReadiness,
             screenshotReadiness,
             reviewReadiness
+        ])
+    }
+
+    private func testFlightReadinessReport(for project: ManagedProject) -> PublishingReadinessReport {
+        PublishingReadinessReport(items: [
+            sourceReadiness(for: project),
+            accountReadiness
         ])
     }
 
@@ -1659,6 +1682,18 @@ private struct PublishingWindowView: View {
                     localVersion
                 ),
                 state: .attention
+            )
+        }
+        if let build = matchingTestFlightBuild {
+            return PublishingReadinessItem(
+                id: "source",
+                title: L10n.text("Matching build is in TestFlight"),
+                detail: L10n.format(
+                    "%@ (%@) will be reused for Publish without another archive or upload.",
+                    build.version,
+                    build.buildNumber
+                ),
+                state: .ready
             )
         }
         return PublishingReadinessItem(
@@ -1793,14 +1828,6 @@ private struct PublishingWindowView: View {
     }
 
     private var reviewReadiness: PublishingReadinessItem {
-        guard submitForReview else {
-            return PublishingReadinessItem(
-                id: "review",
-                title: L10n.text("Upload only"),
-                detail: L10n.text("The build will reach App Store Connect and TestFlight but will not be sent to App Review."),
-                state: .attention
-            )
-        }
         let publication = localPublishingPreview?.catalog.publication
         let requirements = reviewRequirements(publication: publication)
         guard requirements.contactIsComplete,
@@ -1895,8 +1922,10 @@ private struct PublishingWindowView: View {
         return .review
     }
 
-    private func handleReleaseAction(_ project: ManagedProject) {
-        let report = releaseReadinessReport(for: project)
+    private func handleReleaseAction(_ project: ManagedProject, intent: PublishingIntent) {
+        let report = intent == .publish
+            ? releaseReadinessReport(for: project)
+            : testFlightReadinessReport(for: project)
         guard !report.isChecking else {
             model.presentedError = L10n.text("Release checks are still running. Please try again in a moment.")
             return
@@ -1917,6 +1946,7 @@ private struct PublishingWindowView: View {
             }
             return
         }
+        pendingPublishingIntent = intent
         showsConfirmation = true
     }
 
@@ -2004,6 +2034,9 @@ private struct PublishingWindowView: View {
                 return L10n.text("Already in Review")
             }
         }
+        if matchingTestFlightBuild != nil, olderActiveReviewVersion == nil {
+            return L10n.text("Submit for Review")
+        }
         if currentAppStoreSnapshot?.version != nil {
             return L10n.text("Update")
         }
@@ -2011,8 +2044,14 @@ private struct PublishingWindowView: View {
     }
 
     private var releaseConfirmationTitle: String {
+        if pendingPublishingIntent == .testFlight {
+            return L10n.text("Upload this build to TestFlight?")
+        }
         if let active = olderActiveReviewVersion {
             return L10n.format("Replace version %@ in review?", active.versionString)
+        }
+        if matchingTestFlightBuild != nil {
+            return L10n.text("Submit this version for App Review?")
         }
         return L10n.text(publishButtonTitle == L10n.text("Update")
             ? "Update on the App Store?"
@@ -2020,27 +2059,41 @@ private struct PublishingWindowView: View {
     }
 
     private var releaseConfirmationActionTitle: String {
+        if pendingPublishingIntent == .testFlight {
+            return matchingTestFlightBuild == nil
+                ? L10n.text("Build and upload to TestFlight")
+                : L10n.text("Confirm TestFlight availability")
+        }
         if let active = olderActiveReviewVersion {
             return L10n.format(
-                submitForReview ? "Cancel %@ and submit %@" : "Cancel %@ and upload %@",
+                "Cancel %@ and submit %@",
                 active.versionString,
                 selectedProject?.marketingVersion ?? L10n.text("the update")
             )
         }
-        return submitForReview ? L10n.text("Build, upload, and submit") : L10n.text("Build and upload")
+        return matchingTestFlightBuild == nil
+            ? L10n.text("Build, upload, and submit")
+            : L10n.text("Submit to App Review")
     }
 
     private var releaseConfirmationMessage: String {
+        if pendingPublishingIntent == .testFlight {
+            return matchingTestFlightBuild == nil
+                ? L10n.text("This action archives and uploads the selected build, waits for Apple to process it, and makes it available to every internal TestFlight group. It does not create an App Store version or submit for review.")
+                : L10n.text("The exact selected version and build are already in TestFlight. Development Management will confirm that the processed build is available to every internal testing group without uploading it again.")
+        }
         if let active = olderActiveReviewVersion {
             return L10n.format(
-                submitForReview
+                matchingTestFlightBuild == nil
                     ? "Apple allows one app version per platform in review. Continuing will first build the new app, then cancel version %@ and its submission items, replace it with %@, upload the build to TestFlight, and submit the replacement for review. The review queue starts over."
-                    : "Apple allows one app version per platform in review. Continuing will first build the new app, then cancel version %@ and its submission items, replace it with %@, and upload the build to TestFlight without submitting it for review. The previous review queue position will be lost.",
+                    : "Apple allows one app version per platform in review. Continuing will cancel version %@ and its submission items, replace it with %@, reuse the matching TestFlight build, and submit the replacement for review. The review queue starts over.",
                 active.versionString,
                 selectedProject?.marketingVersion ?? L10n.text("the new version")
             )
         }
-        return L10n.text("This production action archives and uploads the selected build. First publications also reconcile app setup and subscriptions discovered in the project; later versions reuse the approved setup.")
+        return matchingTestFlightBuild == nil
+            ? L10n.text("This production action creates or updates the App Store version, archives and uploads the selected build to TestFlight, and submits it for review. First publications also reconcile app setup and subscriptions discovered in the project; later versions reuse the approved setup.")
+            : L10n.text("The exact selected version and build are already in TestFlight. Publish will create or update the App Store version, attach that build, and submit it for review without archiving or uploading it again.")
     }
 
     private var earliestExpirationDate: Date {
@@ -2226,7 +2279,6 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var reviewEmail = ""
     @State private var reviewNotes = ""
     @State private var demoAccountRequired = false
-    @State private var submitForReview = true
     @State private var releaseAutomatically = true
 
     @State private var subscriptionBaseTerritory = ""
@@ -2510,9 +2562,10 @@ private struct PerAppPublishingConfigurationEditor: View {
                         .foregroundStyle(.secondary)
                 }
                 Section("Submission") {
-                    Toggle("Submit the uploaded version for App Review", isOn: $submitForReview)
                     Toggle("Release automatically after Apple approves it", isOn: $releaseAutomatically)
-                        .disabled(!submitForReview)
+                    Text("Publish always submits this version for App Review. Use Upload to TestFlight in the overview when you only want an internal build.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Section("Review Attachments") {
                     configurationTextEditor(
@@ -2637,7 +2690,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     }
 
     private func requiredReviewMessage(for value: String) -> String? {
-        submitForReview && value.nilIfEmpty == nil
+        value.nilIfEmpty == nil
             ? L10n.text("This field is required for App Review.")
             : nil
     }
@@ -2866,7 +2919,6 @@ private struct PerAppPublishingConfigurationEditor: View {
         screenshotPaths = (publication.screenshotPaths ?? []).joined(separator: "\n")
         reviewAttachmentPaths = (publication.reviewAttachmentPaths ?? []).joined(separator: "\n")
         replaceScreenshots = publication.replaceScreenshots ?? false
-        submitForReview = publication.submitForReview ?? true
         releaseAutomatically = publication.releaseAutomatically ?? true
         reviewFirstName = publication.review?.contactFirstName ?? ""
         reviewLastName = publication.review?.contactLastName ?? ""
@@ -2933,7 +2985,6 @@ private struct PerAppPublishingConfigurationEditor: View {
             appName: appName.nilIfEmpty,
             subtitle: subtitle.nilIfEmpty,
             licenseAgreementText: licenseAgreementText.nilIfEmpty,
-            submitForReview: submitForReview,
             releaseAutomatically: releaseAutomatically,
             metadata: metadata,
             localizations: localizations,
@@ -3090,20 +3141,18 @@ private struct PerAppPublishingConfigurationEditor: View {
             selectedTab = .listing
             throw ConfigurationEditorError.invalid(L10n.text("Copyright owner is required."))
         }
-        if manifest.publication?.submitForReview != false {
-            let review = manifest.publication?.review
-            let contact = [
-                review?.contactFirstName?.nilIfEmpty,
-                review?.contactLastName?.nilIfEmpty,
-                review?.contactPhone?.nilIfEmpty,
-                review?.contactEmail?.nilIfEmpty
-            ]
-            guard contact.allSatisfy({ $0 != nil }) else {
-                selectedTab = .review
-                throw ConfigurationEditorError.invalid(
-                    L10n.text("Complete every highlighted App Review contact field.")
-                )
-            }
+        let review = manifest.publication?.review
+        let contact = [
+            review?.contactFirstName?.nilIfEmpty,
+            review?.contactLastName?.nilIfEmpty,
+            review?.contactPhone?.nilIfEmpty,
+            review?.contactEmail?.nilIfEmpty
+        ]
+        guard contact.allSatisfy({ $0 != nil }) else {
+            selectedTab = .review
+            throw ConfigurationEditorError.invalid(
+                L10n.text("Complete every highlighted App Review contact field.")
+            )
         }
         for (name, rawURL) in [
             ("publication.marketingURL", manifest.publication?.marketingURL),
@@ -3162,7 +3211,6 @@ private struct PerAppPublishingConfigurationEditor: View {
             locale: defaults.appStoreLocale?.nilIfEmpty ?? "en-US",
             copyright: defaults.appStoreCopyright,
             supportURL: defaults.appStoreSupportURL,
-            submitForReview: defaults.appStoreSubmitForReview ?? true,
             releaseAutomatically: defaults.appStoreReleaseAutomatically ?? true,
             metadata: nil,
             screenshotPaths: ["Screenshots"],

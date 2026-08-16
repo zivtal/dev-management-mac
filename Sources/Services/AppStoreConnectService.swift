@@ -181,7 +181,8 @@ final class AppStoreConnectService {
 
     func fetchConfigurationSnapshot(
         bundleIdentifier: String,
-        preferredVersion: String?
+        preferredVersion: String?,
+        preferredBuildNumber: String? = nil
     ) async throws -> AppStoreConnectConfigurationSnapshot {
         let apps = try await pagedData(
             path: "/v1/apps",
@@ -253,6 +254,19 @@ final class AppStoreConnectService {
             versions,
             preferredVersion: preferredVersion
         )
+        let testFlightBuild: AppStoreConnectBuildReference?
+        if let preferredVersion = preferredVersion?.nilIfEmpty,
+           let preferredBuildNumber = preferredBuildNumber?.nilIfEmpty {
+            testFlightBuild = try await build(
+                appID: appID,
+                marketingVersion: preferredVersion,
+                buildNumber: preferredBuildNumber
+            )
+        } else if let preferredVersion = preferredVersion?.nilIfEmpty {
+            testFlightBuild = try await latestBuild(appID: appID, marketingVersion: preferredVersion)
+        } else {
+            testFlightBuild = nil
+        }
         let activeReviewVersion = Self.activeReviewVersion(in: versions)
         let hasReadyForDistributionVersion = Self.hasReadyForDistributionVersion(in: versions)
         let version: AppStoreConnectVersionSnapshot? = if let selectedVersion {
@@ -285,6 +299,7 @@ final class AppStoreConnectService {
             licenseTerritoryIDs: licenseTerritoryIDs,
             appLocalizations: appLocalizations,
             version: version,
+            testFlightBuild: testFlightBuild,
             activeReviewVersion: activeReviewVersion,
             hasReadyForDistributionVersion: hasReadyForDistributionVersion,
             subscriptionGroups: groups.sorted {
@@ -1283,6 +1298,7 @@ final class AppStoreConnectService {
 
     func waitForBuild(
         appID: String,
+        marketingVersion: String,
         buildNumber: String,
         timeout: TimeInterval = 30 * 60,
         onOutput: @escaping @Sendable (String) -> Void
@@ -1290,31 +1306,114 @@ final class AppStoreConnectService {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             try Task.checkCancellation()
-            let response = try await request(
-                method: "GET",
-                path: "/v1/builds",
-                query: [
-                    "filter[app]": appID,
-                    "filter[version]": buildNumber,
-                    "sort": "-uploadedDate",
-                    "limit": "10"
-                ]
-            )
-            if let build = (response["data"] as? [[String: Any]])?.first,
-               let id = build["id"] as? String {
-                let attributes = build["attributes"] as? [String: Any]
-                let state = attributes?["processingState"] as? String ?? "PROCESSING"
-                if state == "VALID" { return id }
-                if state == "FAILED" || state == "INVALID" {
-                    throw AppStoreConnectError.requestFailed(422, L10n.format("Build processing finished with state %@.", state))
+            if let build = try await build(
+                appID: appID,
+                marketingVersion: marketingVersion,
+                buildNumber: buildNumber
+            ) {
+                if build.processingState == "VALID" { return build.id }
+                if build.processingState == "FAILED" || build.processingState == "INVALID" {
+                    throw AppStoreConnectError.requestFailed(422, L10n.format("Build processing finished with state %@.", build.processingState))
                 }
-                onOutput(L10n.format("App Store build processing: %@.\n", state))
+                onOutput(L10n.format("App Store build processing: %@.\n", build.processingState))
             } else {
                 onOutput(L10n.text("Waiting for the uploaded build to appear in App Store Connect…\n"))
             }
             try await Task.sleep(for: .seconds(30))
         }
         throw AppStoreConnectError.buildProcessingTimedOut
+    }
+
+    func applicationID(bundleIdentifier: String) async throws -> String {
+        try await findApplication(bundleIdentifier: bundleIdentifier)
+    }
+
+    func build(
+        appID: String,
+        marketingVersion: String,
+        buildNumber: String
+    ) async throws -> AppStoreConnectBuildReference? {
+        let response = try await request(
+            method: "GET",
+            path: "/v1/builds",
+            query: [
+                "filter[app]": appID,
+                "filter[version]": buildNumber,
+                "filter[preReleaseVersion.version]": marketingVersion,
+                "filter[preReleaseVersion.platform]": "IOS",
+                "fields[builds]": "version,processingState,preReleaseVersion",
+                "fields[preReleaseVersions]": "version,platform",
+                "include": "preReleaseVersion",
+                "sort": "-uploadedDate",
+                "limit": "10"
+            ]
+        )
+        return Self.matchingBuild(
+            builds: response["data"] as? [[String: Any]] ?? [],
+            included: response["included"] as? [[String: Any]] ?? [],
+            marketingVersion: marketingVersion,
+            buildNumber: buildNumber
+        )
+    }
+
+    private func latestBuild(
+        appID: String,
+        marketingVersion: String
+    ) async throws -> AppStoreConnectBuildReference? {
+        let response = try await request(
+            method: "GET",
+            path: "/v1/builds",
+            query: [
+                "filter[app]": appID,
+                "filter[preReleaseVersion.version]": marketingVersion,
+                "filter[preReleaseVersion.platform]": "IOS",
+                "fields[builds]": "version,processingState,preReleaseVersion",
+                "fields[preReleaseVersions]": "version,platform",
+                "include": "preReleaseVersion",
+                "sort": "-uploadedDate",
+                "limit": "200"
+            ]
+        )
+        return Self.matchingBuild(
+            builds: response["data"] as? [[String: Any]] ?? [],
+            included: response["included"] as? [[String: Any]] ?? [],
+            marketingVersion: marketingVersion,
+            buildNumber: nil
+        )
+    }
+
+    static func matchingBuild(
+        builds: [[String: Any]],
+        included: [[String: Any]],
+        marketingVersion: String,
+        buildNumber: String?
+    ) -> AppStoreConnectBuildReference? {
+        let preReleaseVersions = Dictionary(
+            included.compactMap { resource -> (String, [String: Any])? in
+                guard resource["type"] as? String == "preReleaseVersions",
+                      let id = resource["id"] as? String else { return nil }
+                return (id, resource)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return builds.compactMap { resource -> AppStoreConnectBuildReference? in
+            guard let id = resource["id"] as? String else { return nil }
+            let attributes = Self.attributes(resource)
+            guard let candidateBuildNumber = attributes["version"] as? String,
+                  buildNumber == nil || candidateBuildNumber == buildNumber else { return nil }
+            let relationships = resource["relationships"] as? [String: Any]
+            guard let preReleaseVersionID = Self.relationshipID(relationships?["preReleaseVersion"]),
+                  let preReleaseVersion = preReleaseVersions[preReleaseVersionID] else { return nil }
+            let versionAttributes = Self.attributes(preReleaseVersion)
+            guard versionAttributes["version"] as? String == marketingVersion,
+                  versionAttributes["platform"] as? String == "IOS" else { return nil }
+            return AppStoreConnectBuildReference(
+                id: id,
+                version: marketingVersion,
+                buildNumber: candidateBuildNumber,
+                processingState: attributes["processingState"] as? String ?? "PROCESSING"
+            )
+        }.first
     }
 
     func attachBuild(_ buildID: String, toVersion versionID: String) async throws {

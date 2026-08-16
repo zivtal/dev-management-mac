@@ -15,7 +15,6 @@ Financial, legal, and age-rating declarations are never guessed by AI.
     "locale": "en-US",
     "copyright": "2026 Company Name",
     "supportURL": "https://example.com/support",
-    "submitForReview": true,
     "releaseAutomatically": false,
     "screenshotPaths": ["Screenshots", "Marketing/iPhone-6.7.png"],
     "reviewAttachmentPaths": ["AppStore/ReviewAttachments"],
@@ -151,22 +150,27 @@ build upload, attachment, and review submission.
 
 ## Publish pipeline
 
-Publish performs the complete automatable release pipeline in this order:
+**Publish** performs the complete automatable release pipeline in this order:
 
 1. Discover StoreKit products and deterministic per-app configuration.
 2. Validate every configured public support, marketing, privacy, and terms URL
    before spending time on an archive that cannot be submitted.
 3. Prepare or capture App Store screenshots for each supported simulator family.
-4. Archive and export the selected iOS scheme.
-5. Read the bundle identifier, marketing version, and build number from the
-   archived application. These archive values remain authoritative when a scheme
-   pre-action increments the source version during the build.
+4. Look for the exact selected marketing version and build in TestFlight. When
+   it is already present, reuse it and skip the archive and upload. Otherwise,
+   archive and export the selected iOS scheme.
+5. When an archive is required, read its bundle identifier, marketing version,
+   and build number. These archive values remain authoritative when a scheme
+   pre-action increments the source version during the build. A reused
+   TestFlight build is confirmed as fully processed before the App Store version
+   is changed.
 6. When an older app version is still in review and the user confirms an
    update, cancel that review submission only after the replacement archive has
    succeeded. The canceled editable version record is reused for the newer
    marketing version, and all submission items are submitted again.
-7. Reconcile App Store metadata, availability, pricing, subscriptions, and
-   screenshots, then validate and upload the IPA.
+7. Create or update the App Store version and reconcile its metadata,
+   availability, pricing, subscriptions, and screenshots. When an archive was
+   required, validate and upload its IPA.
 8. Wait for Apple to process the exact archived build and attach it to the exact
    archived marketing version.
 9. Add the build to every internal TestFlight group. If the app has no internal
@@ -174,8 +178,13 @@ Publish performs the complete automatable release pipeline in this order:
    Connect users still need to be added as testers once; Publish does not invite
    people or change account roles.
 10. Upload configured demo videos and documents to App Review, wait for Apple to
-   finish processing each attachment, and submit the complete version when
-   submission is enabled.
+   finish processing each attachment, and submit the complete version.
+
+**Upload to TestFlight** is a separate action. It archives, validates, uploads,
+waits for processing, and enables the exact build for every internal TestFlight
+group without creating an App Store version or submitting for review. It is
+idempotent: when the exact marketing version and build are already present, it
+only confirms internal-group availability.
 
 The menu-bar application list includes a paper-plane action for every eligible
 iOS app and a ticket action for projects that contain subscription products.
@@ -204,9 +213,10 @@ and are applied to App Store Connect by the next Publish run. Redeem Codes shows
 existing production offers and creates either Apple one-time code batches or a
 custom reusable code, using the selected subscription. Switching tabs preserves
 the release window layout; code creation has its own in-tab action, while the
-footer Publish or Update action belongs to the release workflow. The window also
-remains open when another application or Development Management window receives
-focus.
+footer **Upload to TestFlight** and **Publish** or **Update** actions belong to
+the release workflow. Publish always submits for App Review; the TestFlight
+action is the explicit upload-only path. The window also remains open when
+another application or Development Management window receives focus.
 
 When App Store Connect reports an older app version in an active review state,
 the release action is labeled **Update** and identifies that version. The final
@@ -214,7 +224,9 @@ confirmation explains that the active submission and all of its items will be
 canceled, the editable version will be replaced, and the review queue will start
 again. If no app version is in review, Update uploads and submits normally. The
 same local version and build already submitted to Apple remain blocked to avoid
-a duplicate upload.
+a duplicate submission. A matching build that is only in TestFlight is not
+blocked: Publish attaches it to the App Store version and submits it without
+another archive or upload.
 
 Publish stays open after confirmation and presents five understandable stages:
 Prepare, Build, App Store setup, TestFlight, and Review. The current task,

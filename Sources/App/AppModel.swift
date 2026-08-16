@@ -552,7 +552,7 @@ final class AppModel: ObservableObject {
 
     func publish(
         projectID: UUID,
-        submitForReview submissionOverride: Bool? = nil,
+        intent: PublishingIntent = .publish,
         releaseAutomatically releaseOverride: Bool? = nil,
         replaceActiveReviewVersion: Bool = false,
         existingConfiguration: AppStoreConnectConfigurationSnapshot? = nil
@@ -567,6 +567,24 @@ final class AppModel: ObservableObject {
             presentedError = AppStorePublishingError.unsupportedProject.localizedDescription
             return
         }
+        let appStoreConnectCredential: AppStoreConnectCredentialMaterial
+        do {
+            appStoreConnectCredential = try appStoreConnectCredentialMaterial(for: project)
+        } catch {
+            presentedError = error.localizedDescription
+            return
+        }
+        if intent == .testFlight {
+            beginPublishing(
+                project: project,
+                testFlightConfiguration: TestFlightUploadConfiguration(
+                    appStoreConnectIssuerID: appStoreConnectCredential.issuerID,
+                    appStoreConnectKeyID: appStoreConnectCredential.keyID,
+                    appStoreConnectPrivateKey: appStoreConnectCredential.privateKey
+                )
+            )
+            return
+        }
         let catalog: AppStoreSubscriptionCatalog
         let perAppConfiguration: AppStorePublicationConfiguration?
         do {
@@ -575,13 +593,6 @@ final class AppModel: ObservableObject {
                 defaultLocale: preferences.appStoreLocale?.nilIfEmpty ?? "en-US"
             )
             perAppConfiguration = catalog.publication
-        } catch {
-            presentedError = error.localizedDescription
-            return
-        }
-        let appStoreConnectCredential: AppStoreConnectCredentialMaterial
-        do {
-            appStoreConnectCredential = try appStoreConnectCredentialMaterial(for: project)
         } catch {
             presentedError = error.localizedDescription
             return
@@ -632,10 +643,6 @@ final class AppModel: ObservableObject {
             presentedError = L10n.text("Save an OpenAI API key in Publishing settings or enter manual metadata in the per-app configuration.")
             return
         }
-        let submitForReview = submissionOverride
-            ?? perAppConfiguration?.submitForReview
-            ?? preferences.appStoreSubmitForReview
-            ?? true
         let releaseAutomatically = releaseOverride
             ?? perAppConfiguration?.releaseAutomatically
             ?? preferences.appStoreReleaseAutomatically
@@ -657,8 +664,7 @@ final class AppModel: ObservableObject {
             ?? preferences.appStoreReviewEmail?.nilIfEmpty
             ?? existing?.review?.contactEmail?.nilIfEmpty
             ?? ""
-        if submitForReview,
-           [reviewFirstName, reviewLastName, reviewPhone, reviewEmail].contains(where: \.isEmpty) {
+        if [reviewFirstName, reviewLastName, reviewPhone, reviewEmail].contains(where: \.isEmpty) {
             presentedError = L10n.text("Complete the App Review contact details in Publishing settings.")
             return
         }
@@ -668,7 +674,7 @@ final class AppModel: ObservableObject {
             ?? false
         let demoAccountName = try? credentialStore.string(for: .appReviewDemoAccountName)
         let demoAccountPassword = try? credentialStore.string(for: .appReviewDemoAccountPassword)
-        if submitForReview, demoAccountRequired,
+        if demoAccountRequired,
            demoAccountName?.nilIfEmpty == nil || demoAccountPassword?.nilIfEmpty == nil {
             presentedError = L10n.text("Save the App Review demo account in Publishing settings.")
             return
@@ -713,13 +719,28 @@ final class AppModel: ObservableObject {
             screenshotPaths: perAppConfiguration?.screenshotPaths ?? [],
             reviewAttachmentPaths: perAppConfiguration?.reviewAttachmentPaths ?? [],
             replaceScreenshots: perAppConfiguration?.replaceScreenshots ?? false,
-            submitForReview: submitForReview,
             releaseAutomatically: releaseAutomatically,
             replaceActiveReviewVersion: replaceActiveReviewVersion
         )
+        beginPublishing(project: project, publishingConfiguration: publishingConfiguration)
+    }
+
+    private func beginPublishing(
+        project: ManagedProject,
+        publishingConfiguration: PublishingConfiguration? = nil,
+        testFlightConfiguration: TestFlightUploadConfiguration? = nil
+    ) {
+        let intent: PublishingIntent = publishingConfiguration == nil ? .testFlight : .publish
         var log = PublishingLogSession(projectID: project.id, projectName: project.displayName)
         let logID = log.id
-        log.append(L10n.format("Starting App Store publication for %@ %@ (%@).\n", project.displayName, project.marketingVersion ?? "—", project.buildNumber ?? "—"))
+        log.append(L10n.format(
+            intent == .publish
+                ? "Starting App Store publication for %@ %@ (%@).\n"
+                : "Starting TestFlight upload for %@ %@ (%@).\n",
+            project.displayName,
+            project.marketingVersion ?? "—",
+            project.buildNumber ?? "—"
+        ))
         publishingLog = log
         publishingProgress = PublishingProgress(
             projectID: project.id,
@@ -729,28 +750,49 @@ final class AppModel: ObservableObject {
         )
         addActivity(
             level: .info,
-            title: L10n.format("Starting App Store publication of %@", project.displayName),
+            title: L10n.format(
+                intent == .publish
+                    ? "Starting App Store publication of %@"
+                    : "Starting TestFlight upload of %@",
+                project.displayName
+            ),
             projectID: project.id
         )
 
         let task = Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await publishingService.publish(
-                    project: project,
-                    configuration: publishingConfiguration,
-                    eventHandler: { [weak self] event in
-                        Task { @MainActor [weak self] in
-                            self?.handlePublishingEvent(event, logID: logID)
-                        }
+                let eventHandler: AppStorePublishingService.EventHandler = { [weak self] event in
+                    Task { @MainActor [weak self] in
+                        self?.handlePublishingEvent(event, logID: logID)
                     }
-                )
+                }
+                let result: PublishingResult
+                if let publishingConfiguration {
+                    result = try await publishingService.publish(
+                        project: project,
+                        configuration: publishingConfiguration,
+                        eventHandler: eventHandler
+                    )
+                } else if let testFlightConfiguration {
+                    result = try await publishingService.uploadToTestFlight(
+                        project: project,
+                        configuration: testFlightConfiguration,
+                        eventHandler: eventHandler
+                    )
+                } else {
+                    return
+                }
                 guard !Task.isCancelled else { throw CancellationError() }
                 if var currentLog = publishingLog, currentLog.id == logID {
                     currentLog.state = .succeeded
                     currentLog.finishedAt = Date()
                     currentLog.result = result
-                    currentLog.append(L10n.text("Publication completed successfully.\n"))
+                    currentLog.append(L10n.text(
+                        result.intent == .publish
+                            ? "Publication completed successfully.\n"
+                            : "TestFlight upload completed successfully.\n"
+                    ))
                     publishingLog = currentLog
                 }
                 publishingProgress = nil
@@ -760,7 +802,7 @@ final class AppModel: ObservableObject {
                     level: .success,
                     title: result.submittedForReview
                         ? L10n.format("%@ %@ (%@) was submitted for App Review", project.displayName, result.version, result.buildNumber)
-                        : L10n.format("%@ %@ (%@) was uploaded to App Store Connect", project.displayName, result.version, result.buildNumber),
+                        : L10n.format("%@ %@ (%@) is available in TestFlight", project.displayName, result.version, result.buildNumber),
                     details: publishingLog?.output,
                     projectID: project.id
                 )
@@ -770,7 +812,7 @@ final class AppModel: ObservableObject {
                     currentLog.state = cancelled ? .cancelled : .failed
                     currentLog.finishedAt = Date()
                     currentLog.failureMessage = cancelled ? nil : error.localizedDescription
-                    currentLog.append("\n\(cancelled ? L10n.text("Publication canceled by user.") : error.localizedDescription)\n")
+                    currentLog.append("\n\(cancelled ? L10n.text(intent == .publish ? "Publication canceled by user." : "TestFlight upload canceled by user.") : error.localizedDescription)\n")
                     publishingLog = currentLog
                 }
                 publishingProgress = nil
@@ -778,8 +820,18 @@ final class AppModel: ObservableObject {
                 addActivity(
                     level: cancelled ? .warning : .error,
                     title: cancelled
-                        ? L10n.format("Publication of %@ was canceled", project.displayName)
-                        : L10n.format("Publication of %@ failed", project.displayName),
+                        ? L10n.format(
+                            intent == .publish
+                                ? "Publication of %@ was canceled"
+                                : "TestFlight upload of %@ was canceled",
+                            project.displayName
+                        )
+                        : L10n.format(
+                            intent == .publish
+                                ? "Publication of %@ failed"
+                                : "TestFlight upload of %@ failed",
+                            project.displayName
+                        ),
                     details: publishingLog?.output,
                     projectID: project.id
                 )
@@ -812,7 +864,8 @@ final class AppModel: ObservableObject {
         )
         return try await service.fetchConfigurationSnapshot(
             bundleIdentifier: bundleIdentifier,
-            preferredVersion: project.marketingVersion
+            preferredVersion: project.marketingVersion,
+            preferredBuildNumber: project.buildNumber
         )
     }
 

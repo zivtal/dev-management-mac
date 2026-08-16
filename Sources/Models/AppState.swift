@@ -21,7 +21,6 @@ struct AppPreferences: Codable, Equatable {
     var appStoreReviewEmail: String?
     var appStoreReviewNotes: String?
     var appStoreReviewDemoAccountRequired: Bool?
-    var appStoreSubmitForReview: Bool?
     var appStoreReleaseAutomatically: Bool?
 }
 

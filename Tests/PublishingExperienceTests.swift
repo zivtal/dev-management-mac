@@ -2,6 +2,11 @@ import XCTest
 @testable import DevManagement
 
 final class PublishingExperienceTests: XCTestCase {
+    func testPublishingActionsHaveExplicitReviewBehavior() {
+        XCTAssertTrue(PublishingIntent.publish.submitsForReview)
+        XCTAssertFalse(PublishingIntent.testFlight.submitsForReview)
+    }
+
     func testJourneyGroupsTechnicalPhasesIntoFiveFriendlyStages() {
         XCTAssertEqual(PublishingProgress.Phase.preparing.journeyStage, .prepare)
         XCTAssertEqual(PublishingProgress.Phase.collectingScreenshots.journeyStage, .prepare)
@@ -133,6 +138,7 @@ final class PublishingExperienceTests: XCTestCase {
                 ],
                 review: review
             ),
+            testFlightBuild: nil,
             activeReviewVersion: nil,
             hasReadyForDistributionVersion: false,
             subscriptionGroups: [],

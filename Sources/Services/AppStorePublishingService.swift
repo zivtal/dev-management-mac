@@ -86,11 +86,39 @@ final class AppStorePublishingService {
         guard fileManager.fileExists(atPath: project.containerPath) else {
             throw AppStorePublishingError.missingProjectContainer
         }
+        guard let localVersion = project.marketingVersion?.nilIfEmpty else {
+            throw AppStorePublishingError.missingVersion
+        }
+        guard let localBuildNumber = project.buildNumber?.nilIfEmpty else {
+            throw AppStorePublishingError.missingBuildNumber
+        }
 
-        let temporaryDirectory = fileManager.temporaryDirectory
-            .appendingPathComponent("DevManagement-Publish-\(UUID().uuidString)", isDirectory: true)
-        try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: temporaryDirectory) }
+        let appStoreConnect = try AppStoreConnectService(
+            issuerID: configuration.appStoreConnectIssuerID,
+            keyID: configuration.appStoreConnectKeyID,
+            privateKeyPEM: configuration.appStoreConnectPrivateKey
+        )
+        let appID = try await appStoreConnect.applicationID(bundleIdentifier: bundleIdentifier)
+        let existingBuild = try await appStoreConnect.build(
+            appID: appID,
+            marketingVersion: localVersion,
+            buildNumber: localBuildNumber
+        )
+        var reusedExistingBuild = existingBuild != nil
+        if let existingBuild {
+            eventHandler(.output(L10n.format(
+                "Reusing TestFlight build %@ (%@); archive and upload are not needed.\n",
+                existingBuild.version,
+                existingBuild.buildNumber
+            )))
+        }
+
+        var temporaryDirectory: URL?
+        defer {
+            if let temporaryDirectory {
+                try? fileManager.removeItem(at: temporaryDirectory)
+            }
+        }
 
         eventHandler(.phase(.discoveringSubscriptions))
         let subscriptionCatalog = try subscriptionDiscoveryService.discover(
@@ -112,15 +140,13 @@ final class AppStorePublishingService {
             }
         }
 
-        if configuration.submitForReview {
-            let publicationURLs = Self.publicationURLs(configuration: configuration)
-            eventHandler(.output(L10n.format(
-                "Validating %d public App Store URL(s) before building…\n",
-                publicationURLs.count
-            )))
-            try await publicationURLValidator.validate(publicationURLs)
-            eventHandler(.output(L10n.text("All configured public App Store URLs are reachable.\n")))
-        }
+        let publicationURLs = Self.publicationURLs(configuration: configuration)
+        eventHandler(.output(L10n.format(
+            "Validating %d public App Store URL(s) before building…\n",
+            publicationURLs.count
+        )))
+        try await publicationURLValidator.validate(publicationURLs)
+        eventHandler(.output(L10n.text("All configured public App Store URLs are reachable.\n")))
 
         let reviewAttachments = reviewAssetService.discover(
             project: project,
@@ -220,35 +246,71 @@ final class AppStorePublishingService {
             eventHandler(.output(L10n.format("Prepared %d App Store screenshot(s).\n", screenshots.count)))
         }
 
-        eventHandler(.phase(.archiving))
-        let artifact = try await archiveAndExport(
-            project: project,
-            expectedBundleIdentifier: bundleIdentifier,
-            temporaryDirectory: temporaryDirectory,
-            eventHandler: eventHandler
-        )
-        eventHandler(.output(L10n.format(
-            "Archive contains %@ %@ (%@).\n",
-            artifact.bundleIdentifier,
-            artifact.version,
-            artifact.buildNumber
-        )))
-        if artifact.version != project.marketingVersion || artifact.buildNumber != project.buildNumber {
-            eventHandler(.output(L10n.text("The Xcode scheme changed the version during archive; continuing with the archived version.\n")))
+        let artifact: AppStoreBuildArtifact?
+        let targetVersion: String
+        let targetBuildNumber: String
+        if existingBuild != nil {
+            artifact = nil
+            targetVersion = localVersion
+            targetBuildNumber = localBuildNumber
+        } else {
+            let directory = fileManager.temporaryDirectory
+                .appendingPathComponent("DevManagement-Publish-\(UUID().uuidString)", isDirectory: true)
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            temporaryDirectory = directory
+
+            eventHandler(.phase(.archiving))
+            let archived = try await archiveAndExport(
+                project: project,
+                expectedBundleIdentifier: bundleIdentifier,
+                temporaryDirectory: directory,
+                eventHandler: eventHandler
+            )
+            artifact = archived
+            targetVersion = archived.version
+            targetBuildNumber = archived.buildNumber
+            eventHandler(.output(L10n.format(
+                "Archive contains %@ %@ (%@).\n",
+                archived.bundleIdentifier,
+                archived.version,
+                archived.buildNumber
+            )))
+            if archived.version != project.marketingVersion || archived.buildNumber != project.buildNumber {
+                eventHandler(.output(L10n.text("The Xcode scheme changed the version during archive; continuing with the archived version.\n")))
+            }
+            if try await appStoreConnect.build(
+                appID: appID,
+                marketingVersion: archived.version,
+                buildNumber: archived.buildNumber
+            ) != nil {
+                reusedExistingBuild = true
+                eventHandler(.output(L10n.format(
+                    "TestFlight already contains archived build %@ (%@); skipping the duplicate upload.\n",
+                    archived.version,
+                    archived.buildNumber
+                )))
+            }
         }
 
-        let appStoreConnect = try AppStoreConnectService(
-            issuerID: configuration.appStoreConnectIssuerID,
-            keyID: configuration.appStoreConnectKeyID,
-            privateKeyPEM: configuration.appStoreConnectPrivateKey
-        )
+        let processedExistingBuildID: String?
+        if reusedExistingBuild {
+            eventHandler(.output(L10n.text("Confirming that the matching TestFlight build finished processing before changing the App Store version…\n")))
+            processedExistingBuildID = try await appStoreConnect.waitForBuild(
+                appID: appID,
+                marketingVersion: targetVersion,
+                buildNumber: targetBuildNumber,
+                onOutput: { eventHandler(.output($0)) }
+            )
+        } else {
+            processedExistingBuildID = nil
+        }
 
         let reusableVersionID: String?
         if configuration.replaceActiveReviewVersion {
             eventHandler(.phase(.uploadingMetadata))
             reusableVersionID = try await appStoreConnect.cancelActiveAppVersionReview(
                 bundleIdentifier: bundleIdentifier,
-                replacingWith: artifact.version,
+                replacingWith: targetVersion,
                 onOutput: { eventHandler(.output($0)) }
             )
         } else {
@@ -259,7 +321,7 @@ final class AppStorePublishingService {
         eventHandler(.output(L10n.text("Finding the application and editable version in App Store Connect…\n")))
         let publication = try await appStoreConnect.preparePublication(
             bundleIdentifier: bundleIdentifier,
-            version: artifact.version,
+            version: targetVersion,
             locale: configuration.locale,
             metadata: metadata,
             localizedMetadata: localizedMetadata,
@@ -293,7 +355,7 @@ final class AppStorePublishingService {
             subscriptionReviewItems = try await appStoreConnect.reconcileSubscriptions(
                 appID: publication.appID,
                 catalog: subscriptionCatalog,
-                requiresReviewAssets: configuration.submitForReview,
+                requiresReviewAssets: true,
                 onOutput: { eventHandler(.output($0)) }
             )
         }
@@ -306,20 +368,30 @@ final class AppStorePublishingService {
             onOutput: { eventHandler(.output($0)) }
         )
 
-        eventHandler(.phase(.uploadingBuild))
-        try await uploadBuild(
-            ipaURL: artifact.ipaURL,
-            configuration: configuration,
-            temporaryDirectory: temporaryDirectory,
-            eventHandler: eventHandler
-        )
+        if let artifact, let temporaryDirectory, !reusedExistingBuild {
+            eventHandler(.phase(.uploadingBuild))
+            try await uploadBuild(
+                ipaURL: artifact.ipaURL,
+                issuerID: configuration.appStoreConnectIssuerID,
+                keyID: configuration.appStoreConnectKeyID,
+                privateKey: configuration.appStoreConnectPrivateKey,
+                temporaryDirectory: temporaryDirectory,
+                eventHandler: eventHandler
+            )
+        }
 
-        eventHandler(.phase(.waitingForBuild))
-        let buildID = try await appStoreConnect.waitForBuild(
-            appID: publication.appID,
-            buildNumber: artifact.buildNumber,
-            onOutput: { eventHandler(.output($0)) }
-        )
+        let buildID: String
+        if let processedExistingBuildID {
+            buildID = processedExistingBuildID
+        } else {
+            eventHandler(.phase(.waitingForBuild))
+            buildID = try await appStoreConnect.waitForBuild(
+                appID: publication.appID,
+                marketingVersion: targetVersion,
+                buildNumber: targetBuildNumber,
+                onOutput: { eventHandler(.output($0)) }
+            )
+        }
         try await appStoreConnect.attachBuild(buildID, toVersion: publication.versionID)
         eventHandler(.output(L10n.text("The processed build is attached to the App Store version.\n")))
 
@@ -330,7 +402,7 @@ final class AppStorePublishingService {
             onOutput: { eventHandler(.output($0)) }
         )
 
-        if configuration.submitForReview, !reviewAttachments.isEmpty {
+        if !reviewAttachments.isEmpty {
             eventHandler(.phase(.uploadingReviewAssets))
             try await appStoreConnect.uploadReviewAttachments(
                 reviewAttachments,
@@ -339,20 +411,140 @@ final class AppStorePublishingService {
             )
         }
 
-        if configuration.submitForReview {
-            eventHandler(.phase(.submitting))
-            try await appStoreConnect.submitForReview(
-                appID: publication.appID,
-                versionID: publication.versionID,
-                additionalItems: subscriptionReviewItems
-            )
-            eventHandler(.output(L10n.text("The App Store version was submitted for review.\n")))
+        eventHandler(.phase(.submitting))
+        try await appStoreConnect.submitForReview(
+            appID: publication.appID,
+            versionID: publication.versionID,
+            additionalItems: subscriptionReviewItems
+        )
+        eventHandler(.output(L10n.text("The App Store version was submitted for review.\n")))
+
+        return PublishingResult(
+            version: targetVersion,
+            buildNumber: targetBuildNumber,
+            intent: .publish,
+            reusedExistingBuild: reusedExistingBuild
+        )
+    }
+
+    func uploadToTestFlight(
+        project: ManagedProject,
+        configuration: TestFlightUploadConfiguration,
+        eventHandler: @escaping EventHandler
+    ) async throws -> PublishingResult {
+        guard !project.isMacOSApplication, project.installMethod == .xcodebuild else {
+            throw AppStorePublishingError.unsupportedProject
         }
+        guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
+            throw AppStorePublishingError.missingBundleIdentifier
+        }
+        guard let localVersion = project.marketingVersion?.nilIfEmpty else {
+            throw AppStorePublishingError.missingVersion
+        }
+        guard let localBuildNumber = project.buildNumber?.nilIfEmpty else {
+            throw AppStorePublishingError.missingBuildNumber
+        }
+        guard fileManager.fileExists(atPath: project.containerPath) else {
+            throw AppStorePublishingError.missingProjectContainer
+        }
+
+        let appStoreConnect = try AppStoreConnectService(
+            issuerID: configuration.appStoreConnectIssuerID,
+            keyID: configuration.appStoreConnectKeyID,
+            privateKeyPEM: configuration.appStoreConnectPrivateKey
+        )
+        let appID = try await appStoreConnect.applicationID(bundleIdentifier: bundleIdentifier)
+        if let existingBuild = try await appStoreConnect.build(
+            appID: appID,
+            marketingVersion: localVersion,
+            buildNumber: localBuildNumber
+        ) {
+            eventHandler(.output(L10n.format(
+                "TestFlight already contains %@ (%@); reusing the existing build.\n",
+                existingBuild.version,
+                existingBuild.buildNumber
+            )))
+            eventHandler(.phase(.waitingForBuild))
+            let buildID = try await appStoreConnect.waitForBuild(
+                appID: appID,
+                marketingVersion: localVersion,
+                buildNumber: localBuildNumber,
+                onOutput: { eventHandler(.output($0)) }
+            )
+            eventHandler(.phase(.configuringTestFlight))
+            try await appStoreConnect.assignBuildToInternalTestFlight(
+                appID: appID,
+                buildID: buildID,
+                onOutput: { eventHandler(.output($0)) }
+            )
+            return PublishingResult(
+                version: localVersion,
+                buildNumber: localBuildNumber,
+                intent: .testFlight,
+                reusedExistingBuild: true
+            )
+        }
+
+        let temporaryDirectory = fileManager.temporaryDirectory
+            .appendingPathComponent("DevManagement-TestFlight-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: temporaryDirectory) }
+
+        eventHandler(.phase(.archiving))
+        let artifact = try await archiveAndExport(
+            project: project,
+            expectedBundleIdentifier: bundleIdentifier,
+            temporaryDirectory: temporaryDirectory,
+            eventHandler: eventHandler
+        )
+        eventHandler(.output(L10n.format(
+            "Archive contains %@ %@ (%@).\n",
+            artifact.bundleIdentifier,
+            artifact.version,
+            artifact.buildNumber
+        )))
+
+        let archivedBuildAlreadyExists = try await appStoreConnect.build(
+            appID: appID,
+            marketingVersion: artifact.version,
+            buildNumber: artifact.buildNumber
+        ) != nil
+        if archivedBuildAlreadyExists {
+            eventHandler(.output(L10n.format(
+                "TestFlight already contains archived build %@ (%@); skipping the duplicate upload.\n",
+                artifact.version,
+                artifact.buildNumber
+            )))
+        } else {
+            eventHandler(.phase(.uploadingBuild))
+            try await uploadBuild(
+                ipaURL: artifact.ipaURL,
+                issuerID: configuration.appStoreConnectIssuerID,
+                keyID: configuration.appStoreConnectKeyID,
+                privateKey: configuration.appStoreConnectPrivateKey,
+                temporaryDirectory: temporaryDirectory,
+                eventHandler: eventHandler
+            )
+        }
+        eventHandler(.phase(.waitingForBuild))
+        let buildID = try await appStoreConnect.waitForBuild(
+            appID: appID,
+            marketingVersion: artifact.version,
+            buildNumber: artifact.buildNumber,
+            onOutput: { eventHandler(.output($0)) }
+        )
+        eventHandler(.phase(.configuringTestFlight))
+        try await appStoreConnect.assignBuildToInternalTestFlight(
+            appID: appID,
+            buildID: buildID,
+            onOutput: { eventHandler(.output($0)) }
+        )
 
         return PublishingResult(
             version: artifact.version,
             buildNumber: artifact.buildNumber,
-            submittedForReview: configuration.submitForReview
+            intent: .testFlight,
+            reusedExistingBuild: archivedBuildAlreadyExists
         )
     }
 
@@ -841,14 +1033,16 @@ final class AppStorePublishingService {
 
     private func uploadBuild(
         ipaURL: URL,
-        configuration: PublishingConfiguration,
+        issuerID: String,
+        keyID: String,
+        privateKey: String,
         temporaryDirectory: URL,
         eventHandler: @escaping EventHandler
     ) async throws {
         let keyDirectory = temporaryDirectory.appendingPathComponent("private_keys", isDirectory: true)
         try fileManager.createDirectory(at: keyDirectory, withIntermediateDirectories: true)
-        let keyURL = keyDirectory.appendingPathComponent("AuthKey_\(configuration.appStoreConnectKeyID).p8")
-        try Data(configuration.appStoreConnectPrivateKey.utf8).write(to: keyURL, options: .atomic)
+        let keyURL = keyDirectory.appendingPathComponent("AuthKey_\(keyID).p8")
+        try Data(privateKey.utf8).write(to: keyURL, options: .atomic)
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
 
         let uploaderURL = try appStoreUploaderURL()
@@ -857,8 +1051,8 @@ final class AppStorePublishingService {
             executable: uploaderURL,
             arguments: [
                 "--validate-app", ipaURL.path,
-                "--api-key", configuration.appStoreConnectKeyID,
-                "--api-issuer", configuration.appStoreConnectIssuerID,
+                "--api-key", keyID,
+                "--api-issuer", issuerID,
                 "--output-format", "json"
             ],
             workingDirectory: ipaURL.deletingLastPathComponent(),
@@ -870,8 +1064,8 @@ final class AppStorePublishingService {
             executable: uploaderURL,
             arguments: [
                 "--upload-package", ipaURL.path,
-                "--api-key", configuration.appStoreConnectKeyID,
-                "--api-issuer", configuration.appStoreConnectIssuerID,
+                "--api-key", keyID,
+                "--api-issuer", issuerID,
                 "--wait",
                 "--output-format", "json",
                 "--show-progress"

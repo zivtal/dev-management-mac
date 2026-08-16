@@ -161,10 +161,6 @@ struct PublishingSettingsView: View {
                         .frame(width: 340)
                 }
                 Toggle(
-                    "Submit the uploaded version for App Review",
-                    isOn: optionalBoolBinding(\.appStoreSubmitForReview, fallback: true)
-                )
-                Toggle(
                     "Release automatically after Apple approves it",
                     isOn: optionalBoolBinding(\.appStoreReleaseAutomatically, fallback: true)
                 )

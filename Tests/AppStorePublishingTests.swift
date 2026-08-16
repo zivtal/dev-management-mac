@@ -254,7 +254,7 @@ final class AppStorePublishingTests: XCTestCase {
 
         XCTAssertNil(preferences.openAIModel)
         XCTAssertNil(preferences.appStoreConnectIssuerID)
-        XCTAssertNil(preferences.appStoreSubmitForReview)
+        XCTAssertNil(preferences.appStoreReleaseAutomatically)
         XCTAssertNil(preferences.appStoreReviewEmail)
     }
 
@@ -592,6 +592,53 @@ final class AppStorePublishingTests: XCTestCase {
         let draft = try XCTUnwrap(AppStoreConnectService.reusableDraftVersion(in: versions))
         XCTAssertEqual(draft.id, "newer-draft")
         XCTAssertEqual(draft.versionString, "1.9.1")
+    }
+
+    func testMatchingTestFlightBuildRequiresExactIOSVersionAndBuild() throws {
+        let builds: [[String: Any]] = [
+            [
+                "id": "wrong-version",
+                "attributes": ["version": "43", "processingState": "VALID"],
+                "relationships": [
+                    "preReleaseVersion": ["data": ["type": "preReleaseVersions", "id": "train-1"]]
+                ]
+            ],
+            [
+                "id": "matching",
+                "attributes": ["version": "43", "processingState": "VALID"],
+                "relationships": [
+                    "preReleaseVersion": ["data": ["type": "preReleaseVersions", "id": "train-2"]]
+                ]
+            ]
+        ]
+        let included: [[String: Any]] = [
+            [
+                "type": "preReleaseVersions",
+                "id": "train-1",
+                "attributes": ["version": "1.4.1", "platform": "IOS"]
+            ],
+            [
+                "type": "preReleaseVersions",
+                "id": "train-2",
+                "attributes": ["version": "1.4.2", "platform": "IOS"]
+            ]
+        ]
+
+        let build = try XCTUnwrap(AppStoreConnectService.matchingBuild(
+            builds: builds,
+            included: included,
+            marketingVersion: "1.4.2",
+            buildNumber: "43"
+        ))
+
+        XCTAssertEqual(build.id, "matching")
+        XCTAssertTrue(build.isProcessed)
+        XCTAssertNil(AppStoreConnectService.matchingBuild(
+            builds: builds,
+            included: included,
+            marketingVersion: "1.4.2",
+            buildNumber: "44"
+        ))
     }
 
     private func decodedJWTComponent(_ component: String) throws -> [String: Any] {

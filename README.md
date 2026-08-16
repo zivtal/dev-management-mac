@@ -56,10 +56,11 @@ configurable number of days.
 - A notification after every successful installation, including the app,
   device, model, connection type, and discovered app icon.
 - Launch at login, enabled by default on first run.
-- One-click iOS publishing that prepares metadata and screenshots, archives the
-  authoritative version, uploads it to App Store Connect, enables internal
-  TestFlight access, uploads project-owned review attachments, and optionally
-  submits the release for App Review. See
+- One-click iOS publishing that prepares metadata and screenshots, creates the
+  App Store version, ensures the exact build is available to internal
+  TestFlight testers, uploads project-owned review attachments, and submits the
+  release for App Review. A separate upload-only action stops at TestFlight, and
+  Publish reuses an exact matching TestFlight build without uploading it again. See
   [One-click App Store publishing](Docs/AppStorePublishing.md).
 - A guided publishing experience with per-app publish actions, release-readiness
   checks, understandable progress stages, recoverable failure details, and a
@@ -203,7 +204,7 @@ Settings contains five tabs and is the only ordinary app window.
 - Store issuer IDs, key IDs, and profile names in app preferences while keeping
   every `.p8` private key in its own macOS Keychain account.
 - Set account-wide publication defaults including locale, copyright, support
-  URL, review contact, submission behavior, and automatic release behavior.
+  URL, review contact, and automatic release behavior.
 - Store optional App Review demo credentials only in Keychain.
 - Review and cancel the latest publication from its copyable technical log.
 
@@ -239,7 +240,11 @@ submitted identical version/build are blockers. When an older version is still
 in active review, the action becomes **Update**: after the replacement archive
 succeeds, Development Management cancels the old submission and its items,
 reuses the editable version record, uploads the replacement, and starts the
-review queue again when submission is enabled.
+review queue again. **Upload to TestFlight** provides a separate internal-only
+path that does not create an App Store version or submit for review. If the
+exact selected version and build are already in TestFlight, **Publish** reuses
+that build, creates or updates the App Store version, and proceeds directly to
+App Review without another archive or upload.
 
 Store listing drafts may be generated with OpenAI or supplied manually in
 `app-store-publishing.json`. Support and privacy-policy URLs are required;
@@ -643,7 +648,8 @@ Current unit coverage verifies:
 - iPhone app-icon preference over Watch icons.
 - Version lookup precedence for version `.xcconfig` files.
 - Publishing readiness, friendly five-stage progress, version/update selection,
-  active-review detection, and duplicate/draft handling.
+  exact TestFlight build matching, active-review detection, and duplicate/draft
+  handling.
 - App Store metadata generation limits, manual URL policy, localized privacy and
   Terms link insertion, screenshots, StoreKit discovery, and offer-code payloads.
 - Offer-code production eligibility, CSV parsing, and subscription-price

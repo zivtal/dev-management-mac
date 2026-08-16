@@ -216,7 +216,6 @@ struct AppStorePublicationConfiguration: Codable, Equatable, Sendable {
     var appName: String? = nil
     var subtitle: String? = nil
     var licenseAgreementText: String? = nil
-    var submitForReview: Bool?
     var releaseAutomatically: Bool?
     var metadata: AppStoreMetadata?
     var localizations: [AppStoreLocalizedMetadata]? = nil
@@ -269,6 +268,7 @@ struct AppStoreConnectConfigurationSnapshot: Equatable, Sendable {
     let licenseTerritoryIDs: [String]
     let appLocalizations: [AppStoreConnectAppLocalizationSnapshot]
     let version: AppStoreConnectVersionSnapshot?
+    let testFlightBuild: AppStoreConnectBuildReference?
     let activeReviewVersion: AppStoreConnectVersionReferenceSnapshot?
     let hasReadyForDistributionVersion: Bool
     let subscriptionGroups: [AppStoreConnectSubscriptionGroupSnapshot]
@@ -318,6 +318,17 @@ struct AppStoreConnectVersionSnapshot: Equatable, Sendable {
         "READY_FOR_SALE",
         "PREORDER_READY_FOR_SALE"
     ]
+}
+
+struct AppStoreConnectBuildReference: Equatable, Sendable {
+    let id: String
+    let version: String
+    let buildNumber: String
+    let processingState: String
+
+    var isProcessed: Bool {
+        processingState == "VALID"
+    }
 }
 
 enum AppStoreVersionLifecycle {
@@ -518,6 +529,21 @@ enum SubscriptionOfferCodeValidationError: LocalizedError {
     }
 }
 
+enum PublishingIntent: Equatable, Sendable {
+    case publish
+    case testFlight
+
+    var submitsForReview: Bool {
+        self == .publish
+    }
+}
+
+struct TestFlightUploadConfiguration: Sendable {
+    let appStoreConnectIssuerID: String
+    let appStoreConnectKeyID: String
+    let appStoreConnectPrivateKey: String
+}
+
 struct PublishingConfiguration: Sendable {
     let openAIAPIKey: String
     let openAIModel: String
@@ -541,7 +567,6 @@ struct PublishingConfiguration: Sendable {
     let screenshotPaths: [String]
     let reviewAttachmentPaths: [String]
     let replaceScreenshots: Bool
-    let submitForReview: Bool
     let releaseAutomatically: Bool
     let replaceActiveReviewVersion: Bool
 }
@@ -549,7 +574,12 @@ struct PublishingConfiguration: Sendable {
 struct PublishingResult: Equatable, Sendable {
     let version: String
     let buildNumber: String
-    let submittedForReview: Bool
+    let intent: PublishingIntent
+    let reusedExistingBuild: Bool
+
+    var submittedForReview: Bool {
+        intent.submitsForReview
+    }
 }
 
 struct AppStoreBuildArtifact: Equatable, Sendable {
