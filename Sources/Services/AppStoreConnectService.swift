@@ -111,6 +111,7 @@ enum AppStoreConnectError: LocalizedError {
     case missingSubscriptionReviewScreenshot(String)
     case subscriptionNotFound(String)
     case offerCodeReferenceNameConflict(String)
+    case offerCodeTerritoriesUnavailable(String)
     case offerCodesRequireReadyApp
     case offerCodesRequireApprovedSubscription(String, String?)
     case activeReviewSubmissionNotFound(String)
@@ -140,6 +141,8 @@ enum AppStoreConnectError: LocalizedError {
             return L10n.format("Subscription %@ does not exist in App Store Connect. Publish the app and subscription before generating production offer codes.", productID)
         case .offerCodeReferenceNameConflict(let referenceName):
             return L10n.format("Offer %@ already exists with different terms. Offer terms cannot be edited; choose a new reference name.", referenceName)
+        case .offerCodeTerritoriesUnavailable(let productID):
+            return L10n.format("Subscription %@ has no available territories for a redeem-code offer.", productID)
         case .offerCodesRequireReadyApp:
             return L10n.text("Redeem codes become available after Apple approves and releases the app.")
         case .offerCodesRequireApprovedSubscription(let productID, let state):
@@ -1159,12 +1162,19 @@ final class AppStoreConnectService {
             }
             offerID = existingID
         } else {
+            let territoryIDs = try await subscriptionAvailableTerritoryIDs(
+                subscriptionID: subscriptionID
+            )
+            guard !territoryIDs.isEmpty else {
+                throw AppStoreConnectError.offerCodeTerritoriesUnavailable(generation.productID)
+            }
             let created = try await request(
                 method: "POST",
                 path: "/v1/subscriptionOfferCodes",
                 body: Self.subscriptionOfferCreateBody(
                     generation.offer,
-                    subscriptionID: subscriptionID
+                    subscriptionID: subscriptionID,
+                    territoryIDs: territoryIDs
                 )
             )
             offerID = try Self.identifier(in: created, named: "subscription offer code")
@@ -1798,6 +1808,23 @@ final class AppStoreConnectService {
         return appID
     }
 
+    private func subscriptionAvailableTerritoryIDs(
+        subscriptionID: String
+    ) async throws -> [String] {
+        let availability = try await request(
+            method: "GET",
+            path: "/v1/subscriptions/\(subscriptionID)/subscriptionAvailability"
+        )
+        guard let resource = availability["data"] as? [String: Any],
+              let availabilityID = resource["id"] as? String else {
+            throw AppStoreConnectError.invalidResponse
+        }
+        return try await pagedData(
+            path: "/v1/subscriptionAvailabilities/\(availabilityID)/availableTerritories",
+            query: ["limit": "200"]
+        ).compactMap { $0["id"] as? String }
+    }
+
     private func findSubscription(appID: String, productID: String) async throws -> String {
         let groups = try await pagedData(
             path: "/v1/apps/\(appID)/subscriptionGroups",
@@ -2145,9 +2172,25 @@ final class AppStoreConnectService {
 
     static func subscriptionOfferCreateBody(
         _ configuration: SubscriptionOfferConfiguration,
-        subscriptionID: String
+        subscriptionID: String,
+        territoryIDs: [String]
     ) -> [String: Any] {
-        [
+        let uniqueTerritoryIDs = Array(Set(territoryIDs)).sorted()
+        let prices: [[String: String]] = uniqueTerritoryIDs.map {
+            ["type": "subscriptionOfferCodePrices", "id": "offer-price-\($0)"]
+        }
+        let included: [[String: Any]] = uniqueTerritoryIDs.map {
+            [
+                "type": "subscriptionOfferCodePrices",
+                "id": "offer-price-\($0)",
+                "relationships": [
+                    "territory": [
+                        "data": ["type": "territories", "id": $0]
+                    ]
+                ]
+            ]
+        }
+        return [
             "data": [
                 "type": "subscriptionOfferCodes",
                 "attributes": [
@@ -2167,9 +2210,10 @@ final class AppStoreConnectService {
                     "subscription": [
                         "data": ["type": "subscriptions", "id": subscriptionID]
                     ],
-                    "prices": ["data": []]
+                    "prices": ["data": prices]
                 ]
-            ]
+            ],
+            "included": included
         ]
     }
 

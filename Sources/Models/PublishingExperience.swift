@@ -110,6 +110,21 @@ struct PublishingReadinessReport: Equatable {
     }
 }
 
+enum TestFlightReadinessPolicy {
+    static func accountItem(credentialIsComplete: Bool) -> PublishingReadinessItem {
+        PublishingReadinessItem(
+            id: "account",
+            title: credentialIsComplete
+                ? L10n.text("App Store Connect is ready")
+                : L10n.text("App Store Connect needs attention"),
+            detail: credentialIsComplete
+                ? L10n.text("The API key is configured and will be verified when the TestFlight upload starts.")
+                : L10n.text("Complete the API key configuration before publishing."),
+            state: credentialIsComplete ? .ready : .blocked
+        )
+    }
+}
+
 struct AppStoreConnectPublicationFallback: Equatable {
     let copyright: String?
     let supportURL: String?

@@ -184,7 +184,10 @@ build upload, attachment, and review submission.
 waits for processing, and enables the exact build for every internal TestFlight
 group without creating an App Store version or submitting for review. It is
 idempotent: when the exact marketing version and build are already present, it
-only confirms internal-group availability.
+only confirms internal-group availability. The action requires a local version
+and build plus a complete App Store Connect API configuration, but it does not
+wait for the full App Store release-readiness snapshot. The API key and existing
+TestFlight build are verified when the upload workflow starts.
 
 The menu-bar application list includes a paper-plane action for every eligible
 iOS app and a ticket action for projects that contain subscription products.
@@ -266,7 +269,9 @@ production request and save Apple's returned CSV directly to disk. Code creation
 is unavailable until App Store Connect reports at least one app version ready
 for distribution and reports the selected
 subscription as approved; the same checks are repeated by the service immediately
-before a production request.
+before a production request. New free offers include a price relationship for
+every territory currently enabled for the subscription, as required by App Store
+Connect.
 
 Apple still requires the initial App Store Connect app record, signed legal
 agreements, banking and tax information for paid content, App Privacy answers,

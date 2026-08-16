@@ -353,17 +353,34 @@ final class AppStorePublishingTests: XCTestCase {
         )
         let offerBody = AppStoreConnectService.subscriptionOfferCreateBody(
             offer,
-            subscriptionID: "subscription-id"
+            subscriptionID: "subscription-id",
+            territoryIDs: ["USA", "ISR", "USA"]
         )
         let offerData = try XCTUnwrap(offerBody["data"] as? [String: Any])
         let offerAttributes = try XCTUnwrap(offerData["attributes"] as? [String: Any])
         let offerRelationships = try XCTUnwrap(offerData["relationships"] as? [String: Any])
         let prices = try XCTUnwrap(offerRelationships["prices"] as? [String: Any])
+        let priceLinkages = try XCTUnwrap(prices["data"] as? [[String: String]])
+        let includedPrices = try XCTUnwrap(offerBody["included"] as? [[String: Any]])
         XCTAssertEqual(offerData["type"] as? String, "subscriptionOfferCodes")
         XCTAssertEqual(offerAttributes["offerMode"] as? String, "FREE_TRIAL")
         XCTAssertEqual(offerAttributes["duration"] as? String, "ONE_MONTH")
         XCTAssertEqual(offerAttributes["customerEligibilities"] as? [String], ["EXPIRED", "NEW"])
-        XCTAssertEqual(prices["data"] as? [[String: String]], [])
+        XCTAssertEqual(priceLinkages, [
+            ["type": "subscriptionOfferCodePrices", "id": "offer-price-ISR"],
+            ["type": "subscriptionOfferCodePrices", "id": "offer-price-USA"]
+        ])
+        XCTAssertEqual(includedPrices.count, 2)
+        let firstIncludedRelationships = try XCTUnwrap(
+            includedPrices.first?["relationships"] as? [String: Any]
+        )
+        let firstTerritory = try XCTUnwrap(
+            firstIncludedRelationships["territory"] as? [String: Any]
+        )
+        XCTAssertEqual(
+            firstTerritory["data"] as? [String: String],
+            ["type": "territories", "id": "ISR"]
+        )
 
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))

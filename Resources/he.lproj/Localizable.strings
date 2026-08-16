@@ -757,7 +757,10 @@
 "App Store Connect needs attention" = "App Store Connect דורש טיפול";
 "App Store Connect is ready" = "App Store Connect מוכן";
 "The API key works and the current app record was loaded." = "מפתח ה־API תקין ורשומת האפליקציה הנוכחית נטענה.";
+"The API key is configured and will be verified when the TestFlight upload starts." = "מפתח ה־API מוגדר ויאומת עם תחילת ההעלאה ל־TestFlight.";
 "Complete the API key configuration before publishing." = "יש להשלים את הגדרת מפתח ה־API לפני הפרסום.";
+"%@ (%@) is already uploaded and will be reused." = "%@ (%@) כבר הועלתה ותשמש מחדש.";
+"Subscription %@ has no available territories for a redeem-code offer." = "למינוי %@ אין טריטוריות זמינות להצעת קוד מימוש.";
 "Project content needs attention" = "תוכן הפרויקט דורש טיפול";
 "Store content" = "תוכן החנות";
 "Inspecting metadata and subscription products…" = "בודק מטא־נתונים ומוצרי מינוי…";

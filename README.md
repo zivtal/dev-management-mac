@@ -241,10 +241,12 @@ in active review, the action becomes **Update**: after the replacement archive
 succeeds, Development Management cancels the old submission and its items,
 reuses the editable version record, uploads the replacement, and starts the
 review queue again. **Upload to TestFlight** provides a separate internal-only
-path that does not create an App Store version or submit for review. If the
-exact selected version and build are already in TestFlight, **Publish** reuses
-that build, creates or updates the App Store version, and proceeds directly to
-App Review without another archive or upload.
+path that does not create an App Store version or submit for review. It can start
+as soon as the local version/build and API credentials are configured, without
+waiting for the full release-readiness scan. If the exact selected version and
+build are already in TestFlight, **Publish** reuses that build, creates or updates
+the App Store version, and proceeds directly to App Review without another
+archive or upload.
 
 Store listing drafts may be generated with OpenAI or supplied manually in
 `app-store-publishing.json`. Support and privacy-policy URLs are required;
@@ -261,6 +263,8 @@ App Store Connect reports a released app version and an approved subscription.
 For one-time batches, choose a destination before generation. Development
 Management saves Apple's returned CSV directly so large batches and their
 redemption URLs are ready to distribute without filling the window with codes.
+Free offers are created for every territory currently enabled for the selected
+subscription.
 
 The full archive, metadata, screenshot, TestFlight, review-attachment, and
 submission pipeline is documented in

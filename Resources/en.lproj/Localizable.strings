@@ -757,7 +757,10 @@
 "App Store Connect needs attention" = "App Store Connect needs attention";
 "App Store Connect is ready" = "App Store Connect is ready";
 "The API key works and the current app record was loaded." = "The API key works and the current app record was loaded.";
+"The API key is configured and will be verified when the TestFlight upload starts." = "The API key is configured and will be verified when the TestFlight upload starts.";
 "Complete the API key configuration before publishing." = "Complete the API key configuration before publishing.";
+"%@ (%@) is already uploaded and will be reused." = "%@ (%@) is already uploaded and will be reused.";
+"Subscription %@ has no available territories for a redeem-code offer." = "Subscription %@ has no available territories for a redeem-code offer.";
 "Project content needs attention" = "Project content needs attention";
 "Store content" = "Store content";
 "Inspecting metadata and subscription products…" = "Inspecting metadata and subscription products…";

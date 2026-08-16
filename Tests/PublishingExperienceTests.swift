@@ -56,6 +56,14 @@ final class PublishingExperienceTests: XCTestCase {
         XCTAssertFalse(PublishingReadinessReport(items: [ready, blocked]).allowsPublication)
     }
 
+    func testTestFlightAccountReadinessDoesNotWaitForReleaseSnapshot() {
+        let configured = TestFlightReadinessPolicy.accountItem(credentialIsComplete: true)
+        let missing = TestFlightReadinessPolicy.accountItem(credentialIsComplete: false)
+
+        XCTAssertEqual(configured.state, .ready)
+        XCTAssertEqual(missing.state, .blocked)
+    }
+
     func testOlderLocalMarketingVersionIsDetected() {
         XCTAssertTrue(AppStoreVersionComparison.localArtifactIsOlder(
             localVersion: "1.7.7",

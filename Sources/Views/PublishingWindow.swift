@@ -1627,9 +1627,47 @@ private struct PublishingWindowView: View {
 
     private func testFlightReadinessReport(for project: ManagedProject) -> PublishingReadinessReport {
         PublishingReadinessReport(items: [
-            sourceReadiness(for: project),
-            accountReadiness
+            testFlightSourceReadiness(for: project),
+            TestFlightReadinessPolicy.accountItem(
+                credentialIsComplete: model.appStoreConnectCredentialIsComplete(for: project)
+            )
         ])
+    }
+
+    private func testFlightSourceReadiness(
+        for project: ManagedProject
+    ) -> PublishingReadinessItem {
+        guard let localVersion = project.marketingVersion?.nilIfEmpty,
+              let localBuild = project.buildNumber?.nilIfEmpty else {
+            return PublishingReadinessItem(
+                id: "source",
+                title: L10n.text("Source version"),
+                detail: L10n.text("The selected project does not provide a version and build number."),
+                state: .blocked
+            )
+        }
+        if let build = matchingTestFlightBuild {
+            return PublishingReadinessItem(
+                id: "source",
+                title: L10n.text("Matching build is in TestFlight"),
+                detail: L10n.format(
+                    "%@ (%@) is already uploaded and will be reused.",
+                    build.version,
+                    build.buildNumber
+                ),
+                state: .ready
+            )
+        }
+        return PublishingReadinessItem(
+            id: "source",
+            title: L10n.text("Source version is ready"),
+            detail: L10n.format(
+                "%@ (%@) is selected. The scheme may advance it once during archive.",
+                localVersion,
+                localBuild
+            ),
+            state: .ready
+        )
     }
 
     private func sourceReadiness(for project: ManagedProject) -> PublishingReadinessItem {
