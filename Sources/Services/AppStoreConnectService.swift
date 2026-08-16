@@ -1233,6 +1233,177 @@ final class AppStoreConnectService {
         )
     }
 
+    func assignBuildToInternalTestFlight(
+        appID: String,
+        buildID: String,
+        onOutput: @escaping @Sendable (String) -> Void
+    ) async throws {
+        let response = try await request(
+            method: "GET",
+            path: "/v1/apps/\(appID)/betaGroups",
+            query: ["limit": "200"]
+        )
+        var groups = (response["data"] as? [[String: Any]] ?? []).filter {
+            Self.attributes($0)["isInternalGroup"] as? Bool == true
+        }
+        if groups.isEmpty {
+            let created = try await request(
+                method: "POST",
+                path: "/v1/betaGroups",
+                body: [
+                    "data": [
+                        "type": "betaGroups",
+                        "attributes": [
+                            "name": "Internal Testing",
+                            "isInternalGroup": true,
+                            "hasAccessToAllBuilds": true,
+                            "feedbackEnabled": true
+                        ],
+                        "relationships": [
+                            "app": ["data": ["type": "apps", "id": appID]]
+                        ]
+                    ]
+                ]
+            )
+            guard let group = created["data"] as? [String: Any] else {
+                throw AppStoreConnectError.missingIdentifier("internal TestFlight group")
+            }
+            groups = [group]
+            onOutput(L10n.text("Created an Internal Testing group with automatic build access.\n"))
+        }
+
+        for group in groups {
+            guard let groupID = group["id"] as? String else { continue }
+            let name = Self.attributes(group)["name"] as? String ?? "Internal Testing"
+            do {
+                _ = try await request(
+                    method: "POST",
+                    path: "/v1/betaGroups/\(groupID)/relationships/builds",
+                    body: ["data": [["type": "builds", "id": buildID]]]
+                )
+            } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 {
+                // The build is already available to this group.
+            }
+            onOutput(L10n.format("Build available to the internal TestFlight group %@.\n", name))
+        }
+    }
+
+    func uploadReviewAttachments(
+        _ attachments: [URL],
+        versionID: String,
+        onOutput: @escaping @Sendable (String) -> Void
+    ) async throws {
+        guard !attachments.isEmpty else { return }
+        let details = try await request(
+            method: "GET",
+            path: "/v1/appStoreVersions/\(versionID)/appStoreReviewDetail"
+        )
+        let reviewDetailID = try Self.identifier(in: details, named: "App Review details")
+        var existing = try await pagedData(
+            path: "/v1/appStoreReviewDetails/\(reviewDetailID)/appStoreReviewAttachments",
+            query: ["limit": "200"]
+        )
+
+        for attachmentURL in attachments {
+            try Task.checkCancellation()
+            let fileData = try Data(contentsOf: attachmentURL, options: [.mappedIfSafe])
+            let filename = attachmentURL.lastPathComponent
+            if let match = existing.first(where: {
+                let attributes = Self.attributes($0)
+                return attributes["fileName"] as? String == filename
+            }) {
+                let attributes = Self.attributes(match)
+                let state = Self.assetState(attributes)
+                let sizeMatches = (attributes["fileSize"] as? Int) == fileData.count
+                if state == "COMPLETE", sizeMatches {
+                    onOutput(L10n.format("Preserving existing App Review attachment %@.\n", filename))
+                    continue
+                }
+                if let attachmentID = match["id"] as? String {
+                    _ = try await request(
+                        method: "DELETE",
+                        path: "/v1/appStoreReviewAttachments/\(attachmentID)"
+                    )
+                    existing.removeAll { $0["id"] as? String == attachmentID }
+                }
+            }
+
+            let reserved = try await request(
+                method: "POST",
+                path: "/v1/appStoreReviewAttachments",
+                body: [
+                    "data": [
+                        "type": "appStoreReviewAttachments",
+                        "attributes": ["fileName": filename, "fileSize": fileData.count],
+                        "relationships": [
+                            "appStoreReviewDetail": [
+                                "data": ["type": "appStoreReviewDetails", "id": reviewDetailID]
+                            ]
+                        ]
+                    ]
+                ]
+            )
+            let attachmentID = try Self.identifier(in: reserved, named: "App Review attachment")
+            try await uploadReservedAsset(data: fileData, response: reserved)
+            _ = try await request(
+                method: "PATCH",
+                path: "/v1/appStoreReviewAttachments/\(attachmentID)",
+                body: [
+                    "data": [
+                        "type": "appStoreReviewAttachments",
+                        "id": attachmentID,
+                        "attributes": [
+                            "uploaded": true,
+                            "sourceFileChecksum": Self.md5Hex(fileData)
+                        ]
+                    ]
+                ]
+            )
+            try await waitForReviewAttachment(
+                attachmentID,
+                filename: filename,
+                onOutput: onOutput
+            )
+        }
+    }
+
+    private func waitForReviewAttachment(
+        _ attachmentID: String,
+        filename: String,
+        onOutput: @escaping @Sendable (String) -> Void
+    ) async throws {
+        for _ in 0..<120 {
+            try Task.checkCancellation()
+            let response = try await request(
+                method: "GET",
+                path: "/v1/appStoreReviewAttachments/\(attachmentID)"
+            )
+            let resource = response["data"] as? [String: Any] ?? [:]
+            let attributes = Self.attributes(resource)
+            switch Self.assetState(attributes) {
+            case "COMPLETE":
+                onOutput(L10n.format("Uploaded App Review attachment %@.\n", filename))
+                return
+            case "FAILED":
+                let state = attributes["assetDeliveryState"] as? [String: Any]
+                let messages = (state?["errors"] as? [[String: Any]] ?? []).compactMap {
+                    ($0["description"] as? String) ?? ($0["code"] as? String)
+                }
+                throw AppStoreConnectError.requestFailed(
+                    422,
+                    messages.joined(separator: "\n").nilIfEmpty
+                        ?? L10n.format("App Review attachment %@ failed processing.", filename)
+                )
+            default:
+                try await Task.sleep(for: .seconds(5))
+            }
+        }
+        throw AppStoreConnectError.requestFailed(
+            408,
+            L10n.format("App Review attachment %@ did not finish processing in time.", filename)
+        )
+    }
+
     func submitForReview(
         appID: String,
         versionID: String,
@@ -2150,7 +2321,10 @@ final class AppStoreConnectService {
                 "data": [
                     "type": "subscriptionAppStoreReviewScreenshots",
                     "id": screenshotID,
-                    "attributes": ["uploaded": true]
+                    "attributes": [
+                        "uploaded": true,
+                        "sourceFileChecksum": Self.md5Hex(fileData)
+                    ]
                 ]
             ]
         )
@@ -2305,7 +2479,10 @@ final class AppStoreConnectService {
                 "data": [
                     "type": "appScreenshots",
                     "id": screenshotID,
-                    "attributes": ["uploaded": true]
+                    "attributes": [
+                        "uploaded": true,
+                        "sourceFileChecksum": Self.md5Hex(fileData)
+                    ]
                 ]
             ]
         )
@@ -2547,5 +2724,13 @@ final class AppStoreConnectService {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func md5Hex(_ data: Data) -> String {
+        Insecure.MD5.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func assetState(_ attributes: [String: Any]) -> String? {
+        (attributes["assetDeliveryState"] as? [String: Any])?["state"] as? String
     }
 }

@@ -1445,6 +1445,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var privacyPolicyURL = ""
     @State private var privacyChoicesURL = ""
     @State private var screenshotPaths = "Screenshots"
+    @State private var reviewAttachmentPaths = ""
     @State private var replaceScreenshots = false
 
     @State private var primaryCategory = ""
@@ -1706,6 +1707,16 @@ private struct PerAppPublishingConfigurationEditor: View {
                     Toggle("Submit the uploaded version for App Review", isOn: $submitForReview)
                     Toggle("Release automatically after Apple approves it", isOn: $releaseAutomatically)
                         .disabled(!submitForReview)
+                }
+                Section("Review Attachments") {
+                    configurationTextEditor(
+                        "Demo videos or documents (one file or folder per line)",
+                        text: $reviewAttachmentPaths,
+                        height: 80
+                    )
+                    Text("Relative paths are resolved from the app project. Publish also discovers files in AppStore/ReviewAttachments.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)
@@ -1978,6 +1989,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         privacyPolicyURL = publication.privacyPolicyURL ?? ""
         privacyChoicesURL = publication.privacyChoicesURL ?? ""
         screenshotPaths = (publication.screenshotPaths ?? []).joined(separator: "\n")
+        reviewAttachmentPaths = (publication.reviewAttachmentPaths ?? []).joined(separator: "\n")
         replaceScreenshots = publication.replaceScreenshots ?? false
         submitForReview = publication.submitForReview ?? true
         releaseAutomatically = publication.releaseAutomatically ?? true
@@ -2051,6 +2063,7 @@ private struct PerAppPublishingConfigurationEditor: View {
             metadata: metadata,
             localizations: localizations,
             screenshotPaths: screenshotPaths.split(whereSeparator: \.isNewline).map(String.init),
+            reviewAttachmentPaths: reviewAttachmentPaths.split(whereSeparator: \.isNewline).map(String.init),
             replaceScreenshots: replaceScreenshots,
             review: AppStoreReviewManifestConfiguration(
                 contactFirstName: reviewFirstName.nilIfEmpty,
@@ -2234,6 +2247,7 @@ private struct PerAppPublishingConfigurationEditor: View {
             releaseAutomatically: defaults.appStoreReleaseAutomatically ?? true,
             metadata: nil,
             screenshotPaths: ["Screenshots"],
+            reviewAttachmentPaths: ["AppStore/ReviewAttachments"],
             review: AppStoreReviewManifestConfiguration(
                 contactFirstName: defaults.appStoreReviewFirstName,
                 contactLastName: defaults.appStoreReviewLastName,

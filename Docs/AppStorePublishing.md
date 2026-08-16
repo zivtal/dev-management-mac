@@ -18,6 +18,7 @@ Financial, legal, and age-rating declarations are never guessed by AI.
     "submitForReview": true,
     "releaseAutomatically": false,
     "screenshotPaths": ["Screenshots", "Marketing/iPhone-6.7.png"],
+    "reviewAttachmentPaths": ["AppStore/ReviewAttachments"],
     "review": {
       "contactFirstName": "Review",
       "contactLastName": "Contact",
@@ -122,6 +123,41 @@ When an older app version is already published, those durable resources are
 preserved: Publish handles only the new App Store version metadata, screenshots,
 build upload, attachment, and review submission.
 
+## Publish pipeline
+
+Publish performs the complete automatable release pipeline in this order:
+
+1. Discover StoreKit products and deterministic per-app configuration.
+2. Validate every configured public support, marketing, privacy, and terms URL
+   before spending time on an archive that cannot be submitted.
+3. Prepare or capture App Store screenshots for each supported simulator family.
+4. Archive and export the selected iOS scheme.
+5. Read the bundle identifier, marketing version, and build number from the
+   archived application. These archive values remain authoritative when a scheme
+   pre-action increments the source version during the build.
+6. Reconcile App Store metadata, availability, pricing, subscriptions, and
+   screenshots, then validate and upload the IPA.
+7. Wait for Apple to process the exact archived build and attach it to the exact
+   archived marketing version.
+8. Add the build to every internal TestFlight group. If the app has no internal
+   group, create an `Internal Testing` group with access to all builds. App Store
+   Connect users still need to be added as testers once; Publish does not invite
+   people or change account roles.
+9. Upload configured demo videos and documents to App Review, wait for Apple to
+   finish processing each attachment, and submit the complete version when
+   submission is enabled.
+
+Review attachments can be entered in **Per-App Configuration → App Review** or
+placed under `AppStore/ReviewAttachments` in the managed project. Supported
+project files are MP4, MOV, PDF, DOC, DOCX, RTF, TXT, and ZIP. Relative paths are
+resolved from the managed project root; absolute paths and `~` are also accepted.
+Existing complete attachments with the same filename and size are preserved.
+
+After Publish succeeds, Development Management rereads the managed project's
+version files so a scheme-driven version increment appears immediately in the
+application list. The list intentionally reports the selected local source
+checkout, not a remote branch or a build produced from another Git worktree.
+
 ## Subscription offer codes
 
 Choose **Offer Codes** in the Publish window after a subscription has been
@@ -141,4 +177,7 @@ the subscription to be approved before production codes can be generated.
 
 Apple still requires the initial App Store Connect app record, signed legal
 agreements, banking and tax information for paid content, App Privacy answers,
-and any compliance declarations that aren't exposed through the API.
+any compliance declarations that aren't exposed through the API, and at least
+one eligible App Store Connect user in an internal TestFlight group. Publish
+does not fabricate legal answers, accept agreements, invite users, reply to App
+Review messages, or create missing public support and privacy websites.

@@ -221,6 +221,7 @@ struct AppStorePublicationConfiguration: Codable, Equatable, Sendable {
     var metadata: AppStoreMetadata?
     var localizations: [AppStoreLocalizedMetadata]? = nil
     var screenshotPaths: [String]?
+    var reviewAttachmentPaths: [String]? = nil
     var replaceScreenshots: Bool? = nil
     var review: AppStoreReviewManifestConfiguration?
 }
@@ -492,6 +493,7 @@ struct PublishingConfiguration: Sendable {
     let manualLocalizations: [AppStoreLocalizedMetadata]
     let detectedLocales: [String]
     let screenshotPaths: [String]
+    let reviewAttachmentPaths: [String]
     let replaceScreenshots: Bool
     let submitForReview: Bool
     let releaseAutomatically: Bool
@@ -501,6 +503,14 @@ struct PublishingResult: Sendable {
     let version: String
     let buildNumber: String
     let submittedForReview: Bool
+}
+
+struct AppStoreBuildArtifact: Equatable, Sendable {
+    let ipaURL: URL
+    let archiveURL: URL
+    let bundleIdentifier: String
+    let version: String
+    let buildNumber: String
 }
 
 struct PublishingProgress: Equatable {
@@ -515,6 +525,8 @@ struct PublishingProgress: Equatable {
         case uploadingScreenshots
         case uploadingBuild
         case waitingForBuild
+        case configuringTestFlight
+        case uploadingReviewAssets
         case submitting
 
         var title: String {
@@ -529,6 +541,8 @@ struct PublishingProgress: Equatable {
             case .uploadingScreenshots: L10n.text("Uploading App Store screenshots…")
             case .uploadingBuild: L10n.text("Uploading the build…")
             case .waitingForBuild: L10n.text("Waiting for App Store processing…")
+            case .configuringTestFlight: L10n.text("Making the build available in TestFlight…")
+            case .uploadingReviewAssets: L10n.text("Uploading App Review attachments…")
             case .submitting: L10n.text("Submitting for App Review…")
             }
         }

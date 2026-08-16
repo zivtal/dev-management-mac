@@ -603,6 +603,7 @@ final class AppModel: ObservableObject {
                     ?? "en-US"
             ),
             screenshotPaths: perAppConfiguration?.screenshotPaths ?? [],
+            reviewAttachmentPaths: perAppConfiguration?.reviewAttachmentPaths ?? [],
             replaceScreenshots: perAppConfiguration?.replaceScreenshots ?? false,
             submitForReview: submitForReview,
             releaseAutomatically: releaseAutomatically
@@ -643,6 +644,7 @@ final class AppModel: ObservableObject {
                 }
                 publishingProgress = nil
                 activePublishingTask = nil
+                refreshProjectVersions()
                 addActivity(
                     level: .success,
                     title: result.submittedForReview

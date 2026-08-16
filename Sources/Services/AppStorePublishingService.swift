@@ -8,6 +8,8 @@ enum AppStorePublishingError: LocalizedError {
     case missingVersion
     case missingBuildNumber
     case missingProjectContainer
+    case missingArchiveApplication
+    case archiveBundleIdentifierMismatch(String, String)
     case noIPA
     case noScreenshots
     case noSimulatorApplication
@@ -27,6 +29,10 @@ enum AppStorePublishingError: LocalizedError {
             return L10n.text("The selected Xcode scheme does not provide a build number.")
         case .missingProjectContainer:
             return L10n.text("The saved Xcode project or workspace no longer exists.")
+        case .missingArchiveApplication:
+            return L10n.text("Xcode created an archive, but its iOS application metadata could not be read.")
+        case .archiveBundleIdentifierMismatch(let expected, let actual):
+            return L10n.format("The archived app uses bundle identifier %@ instead of %@.", actual, expected)
         case .noIPA:
             return L10n.text("Xcode exported the archive, but no .ipa file was found.")
         case .noScreenshots:
@@ -47,17 +53,23 @@ final class AppStorePublishingService {
     private let fileManager: FileManager
     private let openAIService: OpenAIStoreMetadataService
     private let subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService
+    private let reviewAssetService: AppStoreReviewAssetService
+    private let publicationURLValidator: AppStorePublicationURLValidator
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
         fileManager: FileManager = .default,
         openAIService: OpenAIStoreMetadataService = OpenAIStoreMetadataService(),
-        subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService = StoreKitSubscriptionDiscoveryService()
+        subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService = StoreKitSubscriptionDiscoveryService(),
+        reviewAssetService: AppStoreReviewAssetService = AppStoreReviewAssetService(),
+        publicationURLValidator: AppStorePublicationURLValidator = AppStorePublicationURLValidator()
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
         self.openAIService = openAIService
         self.subscriptionDiscoveryService = subscriptionDiscoveryService
+        self.reviewAssetService = reviewAssetService
+        self.publicationURLValidator = publicationURLValidator
     }
 
     func publish(
@@ -70,12 +82,6 @@ final class AppStorePublishingService {
         }
         guard let bundleIdentifier = project.bundleIdentifier, !bundleIdentifier.isEmpty else {
             throw AppStorePublishingError.missingBundleIdentifier
-        }
-        guard let version = project.marketingVersion, !version.isEmpty else {
-            throw AppStorePublishingError.missingVersion
-        }
-        guard let buildNumber = project.buildNumber, !buildNumber.isEmpty else {
-            throw AppStorePublishingError.missingBuildNumber
         }
         guard fileManager.fileExists(atPath: project.containerPath) else {
             throw AppStorePublishingError.missingProjectContainer
@@ -104,6 +110,27 @@ final class AppStorePublishingService {
                     subscriptionCatalog.sourceFiles.joined(separator: ", ")
                 )))
             }
+        }
+
+        if configuration.submitForReview {
+            let publicationURLs = Self.publicationURLs(configuration: configuration)
+            eventHandler(.output(L10n.format(
+                "Validating %d public App Store URL(s) before building…\n",
+                publicationURLs.count
+            )))
+            try await publicationURLValidator.validate(publicationURLs)
+            eventHandler(.output(L10n.text("All configured public App Store URLs are reachable.\n")))
+        }
+
+        let reviewAttachments = reviewAssetService.discover(
+            project: project,
+            configuredPaths: configuration.reviewAttachmentPaths
+        )
+        if !reviewAttachments.isEmpty {
+            eventHandler(.output(L10n.format(
+                "Prepared %d App Review attachment(s) from the project.\n",
+                reviewAttachments.count
+            )))
         }
 
         eventHandler(.phase(.generatingMetadata))
@@ -194,11 +221,21 @@ final class AppStorePublishingService {
         }
 
         eventHandler(.phase(.archiving))
-        let ipaURL = try await archiveAndExport(
+        let artifact = try await archiveAndExport(
             project: project,
+            expectedBundleIdentifier: bundleIdentifier,
             temporaryDirectory: temporaryDirectory,
             eventHandler: eventHandler
         )
+        eventHandler(.output(L10n.format(
+            "Archive contains %@ %@ (%@).\n",
+            artifact.bundleIdentifier,
+            artifact.version,
+            artifact.buildNumber
+        )))
+        if artifact.version != project.marketingVersion || artifact.buildNumber != project.buildNumber {
+            eventHandler(.output(L10n.text("The Xcode scheme changed the version during archive; continuing with the archived version.\n")))
+        }
 
         let appStoreConnect = try AppStoreConnectService(
             issuerID: configuration.appStoreConnectIssuerID,
@@ -210,7 +247,7 @@ final class AppStorePublishingService {
         eventHandler(.output(L10n.text("Finding the application and editable version in App Store Connect…\n")))
         let publication = try await appStoreConnect.preparePublication(
             bundleIdentifier: bundleIdentifier,
-            version: version,
+            version: artifact.version,
             locale: configuration.locale,
             metadata: metadata,
             localizedMetadata: localizedMetadata,
@@ -258,7 +295,7 @@ final class AppStorePublishingService {
 
         eventHandler(.phase(.uploadingBuild))
         try await uploadBuild(
-            ipaURL: ipaURL,
+            ipaURL: artifact.ipaURL,
             configuration: configuration,
             temporaryDirectory: temporaryDirectory,
             eventHandler: eventHandler
@@ -267,11 +304,27 @@ final class AppStorePublishingService {
         eventHandler(.phase(.waitingForBuild))
         let buildID = try await appStoreConnect.waitForBuild(
             appID: publication.appID,
-            buildNumber: buildNumber,
+            buildNumber: artifact.buildNumber,
             onOutput: { eventHandler(.output($0)) }
         )
         try await appStoreConnect.attachBuild(buildID, toVersion: publication.versionID)
         eventHandler(.output(L10n.text("The processed build is attached to the App Store version.\n")))
+
+        eventHandler(.phase(.configuringTestFlight))
+        try await appStoreConnect.assignBuildToInternalTestFlight(
+            appID: publication.appID,
+            buildID: buildID,
+            onOutput: { eventHandler(.output($0)) }
+        )
+
+        if configuration.submitForReview, !reviewAttachments.isEmpty {
+            eventHandler(.phase(.uploadingReviewAssets))
+            try await appStoreConnect.uploadReviewAttachments(
+                reviewAttachments,
+                versionID: publication.versionID,
+                onOutput: { eventHandler(.output($0)) }
+            )
+        }
 
         if configuration.submitForReview {
             eventHandler(.phase(.submitting))
@@ -284,10 +337,14 @@ final class AppStorePublishingService {
         }
 
         return PublishingResult(
-            version: version,
-            buildNumber: buildNumber,
+            version: artifact.version,
+            buildNumber: artifact.buildNumber,
             submittedForReview: configuration.submitForReview
         )
+    }
+
+    static func publicationURLs(configuration: PublishingConfiguration) -> [AppStorePublicationURL] {
+        AppStorePublicationURLValidator.publicationURLs(configuration: configuration)
     }
 
     static func screenshotDisplayType(
@@ -649,9 +706,10 @@ final class AppStorePublishingService {
 
     private func archiveAndExport(
         project: ManagedProject,
+        expectedBundleIdentifier: String,
         temporaryDirectory: URL,
         eventHandler: @escaping EventHandler
-    ) async throws -> URL {
+    ) async throws -> AppStoreBuildArtifact {
         let archiveURL = temporaryDirectory.appendingPathComponent("\(project.scheme).xcarchive")
         let exportURL = temporaryDirectory.appendingPathComponent("Export", isDirectory: true)
         let exportOptionsURL = temporaryDirectory.appendingPathComponent("ExportOptions.plist")
@@ -676,6 +734,12 @@ final class AppStorePublishingService {
             arguments: archiveArguments,
             workingDirectory: project.folderURL,
             onOutput: { eventHandler(.output($0)) }
+        )
+
+        let archiveMetadata = try Self.archiveMetadata(
+            at: archiveURL,
+            expectedBundleIdentifier: expectedBundleIdentifier,
+            fileManager: fileManager
         )
 
         var exportOptions: [String: Any] = [
@@ -712,7 +776,54 @@ final class AppStorePublishingService {
         ).first(where: { $0.pathExtension.lowercased() == "ipa" }) else {
             throw AppStorePublishingError.noIPA
         }
-        return ipaURL
+        return AppStoreBuildArtifact(
+            ipaURL: ipaURL,
+            archiveURL: archiveURL,
+            bundleIdentifier: archiveMetadata.bundleIdentifier,
+            version: archiveMetadata.version,
+            buildNumber: archiveMetadata.buildNumber
+        )
+    }
+
+    static func archiveMetadata(
+        at archiveURL: URL,
+        expectedBundleIdentifier: String,
+        fileManager: FileManager = .default
+    ) throws -> (bundleIdentifier: String, version: String, buildNumber: String) {
+        let applicationsURL = archiveURL
+            .appendingPathComponent("Products", isDirectory: true)
+            .appendingPathComponent("Applications", isDirectory: true)
+        let applications = (try? fileManager.contentsOfDirectory(
+            at: applicationsURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        let metadata = applications.compactMap { application -> (String, String, String)? in
+            guard application.pathExtension.lowercased() == "app",
+                  let data = try? Data(contentsOf: application.appendingPathComponent("Info.plist")),
+                  let values = try? PropertyListSerialization.propertyList(
+                    from: data,
+                    options: [],
+                    format: nil
+                  ) as? [String: Any],
+                  let bundleIdentifier = values["CFBundleIdentifier"] as? String,
+                  let version = values["CFBundleShortVersionString"] as? String,
+                  let buildNumber = values["CFBundleVersion"] as? String,
+                  !bundleIdentifier.isEmpty,
+                  !version.isEmpty,
+                  !buildNumber.isEmpty else { return nil }
+            return (bundleIdentifier, version, buildNumber)
+        }
+        if let match = metadata.first(where: { $0.0 == expectedBundleIdentifier }) {
+            return match
+        }
+        if let first = metadata.first {
+            throw AppStorePublishingError.archiveBundleIdentifierMismatch(
+                expectedBundleIdentifier,
+                first.0
+            )
+        }
+        throw AppStorePublishingError.missingArchiveApplication
     }
 
     private func uploadBuild(

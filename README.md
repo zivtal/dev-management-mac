@@ -56,6 +56,11 @@ configurable number of days.
 - A notification after every successful installation, including the app,
   device, model, connection type, and discovered app icon.
 - Launch at login, enabled by default on first run.
+- One-click iOS publishing that prepares metadata and screenshots, archives the
+  authoritative version, uploads it to App Store Connect, enables internal
+  TestFlight access, uploads project-owned review attachments, and optionally
+  submits the release for App Review. See
+  [One-click App Store publishing](Docs/AppStorePublishing.md).
 
 ## System requirements
 
