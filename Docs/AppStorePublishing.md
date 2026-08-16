@@ -280,7 +280,8 @@ for distribution and reports the selected
 subscription as approved; the same checks are repeated by the service immediately
 before a production request. New free offers include a price relationship for
 every territory currently enabled for the subscription, as required by App Store
-Connect.
+Connect. The inline territory-price resources use App Store Connect local IDs
+prefixed with `$`, and the offer's price relationships reference those same IDs.
 
 Apple still requires the initial App Store Connect app record, signed legal
 agreements, banking and tax information for paid content, App Privacy answers,

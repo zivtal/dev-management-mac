@@ -367,10 +367,17 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(offerAttributes["duration"] as? String, "ONE_MONTH")
         XCTAssertEqual(offerAttributes["customerEligibilities"] as? [String], ["EXPIRED", "NEW"])
         XCTAssertEqual(priceLinkages, [
-            ["type": "subscriptionOfferCodePrices", "id": "offer-price-ISR"],
-            ["type": "subscriptionOfferCodePrices", "id": "offer-price-USA"]
+            ["type": "subscriptionOfferCodePrices", "id": "$offer-price-ISR"],
+            ["type": "subscriptionOfferCodePrices", "id": "$offer-price-USA"]
         ])
         XCTAssertEqual(includedPrices.count, 2)
+        XCTAssertEqual(
+            includedPrices.compactMap { $0["id"] as? String },
+            ["$offer-price-ISR", "$offer-price-USA"]
+        )
+        XCTAssertTrue(includedPrices.allSatisfy {
+            ($0["id"] as? String)?.hasPrefix("$") == true
+        })
         let firstIncludedRelationships = try XCTUnwrap(
             includedPrices.first?["relationships"] as? [String: Any]
         )
