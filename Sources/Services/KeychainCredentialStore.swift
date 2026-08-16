@@ -25,20 +25,24 @@ enum KeychainCredentialError: LocalizedError {
 
 final class KeychainCredentialStore {
     private let service: String
+    private var stringCache: [String: String] = [:]
 
     init(service: String = "com.zivtal.DevManagement.Publishing") {
         self.service = service
     }
 
     func contains(_ credential: PublishingCredential) -> Bool {
-        (try? data(for: credential)) != nil
+        contains(account: credential.rawValue)
     }
 
     func string(for credential: PublishingCredential) throws -> String? {
-        guard let data = try data(for: credential) else { return nil }
+        let account = credential.rawValue
+        if let cached = stringCache[account] { return cached }
+        guard let data = try data(account: account) else { return nil }
         guard let value = String(data: data, encoding: .utf8) else {
             throw KeychainCredentialError.invalidText
         }
+        stringCache[account] = value
         return value
     }
 
@@ -48,17 +52,73 @@ final class KeychainCredentialStore {
             throw KeychainCredentialError.invalidText
         }
         try set(data, for: credential)
+        stringCache[credential.rawValue] = trimmed
     }
 
     func remove(_ credential: PublishingCredential) throws {
-        let status = SecItemDelete(baseQuery(for: credential) as CFDictionary)
+        try remove(account: credential.rawValue)
+    }
+
+    func containsAppStoreConnectPrivateKey(profileID: UUID?) -> Bool {
+        contains(account: Self.appStoreConnectPrivateKeyAccount(profileID: profileID))
+    }
+
+    func appStoreConnectPrivateKey(profileID: UUID?) throws -> String? {
+        let account = Self.appStoreConnectPrivateKeyAccount(profileID: profileID)
+        if let cached = stringCache[account] { return cached }
+        guard let data = try data(account: account) else {
+            return nil
+        }
+        guard let value = String(data: data, encoding: .utf8) else {
+            throw KeychainCredentialError.invalidText
+        }
+        stringCache[account] = value
+        return value
+    }
+
+    func setAppStoreConnectPrivateKey(_ value: String, profileID: UUID?) throws {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else {
+            throw KeychainCredentialError.invalidText
+        }
+        let account = Self.appStoreConnectPrivateKeyAccount(profileID: profileID)
+        try set(data, account: account)
+        stringCache[account] = trimmed
+    }
+
+    func removeAppStoreConnectPrivateKey(profileID: UUID?) throws {
+        try remove(account: Self.appStoreConnectPrivateKeyAccount(profileID: profileID))
+    }
+
+    static func existenceQuery(service: String, account: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+    }
+
+    private func contains(account: String) -> Bool {
+        let query = Self.existenceQuery(service: service, account: account)
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
+    }
+
+    private func remove(account: String) throws {
+        let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainCredentialError.unexpectedStatus(status)
         }
+        stringCache[account] = nil
     }
 
     private func data(for credential: PublishingCredential) throws -> Data? {
-        var query = baseQuery(for: credential)
+        try data(account: credential.rawValue)
+    }
+
+    private func data(account: String) throws -> Data? {
+        var query = baseQuery(account: account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
@@ -71,7 +131,11 @@ final class KeychainCredentialStore {
     }
 
     private func set(_ data: Data, for credential: PublishingCredential) throws {
-        let query = baseQuery(for: credential)
+        try set(data, account: credential.rawValue)
+    }
+
+    private func set(_ data: Data, account: String) throws {
+        let query = baseQuery(account: account)
         let updateStatus = SecItemUpdate(
             query as CFDictionary,
             [kSecValueData as String: data] as CFDictionary
@@ -89,11 +153,16 @@ final class KeychainCredentialStore {
         }
     }
 
-    private func baseQuery(for credential: PublishingCredential) -> [String: Any] {
+    private func baseQuery(account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: credential.rawValue
+            kSecAttrAccount as String: account
         ]
+    }
+
+    static func appStoreConnectPrivateKeyAccount(profileID: UUID?) -> String {
+        guard let profileID else { return PublishingCredential.appStoreConnectPrivateKey.rawValue }
+        return "app-store-connect-private-key-\(profileID.uuidString.lowercased())"
     }
 }

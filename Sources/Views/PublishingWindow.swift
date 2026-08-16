@@ -402,6 +402,16 @@ private struct PublishingWindowView: View {
                 }
             }
             .disabled(locksProjectSelection)
+            Picker(
+                "App Store Connect API",
+                selection: appStoreConnectCredentialProfileBinding(for: project)
+            ) {
+                Text("Default API").tag(Optional<UUID>.none)
+                ForEach(model.preferences.appStoreConnectCredentialProfiles ?? []) { profile in
+                    Text(profile.name.nilIfEmpty ?? L10n.text("Unnamed API"))
+                        .tag(Optional(profile.id))
+                }
+            }
             LabeledContent("Bundle identifier", value: project.bundleIdentifier ?? L10n.text("Unknown"))
             LabeledContent("Version", value: project.marketingVersion ?? L10n.text("Unknown"))
             LabeledContent("Build", value: project.buildNumber ?? L10n.text("Unknown"))
@@ -422,6 +432,18 @@ private struct PublishingWindowView: View {
                 Label("Generate Settings with OpenAI…", systemImage: "sparkles")
             }
         }
+    }
+
+    private func appStoreConnectCredentialProfileBinding(
+        for project: ManagedProject
+    ) -> Binding<UUID?> {
+        Binding(
+            get: { project.appStoreConnectCredentialProfileID },
+            set: { profileID in
+                model.setAppStoreConnectCredentialProfile(profileID, for: project.id)
+                configurationRevision += 1
+            }
+        )
     }
 
     private var actionPicker: some View {
@@ -1668,15 +1690,14 @@ private struct PublishingWindowView: View {
                 state: .blocked
             )
         case .loaded:
-            let hasIdentifiers = model.preferences.appStoreConnectIssuerID?.nilIfEmpty != nil
-                && model.preferences.appStoreConnectKeyID?.nilIfEmpty != nil
+            let isComplete = selectedProject.map(model.appStoreConnectCredentialIsComplete) ?? false
             return PublishingReadinessItem(
                 id: "account",
                 title: L10n.text("App Store Connect is ready"),
-                detail: hasIdentifiers && model.hasAppStoreConnectPrivateKey
+                detail: isComplete
                     ? L10n.text("The API key works and the current app record was loaded.")
                     : L10n.text("Complete the API key configuration before publishing."),
-                state: hasIdentifiers && model.hasAppStoreConnectPrivateKey ? .ready : .blocked
+                state: isComplete ? .ready : .blocked
             )
         }
     }

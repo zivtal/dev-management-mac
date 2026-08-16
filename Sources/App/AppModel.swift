@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isGeneratingOfferCodes = false
     @Published private(set) var hasOpenAIAPIKey = false
     @Published private(set) var hasAppStoreConnectPrivateKey = false
+    @Published private(set) var appStoreConnectPrivateKeyProfileIDs: Set<UUID> = []
     @Published private(set) var hasAppReviewDemoAccount = false
     @Published private(set) var isCancellingInstallation = false
     @Published private(set) var isRefreshingDevices = false
@@ -63,6 +64,12 @@ final class AppModel: ObservableObject {
         let identifier: String
         let name: String
         let device: ConnectedDevice?
+    }
+
+    private struct AppStoreConnectCredentialMaterial {
+        let issuerID: String
+        let keyID: String
+        let privateKey: String
     }
 
     private var localMacInstallationTarget: ProjectInstallationTarget {
@@ -145,7 +152,12 @@ final class AppModel: ObservableObject {
         activity = savedState.activity
         didApplyLaunchAtLoginDefault = true
         hasOpenAIAPIKey = credentialStore.contains(.openAIAPIKey)
-        hasAppStoreConnectPrivateKey = credentialStore.contains(.appStoreConnectPrivateKey)
+        hasAppStoreConnectPrivateKey = credentialStore.containsAppStoreConnectPrivateKey(profileID: nil)
+        appStoreConnectPrivateKeyProfileIDs = Set(
+            (loadedPreferences.appStoreConnectCredentialProfiles ?? []).compactMap { profile in
+                credentialStore.containsAppStoreConnectPrivateKey(profileID: profile.id) ? profile.id : nil
+            }
+        )
         hasAppReviewDemoAccount = credentialStore.contains(.appReviewDemoAccountName)
             && credentialStore.contains(.appReviewDemoAccountPassword)
         isLoading = false
@@ -423,25 +435,99 @@ final class AppModel: ObservableObject {
     }
 
     func saveAppStoreConnectPrivateKey(_ privateKey: String) {
+        saveAppStoreConnectPrivateKey(privateKey, profileID: nil)
+    }
+
+    func saveAppStoreConnectPrivateKey(_ privateKey: String, profileID: UUID?) {
         guard privateKey.contains("BEGIN PRIVATE KEY") else {
             presentedError = L10n.text("The selected file is not an App Store Connect .p8 private key.")
             return
         }
         do {
-            try credentialStore.set(privateKey, for: .appStoreConnectPrivateKey)
-            hasAppStoreConnectPrivateKey = true
+            try credentialStore.setAppStoreConnectPrivateKey(privateKey, profileID: profileID)
+            if let profileID {
+                appStoreConnectPrivateKeyProfileIDs.insert(profileID)
+            } else {
+                hasAppStoreConnectPrivateKey = true
+            }
         } catch {
             presentedError = error.localizedDescription
         }
     }
 
     func removeAppStoreConnectPrivateKey() {
+        removeAppStoreConnectPrivateKey(profileID: nil)
+    }
+
+    func removeAppStoreConnectPrivateKey(profileID: UUID?) {
         do {
-            try credentialStore.remove(.appStoreConnectPrivateKey)
-            hasAppStoreConnectPrivateKey = false
+            try credentialStore.removeAppStoreConnectPrivateKey(profileID: profileID)
+            if let profileID {
+                appStoreConnectPrivateKeyProfileIDs.remove(profileID)
+            } else {
+                hasAppStoreConnectPrivateKey = false
+            }
         } catch {
             presentedError = error.localizedDescription
         }
+    }
+
+    func hasAppStoreConnectPrivateKey(profileID: UUID?) -> Bool {
+        guard let profileID else { return hasAppStoreConnectPrivateKey }
+        return appStoreConnectPrivateKeyProfileIDs.contains(profileID)
+    }
+
+    @discardableResult
+    func addAppStoreConnectCredentialProfile() -> UUID {
+        let existingProfiles = preferences.appStoreConnectCredentialProfiles ?? []
+        let profile = AppStoreConnectCredentialProfile(
+            name: L10n.format("App Store Connect API %d", existingProfiles.count + 2)
+        )
+        preferences.appStoreConnectCredentialProfiles = existingProfiles + [profile]
+        return profile.id
+    }
+
+    func removeAppStoreConnectCredentialProfile(_ profileID: UUID) {
+        removeAppStoreConnectPrivateKey(profileID: profileID)
+        preferences.appStoreConnectCredentialProfiles?.removeAll { $0.id == profileID }
+        for index in projects.indices where projects[index].appStoreConnectCredentialProfileID == profileID {
+            projects[index].appStoreConnectCredentialProfileID = nil
+        }
+    }
+
+    func setAppStoreConnectCredentialProfile(_ profileID: UUID?, for projectID: UUID) {
+        updateProject(id: projectID) { project in
+            project.appStoreConnectCredentialProfileID = profileID
+        }
+    }
+
+    func appStoreConnectCredential(for project: ManagedProject) -> AppStoreConnectResolvedCredential? {
+        if let profileID = project.appStoreConnectCredentialProfileID {
+            guard let profile = preferences.appStoreConnectCredentialProfiles?.first(where: {
+                $0.id == profileID
+            }) else {
+                return nil
+            }
+            return AppStoreConnectResolvedCredential(
+                profileID: profile.id,
+                name: profile.name.nilIfEmpty ?? L10n.text("Unnamed API"),
+                issuerID: profile.issuerID,
+                keyID: profile.keyID
+            )
+        }
+        return AppStoreConnectResolvedCredential(
+            profileID: nil,
+            name: L10n.text("Default API"),
+            issuerID: preferences.appStoreConnectIssuerID ?? "",
+            keyID: preferences.appStoreConnectKeyID ?? ""
+        )
+    }
+
+    func appStoreConnectCredentialIsComplete(for project: ManagedProject) -> Bool {
+        guard let credential = appStoreConnectCredential(for: project) else { return false }
+        return credential.issuerID.nilIfEmpty != nil
+            && credential.keyID.nilIfEmpty != nil
+            && hasAppStoreConnectPrivateKey(profileID: credential.profileID)
     }
 
     func saveAppReviewDemoAccount(name: String, password: String) {
@@ -493,12 +579,11 @@ final class AppModel: ObservableObject {
             presentedError = error.localizedDescription
             return
         }
-        let issuerID = preferences.appStoreConnectIssuerID?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let keyID = preferences.appStoreConnectKeyID?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !issuerID.isEmpty, !keyID.isEmpty else {
-            presentedError = L10n.text("Enter the App Store Connect issuer ID and key ID in Publishing settings.")
+        let appStoreConnectCredential: AppStoreConnectCredentialMaterial
+        do {
+            appStoreConnectCredential = try appStoreConnectCredentialMaterial(for: project)
+        } catch {
+            presentedError = error.localizedDescription
             return
         }
         let preferredLocale = perAppConfiguration?.locale?.nilIfEmpty
@@ -547,12 +632,6 @@ final class AppModel: ObservableObject {
             presentedError = L10n.text("Save an OpenAI API key in Publishing settings or enter manual metadata in the per-app configuration.")
             return
         }
-        guard let privateKey = try? credentialStore.string(for: .appStoreConnectPrivateKey),
-              !privateKey.isEmpty else {
-            presentedError = L10n.text("Import an App Store Connect .p8 private key in Publishing settings.")
-            return
-        }
-
         let submitForReview = submissionOverride
             ?? perAppConfiguration?.submitForReview
             ?? preferences.appStoreSubmitForReview
@@ -599,9 +678,9 @@ final class AppModel: ObservableObject {
             openAIAPIKey: openAIAPIKey,
             openAIModel: preferences.openAIModel?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
                 ?? "gpt-5.6-luna",
-            appStoreConnectIssuerID: issuerID,
-            appStoreConnectKeyID: keyID,
-            appStoreConnectPrivateKey: privateKey,
+            appStoreConnectIssuerID: appStoreConnectCredential.issuerID,
+            appStoreConnectKeyID: appStoreConnectCredential.keyID,
+            appStoreConnectPrivateKey: appStoreConnectCredential.privateKey,
             locale: preferredLocale,
             copyright: copyright,
             supportURL: supportURL,
@@ -725,25 +804,11 @@ final class AppModel: ObservableObject {
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
             throw AppStorePublishingError.missingBundleIdentifier
         }
-        let issuerID = preferences.appStoreConnectIssuerID?.nilIfEmpty ?? ""
-        let keyID = preferences.appStoreConnectKeyID?.nilIfEmpty ?? ""
-        guard !issuerID.isEmpty, !keyID.isEmpty else {
-            throw AppStoreConnectError.requestFailed(
-                0,
-                L10n.text("Enter the App Store Connect issuer ID and key ID in Publishing settings.")
-            )
-        }
-        guard let privateKey = try credentialStore.string(for: .appStoreConnectPrivateKey),
-              !privateKey.isEmpty else {
-            throw AppStoreConnectError.requestFailed(
-                0,
-                L10n.text("Import an App Store Connect .p8 private key in Publishing settings.")
-            )
-        }
+        let credential = try appStoreConnectCredentialMaterial(for: project)
         let service = try AppStoreConnectService(
-            issuerID: issuerID,
-            keyID: keyID,
-            privateKeyPEM: privateKey
+            issuerID: credential.issuerID,
+            keyID: credential.keyID,
+            privateKeyPEM: credential.privateKey
         )
         return try await service.fetchConfigurationSnapshot(
             bundleIdentifier: bundleIdentifier,
@@ -842,21 +907,7 @@ final class AppModel: ObservableObject {
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
             throw AppStorePublishingError.missingBundleIdentifier
         }
-        let issuerID = preferences.appStoreConnectIssuerID?.nilIfEmpty ?? ""
-        let keyID = preferences.appStoreConnectKeyID?.nilIfEmpty ?? ""
-        guard !issuerID.isEmpty, !keyID.isEmpty else {
-            throw AppStoreConnectError.requestFailed(
-                0,
-                L10n.text("Enter the App Store Connect issuer ID and key ID in Publishing settings.")
-            )
-        }
-        guard let privateKey = try credentialStore.string(for: .appStoreConnectPrivateKey),
-              !privateKey.isEmpty else {
-            throw AppStoreConnectError.requestFailed(
-                0,
-                L10n.text("Import an App Store Connect .p8 private key in Publishing settings.")
-            )
-        }
+        let credential = try appStoreConnectCredentialMaterial(for: project)
 
         isGeneratingOfferCodes = true
         defer { isGeneratingOfferCodes = false }
@@ -868,9 +919,9 @@ final class AppModel: ObservableObject {
         )
         do {
             let service = try AppStoreConnectService(
-                issuerID: issuerID,
-                keyID: keyID,
-                privateKeyPEM: privateKey
+                issuerID: credential.issuerID,
+                keyID: credential.keyID,
+                privateKeyPEM: credential.privateKey
             )
             let result = try await service.generateSubscriptionOfferCodes(
                 bundleIdentifier: bundleIdentifier,
@@ -894,6 +945,36 @@ final class AppModel: ObservableObject {
             )
             throw error
         }
+    }
+
+    private func appStoreConnectCredentialMaterial(
+        for project: ManagedProject
+    ) throws -> AppStoreConnectCredentialMaterial {
+        guard let credential = appStoreConnectCredential(for: project) else {
+            throw AppStoreConnectError.requestFailed(
+                0,
+                L10n.text("The selected App Store Connect API profile no longer exists. Choose another profile for this app.")
+            )
+        }
+        guard let issuerID = credential.issuerID.nilIfEmpty,
+              let keyID = credential.keyID.nilIfEmpty else {
+            throw AppStoreConnectError.requestFailed(
+                0,
+                L10n.format("Complete Issuer ID and Key ID for %@ in Publishing settings.", credential.name)
+            )
+        }
+        guard let privateKey = try credentialStore.appStoreConnectPrivateKey(profileID: credential.profileID),
+              !privateKey.isEmpty else {
+            throw AppStoreConnectError.requestFailed(
+                0,
+                L10n.format("Import the .p8 private key for %@ in Publishing settings.", credential.name)
+            )
+        }
+        return AppStoreConnectCredentialMaterial(
+            issuerID: issuerID,
+            keyID: keyID,
+            privateKey: privateKey
+        )
     }
 
     private func handlePublishingEvent(_ event: PublishingEvent, logID: UUID) {

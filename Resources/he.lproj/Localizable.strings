@@ -817,3 +817,17 @@
 "publication.privacyPolicyURL must be a valid HTTP or HTTPS URL." = "publication.privacyPolicyURL חייבת להיות כתובת HTTP או HTTPS תקינה.";
 "Enter a valid privacy policy URL in App Settings." = "יש להזין כתובת תקינה למדיניות הפרטיות בהגדרות היישום.";
 "Enter a valid Terms of Use URL in App Settings for subscription apps." = "יש להזין כתובת תקינה לתנאי השימוש בהגדרות היישום עבור יישומים עם מינויים.";
+"Default App Store Connect API" = "ברירת המחדל של App Store Connect API";
+"Apps use this API unless a different profile is selected in the Publish window. The private key is stored only in your macOS Keychain." = "יישומים משתמשים ב־API הזה אלא אם נבחר פרופיל אחר בחלון הפרסום. המפתח הפרטי נשמר רק בצרור המפתחות של macOS.";
+"Additional App Store Connect APIs" = "ממשקי App Store Connect API נוספים";
+"Add another API profile when an app belongs to a different App Store Connect team or should use different credentials." = "יש להוסיף פרופיל API נוסף כאשר יישום שייך לצוות אחר ב־App Store Connect או צריך להשתמש בפרטי גישה אחרים.";
+"Profile name" = "שם הפרופיל";
+"Remove Key" = "הסרת מפתח";
+"Remove Profile" = "הסרת פרופיל";
+"Unnamed API" = "API ללא שם";
+"Add App Store Connect API" = "הוספת App Store Connect API";
+"Default API" = "API ברירת מחדל";
+"App Store Connect API %d" = "App Store Connect API %d";
+"The selected App Store Connect API profile no longer exists. Choose another profile for this app." = "פרופיל App Store Connect API שנבחר אינו קיים עוד. יש לבחור פרופיל אחר עבור יישום זה.";
+"Complete Issuer ID and Key ID for %@ in Publishing settings." = "יש להשלים את מזהה המנפיק ואת מזהה המפתח עבור %@ בהגדרות הפרסום.";
+"Import the .p8 private key for %@ in Publishing settings." = "יש לייבא את המפתח הפרטי מסוג ‎.p8 עבור %@ בהגדרות הפרסום.";

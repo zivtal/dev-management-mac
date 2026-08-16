@@ -57,6 +57,22 @@ this file without leaving Development Management. Account-wide defaults live in
 Publishing Settings; values in this file override them for this app. API keys,
 private keys, and demo-account passwords are never written to the file.
 
+Publishing Settings supports multiple named App Store Connect API profiles. Each
+managed app selects either the default API or one additional profile in its
+Publish window. Issuer and key identifiers are stored in app preferences, while
+each profile's private key is kept under a distinct macOS Keychain account.
+Removing a profile returns apps that selected it to the default API.
+
+Keychain status checks inspect item attributes without decrypting the stored
+secret, so opening the app or Settings does not ask for credential access. The
+secret is read only when its publishing operation needs it and is cached in
+memory for the rest of that app session to avoid repeated prompts. macOS controls
+all Keychain authorization prompts; the app cannot select **Always Allow** for
+the user. Ad-hoc signed development builds can require authorization again after
+an update because their code identity changes. The repository's DMG deployment
+therefore preserves Xcode's configured Apple Development signing identity for
+the installed app instead of forcing an ad-hoc signature.
+
 To use hand-written App Store text instead of OpenAI, add all four metadata
 fields under `publication` (the editor's **Insert Manual Metadata Fields** button
 does this):

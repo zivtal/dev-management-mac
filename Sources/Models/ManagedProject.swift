@@ -66,6 +66,7 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
     var signingTeamID: String? = nil
     var projectSigningTeamID: String? = nil
     var applicationPlatform: ApplicationPlatform? = nil
+    var appStoreConnectCredentialProfileID: UUID? = nil
 
     var folderURL: URL { URL(fileURLWithPath: folderPath, isDirectory: true) }
     var containerURL: URL { URL(fileURLWithPath: containerPath) }

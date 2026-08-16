@@ -11,6 +11,7 @@ struct AppPreferences: Codable, Equatable {
     var openAIModel: String?
     var appStoreConnectIssuerID: String?
     var appStoreConnectKeyID: String?
+    var appStoreConnectCredentialProfiles: [AppStoreConnectCredentialProfile]?
     var appStoreLocale: String?
     var appStoreCopyright: String?
     var appStoreSupportURL: String?

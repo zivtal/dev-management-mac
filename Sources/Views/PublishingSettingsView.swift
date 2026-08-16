@@ -43,7 +43,7 @@ struct PublishingSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("App Store Connect API") {
+            Section("Default App Store Connect API") {
                 LabeledContent("Issuer ID") {
                     TextField("Issuer ID", text: optionalTextBinding(\.appStoreConnectIssuerID))
                         .labelsHidden()
@@ -66,12 +66,82 @@ struct PublishingSettingsView: View {
                         }
                     }
                     Button(model.hasAppStoreConnectPrivateKey ? "Replace Private Key…" : "Import Private Key…") {
-                        importPrivateKey()
+                        importPrivateKey(profileID: nil)
                     }
                 }
-                Text("Create a team App Store Connect API key with permission to manage apps, builds, metadata, screenshots, and submissions. The private key is stored only in your macOS Keychain.")
+                Text("Apps use this API unless a different profile is selected in the Publish window. The private key is stored only in your macOS Keychain.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Additional App Store Connect APIs") {
+                if credentialProfiles.isEmpty {
+                    Text("Add another API profile when an app belongs to a different App Store Connect team or should use different credentials.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(credentialProfiles) { profile in
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 10) {
+                            LabeledContent("Profile name") {
+                                TextField(
+                                    "Profile name",
+                                    text: profileTextBinding(profile.id, keyPath: \.name)
+                                )
+                                .labelsHidden()
+                                .frame(width: 260)
+                            }
+                            LabeledContent("Issuer ID") {
+                                TextField(
+                                    "Issuer ID",
+                                    text: profileTextBinding(profile.id, keyPath: \.issuerID)
+                                )
+                                .labelsHidden()
+                                .frame(width: 340)
+                            }
+                            LabeledContent("Key ID") {
+                                TextField(
+                                    "Key ID",
+                                    text: profileTextBinding(profile.id, keyPath: \.keyID)
+                                )
+                                .labelsHidden()
+                                .frame(width: 220)
+                            }
+                            HStack {
+                                credentialStatus(
+                                    isStored: model.hasAppStoreConnectPrivateKey(profileID: profile.id),
+                                    storedText: ".p8 private key stored in Keychain"
+                                )
+                                Spacer()
+                                if model.hasAppStoreConnectPrivateKey(profileID: profile.id) {
+                                    Button("Remove Key", role: .destructive) {
+                                        model.removeAppStoreConnectPrivateKey(profileID: profile.id)
+                                    }
+                                }
+                                Button(
+                                    model.hasAppStoreConnectPrivateKey(profileID: profile.id)
+                                        ? "Replace Private Key…"
+                                        : "Import Private Key…"
+                                ) {
+                                    importPrivateKey(profileID: profile.id)
+                                }
+                                Button("Remove Profile", role: .destructive) {
+                                    model.removeAppStoreConnectCredentialProfile(profile.id)
+                                }
+                            }
+                        }
+                    } label: {
+                        Label(
+                            profile.name.nilIfEmpty ?? L10n.text("Unnamed API"),
+                            systemImage: "key.horizontal"
+                        )
+                    }
+                }
+                Button {
+                    model.addAppStoreConnectCredentialProfile()
+                } label: {
+                    Label("Add App Store Connect API", systemImage: "plus")
+                }
             }
 
             Section("Publication") {
@@ -244,7 +314,28 @@ struct PublishingSettingsView: View {
         )
     }
 
-    private func importPrivateKey() {
+    private var credentialProfiles: [AppStoreConnectCredentialProfile] {
+        model.preferences.appStoreConnectCredentialProfiles ?? []
+    }
+
+    private func profileTextBinding(
+        _ profileID: UUID,
+        keyPath: WritableKeyPath<AppStoreConnectCredentialProfile, String>
+    ) -> Binding<String> {
+        Binding(
+            get: {
+                credentialProfiles.first(where: { $0.id == profileID })?[keyPath: keyPath] ?? ""
+            },
+            set: { value in
+                var profiles = credentialProfiles
+                guard let index = profiles.firstIndex(where: { $0.id == profileID }) else { return }
+                profiles[index][keyPath: keyPath] = value
+                model.preferences.appStoreConnectCredentialProfiles = profiles
+            }
+        )
+    }
+
+    private func importPrivateKey(profileID: UUID?) {
         let panel = NSOpenPanel()
         panel.title = L10n.text("Choose an App Store Connect private key")
         panel.prompt = L10n.text("Import")
@@ -255,7 +346,7 @@ struct PublishingSettingsView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let privateKey = try String(contentsOf: url, encoding: .utf8)
-            model.saveAppStoreConnectPrivateKey(privateKey)
+            model.saveAppStoreConnectPrivateKey(privateKey, profileID: profileID)
         } catch {
             model.presentedError = error.localizedDescription
         }

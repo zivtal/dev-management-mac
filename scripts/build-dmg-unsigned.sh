@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds an ad-hoc signed DMG, replaces /Applications/Development Management.app,
+# Builds a development-signed app in an unsigned DMG, replaces the installed app,
 # stops the old process, and launches the newly installed version.
 set -euo pipefail
 
@@ -84,8 +84,6 @@ xcodebuild \
   -scheme "$SCHEME" \
   -configuration Release \
   -derivedDataPath "$DERIVED" \
-  CODE_SIGN_IDENTITY="-" \
-  CODE_SIGNING_REQUIRED=NO \
   clean build
 
 APP_PATH="$DERIVED/Build/Products/Release/${APP_NAME}.app"

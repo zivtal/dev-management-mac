@@ -817,3 +817,17 @@
 "publication.privacyPolicyURL must be a valid HTTP or HTTPS URL." = "publication.privacyPolicyURL must be a valid HTTP or HTTPS URL.";
 "Enter a valid privacy policy URL in App Settings." = "Enter a valid privacy policy URL in App Settings.";
 "Enter a valid Terms of Use URL in App Settings for subscription apps." = "Enter a valid Terms of Use URL in App Settings for subscription apps.";
+"Default App Store Connect API" = "Default App Store Connect API";
+"Apps use this API unless a different profile is selected in the Publish window. The private key is stored only in your macOS Keychain." = "Apps use this API unless a different profile is selected in the Publish window. The private key is stored only in your macOS Keychain.";
+"Additional App Store Connect APIs" = "Additional App Store Connect APIs";
+"Add another API profile when an app belongs to a different App Store Connect team or should use different credentials." = "Add another API profile when an app belongs to a different App Store Connect team or should use different credentials.";
+"Profile name" = "Profile name";
+"Remove Key" = "Remove Key";
+"Remove Profile" = "Remove Profile";
+"Unnamed API" = "Unnamed API";
+"Add App Store Connect API" = "Add App Store Connect API";
+"Default API" = "Default API";
+"App Store Connect API %d" = "App Store Connect API %d";
+"The selected App Store Connect API profile no longer exists. Choose another profile for this app." = "The selected App Store Connect API profile no longer exists. Choose another profile for this app.";
+"Complete Issuer ID and Key ID for %@ in Publishing settings." = "Complete Issuer ID and Key ID for %@ in Publishing settings.";
+"Import the .p8 private key for %@ in Publishing settings." = "Import the .p8 private key for %@ in Publishing settings.";
