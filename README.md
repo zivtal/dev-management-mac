@@ -63,8 +63,17 @@ configurable number of days.
   [One-click App Store publishing](Docs/AppStorePublishing.md).
 - A guided publishing experience with per-app publish actions, release-readiness
   checks, understandable progress stages, recoverable failure details, and a
-  clear completion summary. Subscription price cards, redeem-code management,
-  and inline required-field errors keep corrective work in the same flow.
+  clear completion summary. Subscription price cards, inline required-field
+  errors, and a dedicated redeem-code window keep corrective work focused.
+- Update-aware App Store releases that can replace an older version already in
+  review after the replacement archive succeeds, while blocking duplicate
+  version/build uploads.
+- A default App Store Connect API plus named additional credential profiles,
+  selected independently for each managed app and backed by separate Keychain
+  private keys.
+- Manual-only support, marketing, privacy-policy, privacy-choices, and Terms of
+  Use URLs. Required privacy and legal links are appended to localized store
+  descriptions without allowing AI-generated replacements.
 
 ## System requirements
 
@@ -101,9 +110,10 @@ The packaged artifact is `dist/DevManagement.dmg`.
 3. Launch Development Management.
 4. Find the stacked-apps icon in the menu bar.
 
-The repository produces an ad-hoc-signed, non-notarized DMG. On another Mac,
-the first launch may require right-clicking the application and selecting
-**Open**, or approving it in **System Settings → Privacy & Security**.
+The repository produces an unsigned, non-notarized DMG containing an app signed
+with the Apple Development identity configured in `project.yml` and Xcode. On
+another Mac, the first launch may require right-clicking the application and
+selecting **Open**, or approving it in **System Settings → Privacy & Security**.
 
 ## Getting started
 
@@ -132,19 +142,24 @@ The menu-bar popover is the app's primary status surface. It displays:
 - All paired available iPhone, iPad, and Apple Watch devices, with connection
   type.
 - Installation progress and the latest command-output line while work runs.
+- Determinate App Store publishing progress with **View** and cancel actions.
 - Every managed application with its icon, enabled state, version, next due
   date, and most recent installation.
+- A paper-plane action for publishing each eligible direct-build iOS app, plus
+  a ticket action that opens a focused Redeem Codes window for apps with
+  subscription products.
 - A per-application Play/Pause control that resumes or pauses future
   installations directly from the menu-bar popover.
 - Per-application **Install now** actions.
-- **Install All Now**, **Check now**, **Settings…**, and **Quit** actions.
+- **Install All Now**, **Check now**, **Publish…**, **Settings…**, and **Quit**
+  actions.
 
 When exactly one device is connected, the popover's last-install value is for
 that device. Otherwise, it shows the latest installation across devices.
 
 ### Settings
 
-Settings contains four tabs and is the only ordinary app window.
+Settings contains five tabs and is the only ordinary app window.
 
 #### General
 
@@ -178,6 +193,20 @@ Settings contains four tabs and is the only ordinary app window.
   points, while only the compatible-device rows scroll when their list exceeds
   the available space.
 
+#### Publishing
+
+- Store the OpenAI API key and choose the model used to draft editable localized
+  listing metadata and category suggestions. Public URLs, legal text, pricing,
+  review facts, and other deterministic declarations remain manual.
+- Configure a default App Store Connect API and any number of named additional
+  profiles for apps that belong to different teams or require different keys.
+- Store issuer IDs, key IDs, and profile names in app preferences while keeping
+  every `.p8` private key in its own macOS Keychain account.
+- Set account-wide publication defaults including locale, copyright, support
+  URL, review contact, submission behavior, and automatic release behavior.
+- Store optional App Review demo credentials only in Keychain.
+- Review and cancel the latest publication from its copyable technical log.
+
 #### Activity
 
 - Shows informational, success, warning, and error events newest first.
@@ -193,6 +222,43 @@ Settings contains four tabs and is the only ordinary app window.
 - Treats iPhone and iPad as supported installation targets.
 - Shows Apple Watch as a companion device, not an installation target.
 - Supports manual refresh.
+
+## App Store publishing
+
+Publishing is available for managed iOS applications that use **Direct Xcode
+build**. The paper-plane action on an application row opens Publish with that
+application selected and locked; the footer **Publish…** action leaves the
+selector available. Each app chooses the default App Store Connect API or one
+named additional profile in its Publish window. Removing a named profile moves
+apps that selected it back to the default API.
+
+Before building, the readiness view compares the local source version with App
+Store Connect and checks account credentials, store content, screenshots,
+subscriptions, and review details. An older local checkout and an already
+submitted identical version/build are blockers. When an older version is still
+in active review, the action becomes **Update**: after the replacement archive
+succeeds, Development Management cancels the old submission and its items,
+reuses the editable version record, uploads the replacement, and starts the
+review queue again when submission is enabled.
+
+Store listing drafts may be generated with OpenAI or supplied manually in
+`app-store-publishing.json`. Support and privacy-policy URLs are required;
+Terms of Use is also required for subscription apps. Marketing and
+privacy-choices URLs are optional. All public URLs remain manually entered, and
+the supplied Privacy Policy and Terms of Use links are appended to every
+localized description within Apple's 4,000-character limit.
+
+For subscription projects, the orange ticket action opens a dedicated Redeem
+Codes window without loading the release workspace. It shows existing production
+offers and creates either one-time batches of 500–25,000 codes or reusable custom
+codes with 1–25,000 redemptions. Production code creation remains disabled until
+App Store Connect reports a released app version and an approved subscription.
+Returned one-time CSV data is parsed in memory; only the redeemable values are
+shown for copying and no CSV is written to disk.
+
+The full archive, metadata, screenshot, TestFlight, review-attachment, and
+submission pipeline is documented in
+[One-click App Store publishing](Docs/AppStorePublishing.md).
 
 ### Project discovery
 
@@ -400,13 +466,19 @@ State is encoded as pretty-printed JSON with ISO-8601 dates at:
 
 Persisted data includes:
 
-- Preferences.
+- Installation and publishing preferences, including named App Store Connect
+  profile names and identifiers.
 - Managed-project paths, build choices, supported device families, paused
-  state, and per-project device-UDID exclusions.
+  state, per-project device-UDID exclusions, and the selected App Store Connect
+  credential profile.
 - Per-project, per-device successful installation records and installed
   versions.
 - The latest 100 activity entries and their command output.
 - Whether the first-run launch-at-login default has been applied.
+
+OpenAI and App Store Connect API keys and App Review demo credentials are stored
+separately in macOS Keychain and are never written to `state.json` or an app's
+`app-store-publishing.json`.
 
 The pending Install All queue, discovered device list, icon cache, and failed
 attempt cooldowns are runtime-only and are rebuilt or discarded after relaunch.
@@ -436,7 +508,14 @@ New user-visible text must be added to both:
   source folders and review their `install.sh` before using it.
 - Build and installation output may contain local paths or tool diagnostics and
   is stored in the local Activity history.
-- Distribution builds are ad-hoc signed and are not notarized.
+- Publishing metadata generation sends the managed app's name, version,
+  identifiers, and excerpts from its README or supported publishing manifest to
+  the configured OpenAI model. Source code and credentials are not uploaded.
+- Keychain status checks read item attributes without requesting secret data.
+  Private keys are read only when needed and cached in memory for the rest of
+  the app session.
+- The packaged app uses the Apple Development signing identity configured in
+  Xcode. The DMG itself is unsigned and is not notarized.
 
 ## Architecture
 
@@ -447,8 +526,10 @@ DevManagementApp
 ├── Settings
 │   ├── GeneralSettingsView
 │   ├── ProjectsSettingsView
+│   ├── PublishingSettingsView
 │   ├── ActivityView
 │   └── DevicesSettingsView
+├── PublishingWindow / RedeemCodesWindow
 └── AppModel
     ├── SettingsStore
     ├── ProjectDiscoveryService
@@ -458,6 +539,10 @@ DevManagementApp
     ├── USBConnectionMonitor
     ├── InstallationService
     │   └── ProcessRunner
+    ├── AppStorePublishingService
+    ├── AppStoreConnectService
+    ├── OpenAIStoreMetadataService
+    ├── KeychainCredentialStore
     ├── NotificationService
     └── LaunchAtLoginService
 ```
@@ -481,7 +566,7 @@ Key project settings:
 | `LSUIElement` | `true` |
 | App Sandbox | Disabled |
 | Hardened Runtime | Enabled |
-| Frameworks | IOKit, UserNotifications |
+| Frameworks | IOKit, Security, UserNotifications |
 
 ## Repository layout
 
@@ -557,6 +642,14 @@ Current unit coverage verifies:
 - Success-notification content.
 - iPhone app-icon preference over Watch icons.
 - Version lookup precedence for version `.xcconfig` files.
+- Publishing readiness, friendly five-stage progress, version/update selection,
+  active-review detection, and duplicate/draft handling.
+- App Store metadata generation limits, manual URL policy, localized privacy and
+  Terms link insertion, screenshots, StoreKit discovery, and offer-code payloads.
+- Offer-code production eligibility, CSV parsing, and subscription-price
+  validation.
+- Named App Store Connect profile persistence, separate Keychain accounts,
+  attribute-only existence checks, per-app selection, and legacy decoding.
 
 Manual release validation should also cover USB and Wi-Fi discovery, direct and
 script-based installation, Settings persistence, launch at login, notifications,
@@ -587,7 +680,8 @@ number in `project.yml`. Patch and minor components roll over after 9.
 `scripts/build-dmg-unsigned.sh` is the complete deployment step. It:
 
 1. Regenerates the Xcode project with XcodeGen.
-2. Performs a clean Release build with ad-hoc signing.
+2. Performs a clean Release build with the configured automatic Apple
+   Development signing identity.
 3. Creates `dist/DevManagement.dmg` with an `/Applications` shortcut.
 4. Verifies the DMG.
 5. Stops a running `Development Management` process.
@@ -659,4 +753,5 @@ launch around this script.
   starts; the pending queue is not restored after relaunch.
 - Failed-attempt cooldowns are not persisted across relaunches.
 - The Activity log retains only the latest 100 entries.
-- The DMG is ad-hoc signed and not notarized for public distribution.
+- The DMG is unsigned and not notarized for public distribution; its app keeps
+  the configured Apple Development signature.
