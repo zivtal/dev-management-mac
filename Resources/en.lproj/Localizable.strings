@@ -679,6 +679,7 @@
 "The %@ URL is not publicly reachable: %@" = "The %@ URL is not publicly reachable: %@";
 "%@ returned HTTP %d." = "%@ returned HTTP %d.";
 "Created an Internal Testing group with automatic build access.\n" = "Created an Internal Testing group with automatic build access.\n";
+"Internal TestFlight group %@ receives every build automatically.\n" = "Internal TestFlight group %@ receives every build automatically.\n";
 "Build available to the internal TestFlight group %@.\n" = "Build available to the internal TestFlight group %@.\n";
 "Preserving existing App Review attachment %@.\n" = "Preserving existing App Review attachment %@.\n";
 "Uploaded App Review attachment %@.\n" = "Uploaded App Review attachment %@.\n";

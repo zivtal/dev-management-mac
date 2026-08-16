@@ -1426,6 +1426,10 @@ final class AppStoreConnectService {
         }.first
     }
 
+    static func betaGroupUsesAutomaticBuildAccess(_ group: [String: Any]) -> Bool {
+        attributes(group)["hasAccessToAllBuilds"] as? Bool == true
+    }
+
     func attachBuild(_ buildID: String, toVersion versionID: String) async throws {
         _ = try await request(
             method: "PATCH",
@@ -1476,17 +1480,44 @@ final class AppStoreConnectService {
         for group in groups {
             guard let groupID = group["id"] as? String else { continue }
             let name = Self.attributes(group)["name"] as? String ?? "Internal Testing"
+            if Self.betaGroupUsesAutomaticBuildAccess(group) {
+                onOutput(L10n.format(
+                    "Internal TestFlight group %@ receives every build automatically.\n",
+                    name
+                ))
+                continue
+            }
+            if try await betaGroup(groupID, containsBuild: buildID) {
+                onOutput(L10n.format("Build available to the internal TestFlight group %@.\n", name))
+                continue
+            }
             do {
                 _ = try await request(
                     method: "POST",
                     path: "/v1/betaGroups/\(groupID)/relationships/builds",
                     body: ["data": [["type": "builds", "id": buildID]]]
                 )
-            } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 {
-                // The build is already available to this group.
+            } catch let error as AppStoreConnectError {
+                switch error {
+                case .requestFailed(let status, _) where status == 409 || status == 422:
+                    // Apple can report either status when an assignment races with
+                    // automatic distribution. Only suppress it after confirming access.
+                    guard try await betaGroup(groupID, containsBuild: buildID) else {
+                        throw error
+                    }
+                default:
+                    throw error
+                }
             }
             onOutput(L10n.format("Build available to the internal TestFlight group %@.\n", name))
         }
+    }
+
+    private func betaGroup(_ groupID: String, containsBuild buildID: String) async throws -> Bool {
+        try await pagedData(
+            path: "/v1/betaGroups/\(groupID)/relationships/builds",
+            query: ["limit": "200"]
+        ).contains { $0["id"] as? String == buildID }
     }
 
     func uploadReviewAttachments(

@@ -658,6 +658,18 @@ final class AppStorePublishingTests: XCTestCase {
         ))
     }
 
+    func testAutomaticInternalTestFlightGroupsDoNotNeedManualBuildAssignment() {
+        XCTAssertTrue(AppStoreConnectService.betaGroupUsesAutomaticBuildAccess([
+            "attributes": ["hasAccessToAllBuilds": true]
+        ]))
+        XCTAssertFalse(AppStoreConnectService.betaGroupUsesAutomaticBuildAccess([
+            "attributes": ["hasAccessToAllBuilds": false]
+        ]))
+        XCTAssertFalse(AppStoreConnectService.betaGroupUsesAutomaticBuildAccess([
+            "attributes": ["name": "Manual Testers"]
+        ]))
+    }
+
     private func decodedJWTComponent(_ component: String) throws -> [String: Any] {
         var base64 = component.replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")

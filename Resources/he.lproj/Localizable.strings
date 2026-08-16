@@ -679,6 +679,7 @@
 "The %@ URL is not publicly reachable: %@" = "הכתובת של %@ אינה זמינה לציבור: %@";
 "%@ returned HTTP %d." = "%@ החזירה HTTP %d.";
 "Created an Internal Testing group with automatic build access.\n" = "נוצרה קבוצת בדיקה פנימית עם גישה אוטומטית לבניות.\n";
+"Internal TestFlight group %@ receives every build automatically.\n" = "קבוצת TestFlight הפנימית %@ מקבלת כל בנייה באופן אוטומטי.\n";
 "Build available to the internal TestFlight group %@.\n" = "הבנייה זמינה לקבוצת TestFlight הפנימית %@.\n";
 "Preserving existing App Review attachment %@.\n" = "הקובץ המצורף הקיים לבדיקת האפליקציה %@ נשמר.\n";
 "Uploaded App Review attachment %@.\n" = "הקובץ המצורף לבדיקת האפליקציה %@ הועלה.\n";

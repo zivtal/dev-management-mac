@@ -176,7 +176,9 @@ build upload, attachment, and review submission.
 9. Add the build to every internal TestFlight group. If the app has no internal
    group, create an `Internal Testing` group with access to all builds. App Store
    Connect users still need to be added as testers once; Publish does not invite
-   people or change account roles.
+   people or change account roles. Groups with automatic distribution already
+   receive every processed build and are not manually reassigned. For manually
+   managed groups, existing access is confirmed before requesting an assignment.
 10. Upload configured demo videos and documents to App Review, wait for Apple to
    finish processing each attachment, and submit the complete version.
 
