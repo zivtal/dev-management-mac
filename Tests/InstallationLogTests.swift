@@ -66,6 +66,26 @@ final class InstallationLogTests: XCTestCase {
 }
 
 final class ProcessRunnerCancellationTests: XCTestCase {
+    func testCommandFailureSummaryKeepsDiagnosticsAndDropsSchemeEnvironment() {
+        let summary = CommandFailureSummary.text(from: """
+        Run pre-actions
+        export ACTION=install
+        export BUILD_DIR=/tmp/build
+        /Example/SubscriptionService.swift:51:22: error: cannot find type 'SubscriptionTrialPolicy' in scope
+        /Example/SubscriptionService.swift:51:22: error: cannot find type 'SubscriptionTrialPolicy' in scope
+        ** ARCHIVE FAILED **
+        """)
+
+        XCTAssertFalse(summary.contains("export ACTION"))
+        XCTAssertEqual(
+            summary,
+            """
+            /Example/SubscriptionService.swift:51:22: error: cannot find type 'SubscriptionTrialPolicy' in scope
+            ** ARCHIVE FAILED **
+            """
+        )
+    }
+
     func testCancellingTaskStopsRunningCommand() async throws {
         let task = Task {
             try await ProcessRunner().runAndRequireSuccess(

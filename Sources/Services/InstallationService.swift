@@ -137,6 +137,7 @@ final class InstallationService {
     private let processRunner: ProcessRunner
     private let fileManager: FileManager
     private let developerTeamService: DeveloperTeamService
+    private let xcodeGenPreparationService: XcodeGenProjectPreparationService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
@@ -146,6 +147,10 @@ final class InstallationService {
         self.processRunner = processRunner
         self.fileManager = fileManager
         self.developerTeamService = developerTeamService
+        self.xcodeGenPreparationService = XcodeGenProjectPreparationService(
+            processRunner: processRunner,
+            fileManager: fileManager
+        )
     }
 
     func install(
@@ -242,6 +247,11 @@ final class InstallationService {
             throw InstallationServiceError.missingProjectContainer
         }
 
+        try await xcodeGenPreparationService.prepare(
+            project: project,
+            onOutput: { eventHandler(.output($0)) }
+        )
+
         let buildProject = try await projectResolvingAutomaticSigning(project)
         if project.signingTeamID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false,
            let inferredTeamID = buildProject.signingTeamID {
@@ -311,6 +321,11 @@ final class InstallationService {
         guard fileManager.fileExists(atPath: project.containerPath) else {
             throw InstallationServiceError.missingProjectContainer
         }
+
+        try await xcodeGenPreparationService.prepare(
+            project: project,
+            onOutput: { eventHandler(.output($0)) }
+        )
 
         let temporaryDirectory = fileManager.temporaryDirectory
             .appendingPathComponent("DevManagement-Mac-Build-\(UUID().uuidString)", isDirectory: true)

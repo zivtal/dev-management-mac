@@ -325,12 +325,13 @@ image is used as a fallback.
 Direct installation does not require any repository-specific script. For the
 selected project/workspace, scheme, configuration, and device, Development Management:
 
-1. Creates a temporary Derived Data directory.
-2. Runs `xcodebuild` for `platform=iOS,id=<device-udid>` with a 45-second
+1. Regenerates a root-level XcodeGen project when `project.yml` is present.
+2. Creates a temporary Derived Data directory.
+3. Runs `xcodebuild` for `platform=iOS,id=<device-udid>` with a 45-second
    destination timeout.
-3. Passes `-allowProvisioningUpdates` and
+4. Passes `-allowProvisioningUpdates` and
    `-allowProvisioningDeviceRegistration`.
-4. Uses the project's resolved signing team when it has one. Otherwise,
+5. Uses the project's resolved signing team when it has one. Otherwise,
    automatically selects a unique team whose valid Xcode provisioning profiles
    match the application's bundle-ID namespace. A team selected explicitly for
    the managed application overrides `DEVELOPMENT_TEAM` and enables Xcode
@@ -338,11 +339,11 @@ selected project/workspace, scheme, configuration, and device, Development Manag
    from local Apple Development identities and valid Xcode provisioning profiles
    and can be refreshed in Settings. If no unique match exists, Settings requires
    an explicit per-application selection before the build starts.
-5. Resolves the built application with `xcodebuild -showBuildSettings -json`,
+6. Resolves the built application with `xcodebuild -showBuildSettings -json`,
    with a Derived Data scan as fallback.
-6. Runs `xcrun devicectl device install app --device <device-udid>
+7. Runs `xcrun devicectl device install app --device <device-udid>
    --timeout 180 <built-app>`.
-7. Removes the temporary build directory.
+8. Removes the temporary build directory.
 
 The build uses the source tree's current contents and the developer account and
 signing configuration available to Xcode.

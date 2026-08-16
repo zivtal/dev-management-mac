@@ -189,6 +189,13 @@ and build plus a complete App Store Connect API configuration, but it does not
 wait for the full App Store release-readiness snapshot. The API key and existing
 TestFlight build are verified when the upload workflow starts.
 
+When the managed folder contains a root `project.yml` and the selected container
+is a root-level Xcode project, Development Management regenerates the project
+with XcodeGen immediately before a direct build or archive. Newly added source
+files are therefore included before a scheme pre-action can advance the app
+version. If a command still fails, the alert shows the relevant compiler or
+archive diagnostics while Activity retains the complete command output.
+
 The menu-bar application list includes a paper-plane action for every eligible
 iOS app and a ticket action for projects that contain subscription products.
 The ticket opens a focused Redeem Codes window for that app without loading the

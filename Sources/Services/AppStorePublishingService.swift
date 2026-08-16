@@ -55,6 +55,7 @@ final class AppStorePublishingService {
     private let subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService
     private let reviewAssetService: AppStoreReviewAssetService
     private let publicationURLValidator: AppStorePublicationURLValidator
+    private let xcodeGenPreparationService: XcodeGenProjectPreparationService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
@@ -70,6 +71,10 @@ final class AppStorePublishingService {
         self.subscriptionDiscoveryService = subscriptionDiscoveryService
         self.reviewAssetService = reviewAssetService
         self.publicationURLValidator = publicationURLValidator
+        self.xcodeGenPreparationService = XcodeGenProjectPreparationService(
+            processRunner: processRunner,
+            fileManager: fileManager
+        )
     }
 
     func publish(
@@ -915,6 +920,10 @@ final class AppStorePublishingService {
         temporaryDirectory: URL,
         eventHandler: @escaping EventHandler
     ) async throws -> AppStoreBuildArtifact {
+        try await xcodeGenPreparationService.prepare(
+            project: project,
+            onOutput: { eventHandler(.output($0)) }
+        )
         let archiveURL = temporaryDirectory.appendingPathComponent("\(project.scheme).xcarchive")
         let exportURL = temporaryDirectory.appendingPathComponent("Export", isDirectory: true)
         let exportOptionsURL = temporaryDirectory.appendingPathComponent("ExportOptions.plist")

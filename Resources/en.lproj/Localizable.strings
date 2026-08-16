@@ -761,6 +761,11 @@
 "Complete the API key configuration before publishing." = "Complete the API key configuration before publishing.";
 "%@ (%@) is already uploaded and will be reused." = "%@ (%@) is already uploaded and will be reused.";
 "Subscription %@ has no available territories for a redeem-code offer." = "Subscription %@ has no available territories for a redeem-code offer.";
+"Regenerating the Xcode project from project.yml…\n" = "Regenerating the Xcode project from project.yml…\n";
+"The XcodeGen project is up to date.\n" = "The XcodeGen project is up to date.\n";
+"project.yml was found, but XcodeGen is not installed. Install XcodeGen or regenerate the Xcode project before building." = "project.yml was found, but XcodeGen is not installed. Install XcodeGen or regenerate the Xcode project before building.";
+"XcodeGen completed, but it did not create the selected project %@." = "XcodeGen completed, but it did not create the selected project %@.";
+"The %@ command failed (code %d).\n%@\n\nOpen Activity details for the complete command output." = "The %@ command failed (code %d).\n%@\n\nOpen Activity details for the complete command output.";
 "Project content needs attention" = "Project content needs attention";
 "Store content" = "Store content";
 "Inspecting metadata and subscription products…" = "Inspecting metadata and subscription products…";

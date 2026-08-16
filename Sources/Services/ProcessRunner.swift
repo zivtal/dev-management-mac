@@ -14,11 +14,51 @@ enum ProcessRunnerError: LocalizedError {
         case .couldNotStart(let message):
             return L10n.format("Could not start the command: %@", message)
         case .commandFailed(let executable, let status, let output):
-            let usefulOutput = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            let usefulOutput = CommandFailureSummary.text(from: output)
             return usefulOutput.isEmpty
                 ? L10n.format("The %@ command failed (code %d).", executable, status)
-                : L10n.format("The %@ command failed (code %d).\n%@", executable, status, usefulOutput)
+                : L10n.format(
+                    "The %@ command failed (code %d).\n%@\n\nOpen Activity details for the complete command output.",
+                    executable,
+                    status,
+                    usefulOutput
+                )
         }
+    }
+}
+
+enum CommandFailureSummary {
+    private static let maximumDiagnosticLines = 12
+    private static let maximumFallbackLines = 20
+
+    static func text(from output: String) -> String {
+        let lines = output
+            .split(whereSeparator: \Character.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let diagnostics = uniqueLines(lines.filter(isDiagnostic))
+        if !diagnostics.isEmpty {
+            return diagnostics.suffix(maximumDiagnosticLines).joined(separator: "\n")
+        }
+        let meaningfulLines = lines.filter {
+            !$0.hasPrefix("export ") && !$0.hasPrefix("cd ")
+        }
+        return meaningfulLines.suffix(maximumFallbackLines).joined(separator: "\n")
+    }
+
+    private static func isDiagnostic(_ line: String) -> Bool {
+        let normalized = line.lowercased()
+        return normalized.hasPrefix("error:")
+            || normalized.contains(": error:")
+            || normalized.contains("fatal error:")
+            || normalized.hasPrefix("** build failed **")
+            || normalized.hasPrefix("** archive failed **")
+            || normalized.hasPrefix("** export failed **")
+    }
+
+    private static func uniqueLines(_ lines: [String]) -> [String] {
+        var seen = Set<String>()
+        return lines.filter { seen.insert($0).inserted }
     }
 }
 

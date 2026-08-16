@@ -761,6 +761,11 @@
 "Complete the API key configuration before publishing." = "יש להשלים את הגדרת מפתח ה־API לפני הפרסום.";
 "%@ (%@) is already uploaded and will be reused." = "%@ (%@) כבר הועלתה ותשמש מחדש.";
 "Subscription %@ has no available territories for a redeem-code offer." = "למינוי %@ אין טריטוריות זמינות להצעת קוד מימוש.";
+"Regenerating the Xcode project from project.yml…\n" = "יוצר מחדש את פרויקט Xcode מתוך project.yml…\n";
+"The XcodeGen project is up to date.\n" = "פרויקט XcodeGen מעודכן.\n";
+"project.yml was found, but XcodeGen is not installed. Install XcodeGen or regenerate the Xcode project before building." = "הקובץ project.yml נמצא, אך XcodeGen אינו מותקן. יש להתקין את XcodeGen או ליצור מחדש את פרויקט Xcode לפני הבנייה.";
+"XcodeGen completed, but it did not create the selected project %@." = "XcodeGen הסתיים, אך לא יצר את הפרויקט הנבחר %@.";
+"The %@ command failed (code %d).\n%@\n\nOpen Activity details for the complete command output." = "הפקודה %@ נכשלה (קוד %d).\n%@\n\nניתן לפתוח את פרטי הפעילות כדי לראות את פלט הפקודה המלא.";
 "Project content needs attention" = "תוכן הפרויקט דורש טיפול";
 "Store content" = "תוכן החנות";
 "Inspecting metadata and subscription products…" = "בודק מטא־נתונים ומוצרי מינוי…";
