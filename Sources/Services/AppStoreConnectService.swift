@@ -2208,12 +2208,12 @@ final class AppStoreConnectService {
     ) -> [String: Any] {
         let uniqueTerritoryIDs = Array(Set(territoryIDs)).sorted()
         let prices: [[String: String]] = uniqueTerritoryIDs.map {
-            ["type": "subscriptionOfferCodePrices", "id": "$offer-price-\($0)"]
+            ["type": "subscriptionOfferCodePrices", "id": "${offer-price-\($0)}"]
         }
         let included: [[String: Any]] = uniqueTerritoryIDs.map {
             [
                 "type": "subscriptionOfferCodePrices",
-                "id": "$offer-price-\($0)",
+                "id": "${offer-price-\($0)}",
                 "relationships": [
                     "territory": [
                         "data": ["type": "territories", "id": $0]
