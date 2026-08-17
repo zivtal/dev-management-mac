@@ -2530,6 +2530,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var validationMessage: String?
     @State private var isLoading = true
     @State private var isGeneratingAI = false
+    @State private var isGeneratingAgeRating = false
     @State private var showsRequiredFieldErrors = false
     @State private var pendingScrollAnchor: PublishingConfigurationEditorAnchor?
     @State private var scrollRequestRevision = 0
@@ -2610,7 +2611,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                             Label("Generate Listing and App Answers with OpenAI", systemImage: "sparkles")
                         }
                     }
-                    .disabled(isLoading || isGeneratingAI)
+                    .disabled(isLoading || isGeneratingAI || isGeneratingAgeRating)
                 }
             }
 
@@ -2659,7 +2660,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 Button("Validate, Save, and Return") { save() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isLoading)
+                    .disabled(isLoading || isGeneratingAI || isGeneratingAgeRating)
             }
         }
         .padding(20)
@@ -2847,8 +2848,21 @@ private struct PerAppPublishingConfigurationEditor: View {
                         .foregroundStyle(.secondary)
                 }
                 Section("Age Ratings") {
+                    Button {
+                        Task { await generateAIAgeRatingDraft() }
+                    } label: {
+                        if isGeneratingAgeRating {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("Analyzing README for Age Ratings…")
+                            }
+                        } else {
+                            Label("Fill Age Ratings with OpenAI", systemImage: "sparkles")
+                        }
+                    }
+                    .disabled(isGeneratingAI || isGeneratingAgeRating)
                     PublishingAgeRatingFields(ageRating: $ageRating)
-                    Text("OpenAI drafts these answers from the project README. Review every field here before publishing.")
+                    Text("This replaces the displayed answers with a conservative draft inferred from the project README and supported project manifests. Review every field before publishing.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -3590,6 +3604,20 @@ private struct PerAppPublishingConfigurationEditor: View {
                 if complianceEvidence.isEmpty { complianceEvidence = compliance.evidence }
                 if complianceConfidence == nil { complianceConfidence = compliance.confidence }
             }
+            validationMessage = nil
+        } catch {
+            validationMessage = error.localizedDescription
+        }
+    }
+
+    private func generateAIAgeRatingDraft() async {
+        isGeneratingAgeRating = true
+        defer { isGeneratingAgeRating = false }
+        do {
+            let compliance = try await model.generateAppStoreComplianceDraft(projectID: project.id)
+            ageRating = compliance.ageRating
+            complianceEvidence = compliance.evidence
+            complianceConfidence = compliance.confidence
             validationMessage = nil
         } catch {
             validationMessage = error.localizedDescription

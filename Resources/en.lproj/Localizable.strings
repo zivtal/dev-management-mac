@@ -1107,3 +1107,6 @@
 "No expiration" = "No expiration";
 "Runtime %@" = "Runtime %@";
 "Apple still requires the initial app record, contracts, tax/banking, trader status, collected-data App Privacy details, and the first-ever subscription submission in App Store Connect. No-data privacy declarations and later releases are automated here after authorization." = "Apple still requires the initial app record, contracts, tax/banking, trader status, collected-data App Privacy details, and the first-ever subscription submission in App Store Connect. No-data privacy declarations and later releases are automated here after authorization.";
+"Fill Age Ratings with OpenAI" = "Fill Age Ratings with OpenAI";
+"Analyzing README for Age Ratings…" = "Analyzing README for Age Ratings…";
+"This replaces the displayed answers with a conservative draft inferred from the project README and supported project manifests. Review every field before publishing." = "This replaces the displayed answers with a conservative draft inferred from the project README and supported project manifests. Review every field before publishing.";

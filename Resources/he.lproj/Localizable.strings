@@ -1107,3 +1107,6 @@
 "No expiration" = "ללא תפוגה";
 "Runtime %@" = "זמן ריצה %@";
 "Apple still requires the initial app record, contracts, tax/banking, trader status, collected-data App Privacy details, and the first-ever subscription submission in App Store Connect. No-data privacy declarations and later releases are automated here after authorization." = "Apple עדיין דורשת ליצור את רשומת היישום הראשונית, להשלים חוזים, מסים ופרטי בנק, סטטוס סוחר, פרטי פרטיות עבור נתונים שנאספים ואת הגשת המינוי הראשונה ב־App Store Connect. הצהרות שלפיהן לא נאספים נתונים וגרסאות מאוחרות יותר מתבצעות אוטומטית לאחר אישור.";
+"Fill Age Ratings with OpenAI" = "מילוי דירוגי גיל באמצעות OpenAI";
+"Analyzing README for Age Ratings…" = "ניתוח README לצורך דירוגי גיל…";
+"This replaces the displayed answers with a conservative draft inferred from the project README and supported project manifests. Review every field before publishing." = "פעולה זו מחליפה את התשובות המוצגות בטיוטה שמרנית שהוסקה מקובץ README ומקובצי הפרויקט הנתמכים. יש לבדוק כל שדה לפני הפרסום.";

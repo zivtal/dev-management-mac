@@ -974,6 +974,25 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func generateAppStoreComplianceDraft(
+        projectID: UUID
+    ) async throws -> AppStoreComplianceDraft {
+        guard let project = projects.first(where: { $0.id == projectID }) else {
+            throw AppStorePublishingError.unsupportedProject
+        }
+        guard let apiKey = try credentialStore.string(for: .openAIAPIKey)?.nilIfEmpty else {
+            throw OpenAIStoreMetadataError.requestFailed(
+                0,
+                L10n.text("Save an OpenAI API key in Publishing settings before generating metadata.")
+            )
+        }
+        return try await OpenAIStoreMetadataService().generateCompliance(
+            project: project,
+            apiKey: apiKey,
+            model: preferences.openAIModel?.nilIfEmpty ?? "gpt-5.6-luna"
+        )
+    }
+
     func generateSubscriptionOfferCodes(
         projectID: UUID,
         request: SubscriptionOfferCodeGenerationRequest

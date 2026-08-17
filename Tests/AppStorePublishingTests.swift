@@ -45,6 +45,16 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertNotNil(properties["ageRating"])
         XCTAssertNotNil(properties["privacy"])
         XCTAssertNotNil(properties["copyright"])
+
+        let ageRating = try XCTUnwrap(properties["ageRating"] as? [String: Any])
+        let ageRatingProperties = try XCTUnwrap(ageRating["properties"] as? [String: Any])
+        let requiredAgeRatingFields = try XCTUnwrap(ageRating["required"] as? [String])
+        XCTAssertEqual(ageRatingProperties.count, 24)
+        XCTAssertEqual(Set(requiredAgeRatingFields), Set(ageRatingProperties.keys))
+        XCTAssertNotNil(ageRatingProperties["advertising"])
+        XCTAssertNotNil(ageRatingProperties["messagingAndChat"])
+        XCTAssertNotNil(ageRatingProperties["medicalOrTreatmentInformation"])
+        XCTAssertNotNil(ageRatingProperties["violenceRealistic"])
     }
 
     func testCopyrightAutomaticallyIncludesYearExactlyOnce() {
