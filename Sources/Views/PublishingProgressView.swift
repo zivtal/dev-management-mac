@@ -3,13 +3,13 @@ import SwiftUI
 
 enum PublishingLogWindowSizing {
     static let minimumContentSize = NSSize(width: 720, height: 520)
-    static let maximumInitialContentHeight: CGFloat = 900
+    static let preferredContentSize = NSSize(width: 1_100, height: 790)
     static let verticalScreenInset: CGFloat = 100
 
     static func initialContentHeight(availableScreenHeight: CGFloat) -> CGFloat {
         max(
             minimumContentSize.height,
-            min(maximumInitialContentHeight, availableScreenHeight - verticalScreenInset)
+            min(preferredContentSize.height, availableScreenHeight - verticalScreenInset)
         )
     }
 
@@ -45,9 +45,14 @@ final class PublishingLogWindowPresenter {
                 PublishingLogWindowSizing.initialContentHeight(
                     availableScreenHeight: $0.visibleFrame.height
                 )
-            } ?? PublishingLogWindowSizing.maximumInitialContentHeight
+            } ?? PublishingLogWindowSizing.preferredContentSize.height
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 980, height: initialContentHeight),
+                contentRect: NSRect(
+                    x: 0,
+                    y: 0,
+                    width: PublishingLogWindowSizing.preferredContentSize.width,
+                    height: initialContentHeight
+                ),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable, .utilityWindow],
                 backing: .buffered,
                 defer: false
@@ -59,7 +64,10 @@ final class PublishingLogWindowPresenter {
             panel.hidesOnDeactivate = false
             panel.isReleasedWhenClosed = false
             panel.contentMinSize = PublishingLogWindowSizing.minimumContentSize
-            panel.setContentSize(NSSize(width: 980, height: initialContentHeight))
+            panel.setContentSize(NSSize(
+                width: PublishingLogWindowSizing.preferredContentSize.width,
+                height: initialContentHeight
+            ))
             panel.center()
             windowController = NSWindowController(window: panel)
         }
