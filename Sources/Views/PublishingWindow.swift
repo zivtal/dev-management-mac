@@ -52,6 +52,10 @@ fileprivate enum PublishingConfigurationTab: CaseIterable {
     }
 }
 
+private enum PublishingConfigurationEditorAnchor: Hashable {
+    case appPrivacy
+}
+
 @MainActor
 final class PublishingWindowPresenter {
     static let shared = PublishingWindowPresenter()
@@ -2527,6 +2531,8 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var isLoading = true
     @State private var isGeneratingAI = false
     @State private var showsRequiredFieldErrors = false
+    @State private var pendingScrollAnchor: PublishingConfigurationEditorAnchor?
+    @State private var scrollRequestRevision = 0
 
     @State private var locale = "en-US"
     @State private var appName = ""
@@ -2625,7 +2631,16 @@ private struct PerAppPublishingConfigurationEditor: View {
                     .frame(maxWidth: .infinity)
                 Spacer()
             } else {
-                configurationContent
+                ScrollViewReader { proxy in
+                    configurationContent
+                        .task(id: scrollRequestRevision) {
+                            guard let pendingScrollAnchor else { return }
+                            await Task.yield()
+                            withAnimation {
+                                proxy.scrollTo(pendingScrollAnchor, anchor: .top)
+                            }
+                        }
+                }
             }
 
             if let validationMessage {
@@ -2654,6 +2669,11 @@ private struct PerAppPublishingConfigurationEditor: View {
             selectedTab = initialTab
             showsRequiredFieldErrors = highlightMissingFields
             load()
+            if highlightMissingFields,
+               selectedTab == .appSetup,
+               privacyEditorValidationMessage != nil {
+                revealAppPrivacySection()
+            }
             if generateAIDraftOnOpen, validationMessage == nil {
                 await generateAIDraft()
             }
@@ -2885,6 +2905,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                         .foregroundStyle(.orange)
                     }
                 }
+                .id(PublishingConfigurationEditorAnchor.appPrivacy)
             }
             .formStyle(.grouped)
 
@@ -3071,6 +3092,12 @@ private struct PerAppPublishingConfigurationEditor: View {
             return L10n.text("Enter who reviewed and authorized the App Privacy answers.")
         }
         return nil
+    }
+
+    private func revealAppPrivacySection() {
+        selectedTab = .appSetup
+        pendingScrollAnchor = .appPrivacy
+        scrollRequestRevision &+= 1
     }
 
     private var configurationURL: URL {
@@ -3630,17 +3657,17 @@ private struct PerAppPublishingConfigurationEditor: View {
         }
         switch AppStorePrivacyConfigurationPolicy.state(for: manifest.compliance) {
         case .missingDraft:
-            selectedTab = .appSetup
+            revealAppPrivacySection()
             throw ConfigurationEditorError.invalid(
                 L10n.text("Review the App Privacy draft before saving the publishing configuration.")
             )
         case .needsAutomaticAuthorization:
-            selectedTab = .appSetup
+            revealAppPrivacySection()
             throw ConfigurationEditorError.invalid(
                 L10n.text("Review the App Privacy draft, authorize automatic publishing, and enter who authorized it.")
             )
         case .needsManualConfirmation:
-            selectedTab = .appSetup
+            revealAppPrivacySection()
             throw ConfigurationEditorError.invalid(
                 L10n.text("Confirm that the collected-data App Privacy details were published in App Store Connect and enter who confirmed them.")
             )
