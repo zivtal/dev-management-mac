@@ -172,14 +172,33 @@ struct PublishingSubscriptionGroupForm: Identifiable {
 struct PublishingSubscriptionForm: View {
     @Binding var baseTerritory: String
     @Binding var availableInAllTerritories: Bool
+    @Binding var familySharable: Bool
     @Binding var reviewScreenshot: String
     @Binding var groups: [PublishingSubscriptionGroupForm]
+    let territoryIDs: [String]
 
     var body: some View {
         Form {
             Section("Subscription Defaults") {
-                TextField("Base territory", text: $baseTerritory)
+                AppStoreTerritoryPicker(
+                    title: "Base territory",
+                    selection: $baseTerritory,
+                    territoryIDs: territoryIDs,
+                    allowsEmpty: true,
+                    emptyTitle: "Use USA default"
+                )
                 Toggle("Available in all territories", isOn: $availableInAllTerritories)
+                Toggle("Enable Family Sharing for all subscriptions", isOn: $familySharable)
+                    .onChange(of: familySharable) { _, enabled in
+                        for groupIndex in groups.indices {
+                            for productIndex in groups[groupIndex].subscriptions.indices {
+                                groups[groupIndex].subscriptions[productIndex].familySharable = enabled
+                            }
+                        }
+                    }
+                Text("Apple applies Family Sharing per subscription. This default updates every product below; each product can still be adjusted individually. Enabling it may be effectively one-way after subscribers exist.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 TextField("Default review screenshot", text: $reviewScreenshot)
             }
 
@@ -232,7 +251,13 @@ struct PublishingSubscriptionForm: View {
                 }
             }
             TextField("Base price", text: product.basePrice)
-            TextField("Base territory override", text: product.baseTerritory)
+            AppStoreTerritoryPicker(
+                title: "Base territory override",
+                selection: product.baseTerritory,
+                territoryIDs: territoryIDs,
+                allowsEmpty: true,
+                emptyTitle: "Use subscription default"
+            )
             Toggle("Available in all territories", isOn: product.availableInAllTerritories)
             Toggle("Family Sharing", isOn: product.familySharable)
             TextField("Subscription group level", text: product.groupLevel)

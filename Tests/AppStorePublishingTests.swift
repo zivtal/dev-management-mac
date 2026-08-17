@@ -432,6 +432,7 @@ final class AppStorePublishingTests: XCTestCase {
           "subscriptions": {
             "baseTerritory": "ISR",
             "availableInAllTerritories": true,
+            "familySharable": true,
             "reviewScreenshot": "Screenshots/subscription-review.png"
           }
         }
@@ -461,6 +462,7 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(subscription.basePrice, "9.90")
         XCTAssertEqual(subscription.baseTerritory, "ISR")
         XCTAssertEqual(subscription.availableInAllTerritories, true)
+        XCTAssertEqual(subscription.familySharable, true)
         XCTAssertEqual(subscription.reviewScreenshot, "Screenshots/subscription-review.png")
         XCTAssertEqual(subscription.localizations?.first?.locale, "en-US")
     }

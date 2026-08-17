@@ -47,7 +47,7 @@ extension PublishingProgress.Phase {
             .prepare
         case .archiving:
             .build
-        case .uploadingMetadata, .configuringSubscriptions, .uploadingScreenshots:
+        case .publishingPrivacy, .uploadingMetadata, .configuringSubscriptions, .uploadingScreenshots:
             .configure
         case .uploadingBuild, .waitingForBuild, .configuringTestFlight:
             .testFlight
@@ -60,6 +60,7 @@ extension PublishingProgress.Phase {
         switch self {
         case .preparing: L10n.text("Checking the project and public App Store links.")
         case .discoveringSubscriptions: L10n.text("Reading the subscription products included with the app.")
+        case .publishingPrivacy: L10n.text("Sending the reviewed privacy declaration to App Store Connect.")
         case .generatingMetadata: L10n.text("Preparing an editable store listing for every app language.")
         case .collectingScreenshots: L10n.text("Finding supplied screenshots and capturing any missing device sizes.")
         case .archiving: L10n.text("Xcode is building, signing, and exporting the production app.")
@@ -122,6 +123,15 @@ enum TestFlightReadinessPolicy {
                 : L10n.text("Complete the API key configuration before publishing."),
             state: credentialIsComplete ? .ready : .blocked
         )
+    }
+}
+
+enum AppStoreReleaseActionPolicy {
+    static func showsAppStoreAction(
+        hasReleasedVersion: Bool,
+        hasMatchingTestFlightBuild: Bool
+    ) -> Bool {
+        hasReleasedVersion || hasMatchingTestFlightBuild
     }
 }
 
@@ -253,5 +263,41 @@ enum SubscriptionOfferCodeCSV {
             return nil
         }
         return code.nilIfEmpty
+    }
+}
+
+enum SubscriptionOfferCodeRedemption {
+    static func url(appID: String, code: String) -> URL? {
+        guard appID.nilIfEmpty != nil, code.nilIfEmpty != nil else { return nil }
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "apps.apple.com"
+        components.path = "/redeem"
+        components.queryItems = [
+            URLQueryItem(name: "ctx", value: "offercodes"),
+            URLQueryItem(name: "id", value: appID),
+            URLQueryItem(name: "code", value: code)
+        ]
+        return components.url
+    }
+}
+
+enum SubscriptionOfferCodeAvailabilityOrdering {
+    static func oneTime(
+        _ batches: [AppStoreConnectOneTimeCodeBatchSnapshot]
+    ) -> [AppStoreConnectOneTimeCodeBatchSnapshot] {
+        batches.sorted {
+            if $0.active != $1.active { return $0.active && !$1.active }
+            return ($0.createdDate ?? "") > ($1.createdDate ?? "")
+        }
+    }
+
+    static func custom(
+        _ batches: [AppStoreConnectCustomCodeBatchSnapshot]
+    ) -> [AppStoreConnectCustomCodeBatchSnapshot] {
+        batches.sorted {
+            if $0.active != $1.active { return $0.active && !$1.active }
+            return ($0.createdDate ?? "") > ($1.createdDate ?? "")
+        }
     }
 }

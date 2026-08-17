@@ -298,6 +298,11 @@ final class AppStoreConnectService {
                 groups.append(snapshot)
             }
         }
+        let territoryIDs = try await pagedData(
+            path: "/v1/territories",
+            query: ["limit": "200"]
+        ).compactMap { $0["id"] as? String }
+            .sorted()
 
         return AppStoreConnectConfigurationSnapshot(
             appName: appAttributes["name"] as? String ?? bundleIdentifier,
@@ -310,6 +315,7 @@ final class AppStoreConnectService {
             ageRating: ageRating,
             licenseAgreementText: licenseAgreementText,
             licenseTerritoryIDs: licenseTerritoryIDs,
+            territoryIDs: territoryIDs,
             appLocalizations: appLocalizations,
             version: version,
             testFlightBuild: testFlightBuild,
@@ -570,7 +576,10 @@ final class AppStoreConnectService {
             path: "/v1/subscriptions/\(subscriptionID)/offerCodes",
             query: ["limit": "200"]
         ).compactMap(Self.offerSnapshot)
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            .sorted {
+                if $0.active != $1.active { return $0.active && !$1.active }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
 
         return AppStoreConnectSubscriptionSnapshot(
             id: subscriptionID,
@@ -1224,7 +1233,8 @@ final class AppStoreConnectService {
                 offerID: offerID,
                 batchID: batchID,
                 customCode: nil,
-                oneTimeCodeCSV: csv
+                oneTimeCodeCSV: csv,
+                redemptionURL: nil
             )
 
         case .custom:
@@ -1244,9 +1254,67 @@ final class AppStoreConnectService {
                 offerID: offerID,
                 batchID: batchID,
                 customCode: customCode,
-                oneTimeCodeCSV: nil
+                oneTimeCodeCSV: nil,
+                redemptionURL: SubscriptionOfferCodeRedemption.url(
+                    appID: appID,
+                    code: customCode
+                )
             )
         }
+    }
+
+    func fetchSubscriptionOfferCodeDetails(
+        bundleIdentifier: String,
+        offerID: String
+    ) async throws -> AppStoreConnectOfferCodeDetailSnapshot {
+        let appID = try await findApplication(bundleIdentifier: bundleIdentifier)
+        let oneTimeResources = try await pagedData(
+            path: "/v1/subscriptionOfferCodes/\(offerID)/oneTimeUseCodes",
+            query: ["limit": "200"]
+        )
+        var oneTimeBatches: [AppStoreConnectOneTimeCodeBatchSnapshot] = []
+        for resource in oneTimeResources {
+            try Task.checkCancellation()
+            guard let batchID = resource["id"] as? String else { continue }
+            let attributes = Self.attributes(resource)
+            let csv = try await requestCSV(
+                path: "/v1/subscriptionOfferCodeOneTimeUseCodes/\(batchID)/values"
+            )
+            oneTimeBatches.append(AppStoreConnectOneTimeCodeBatchSnapshot(
+                id: batchID,
+                numberOfCodes: attributes["numberOfCodes"] as? Int ?? 0,
+                createdDate: attributes["createdDate"] as? String,
+                expirationDate: attributes["expirationDate"] as? String,
+                active: attributes["active"] as? Bool ?? false,
+                environment: attributes["environment"] as? String,
+                codes: csv.map { SubscriptionOfferCodeCSV.values(from: $0) } ?? []
+            ))
+        }
+
+        let customBatches = try await pagedData(
+            path: "/v1/subscriptionOfferCodes/\(offerID)/customCodes",
+            query: ["limit": "200"]
+        ).compactMap { resource -> AppStoreConnectCustomCodeBatchSnapshot? in
+            guard let batchID = resource["id"] as? String else { return nil }
+            let attributes = Self.attributes(resource)
+            let code = attributes["customCode"] as? String ?? ""
+            return AppStoreConnectCustomCodeBatchSnapshot(
+                id: batchID,
+                customCode: code,
+                numberOfCodes: attributes["numberOfCodes"] as? Int ?? 0,
+                createdDate: attributes["createdDate"] as? String,
+                expirationDate: attributes["expirationDate"] as? String,
+                active: attributes["active"] as? Bool ?? false,
+                redemptionURL: SubscriptionOfferCodeRedemption.url(appID: appID, code: code)
+            )
+        }
+
+        return AppStoreConnectOfferCodeDetailSnapshot(
+            offerID: offerID,
+            appID: appID,
+            oneTimeBatches: SubscriptionOfferCodeAvailabilityOrdering.oneTime(oneTimeBatches),
+            customBatches: SubscriptionOfferCodeAvailabilityOrdering.custom(customBatches)
+        )
     }
 
     func uploadScreenshots(

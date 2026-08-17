@@ -63,6 +63,20 @@ final class InstallationLogTests: XCTestCase {
 
         XCTAssertEqual(log.statusTitle, L10n.text("Installation canceled"))
     }
+
+    func testFinishedInstallationRuntimeStopsAtFinishedDate() {
+        let start = Date(timeIntervalSince1970: 100)
+        let finish = Date(timeIntervalSince1970: 165)
+        let log = InstallationLogSession(
+            projectName: "TripFlow",
+            deviceName: "iPhone",
+            startedAt: start,
+            finishedAt: finish,
+            state: .succeeded
+        )
+
+        XCTAssertEqual(log.elapsedTime(at: Date(timeIntervalSince1970: 500)), 65)
+    }
 }
 
 final class ProcessRunnerCancellationTests: XCTestCase {

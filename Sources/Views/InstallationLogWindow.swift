@@ -22,7 +22,9 @@ final class InstallationLogWindowPresenter {
             )
             panel.title = L10n.text("Installation Log")
             panel.contentViewController = hostingController
-            panel.isFloatingPanel = false
+            panel.isFloatingPanel = true
+            panel.level = .floating
+            panel.hidesOnDeactivate = false
             panel.isReleasedWhenClosed = false
             panel.minSize = NSSize(width: 560, height: 360)
             panel.center()
@@ -97,17 +99,30 @@ private struct InstallationLogView: View {
     }
 
     private func footer(_ log: InstallationLogSession) -> some View {
-        HStack {
-            Text(log.startedAt, style: .time)
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack {
+                Group {
+                    Text(log.startedAt, style: .time)
+                    Text(runtimeText(log, at: context.date))
+                }
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Spacer()
-            Button("Copy Log") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(log.output, forType: .string)
+                Spacer()
+                Button("Copy Log") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(log.output, forType: .string)
+                }
+                .disabled(log.output.isEmpty)
             }
-            .disabled(log.output.isEmpty)
         }
+    }
+
+    private func runtimeText(_ log: InstallationLogSession, at now: Date) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.hour, .minute, .second]
+        formatter.unitsStyle = .abbreviated
+        formatter.zeroFormattingBehavior = [.pad]
+        return L10n.format("Runtime %@", formatter.string(from: log.elapsedTime(at: now)) ?? "—")
     }
 
     @ViewBuilder

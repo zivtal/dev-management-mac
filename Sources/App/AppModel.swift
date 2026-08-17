@@ -33,6 +33,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var hasAppStoreConnectPrivateKey = false
     @Published private(set) var appStoreConnectPrivateKeyProfileIDs: Set<UUID> = []
     @Published private(set) var hasAppReviewDemoAccount = false
+    @Published private(set) var hasAppStorePrivacyFastlaneSession = false
     @Published private(set) var isCancellingInstallation = false
     @Published private(set) var isRefreshingDevices = false
     @Published private(set) var isDiscoveringProject = false
@@ -152,6 +153,7 @@ final class AppModel: ObservableObject {
         activity = savedState.activity
         didApplyLaunchAtLoginDefault = true
         hasOpenAIAPIKey = credentialStore.contains(.openAIAPIKey)
+        hasAppStorePrivacyFastlaneSession = credentialStore.contains(.appStorePrivacyFastlaneSession)
         hasAppStoreConnectPrivateKey = credentialStore.containsAppStoreConnectPrivateKey(profileID: nil)
         appStoreConnectPrivateKeyProfileIDs = Set(
             (loadedPreferences.appStoreConnectCredentialProfiles ?? []).compactMap { profile in
@@ -594,6 +596,28 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func saveAppStorePrivacyFastlaneSession(_ session: String) {
+        guard let normalized = AppStorePrivacyPublishingService.normalizedSession(session) else {
+            presentedError = AppStorePrivacyPublishingError.missingSession.localizedDescription
+            return
+        }
+        do {
+            try credentialStore.set(normalized, for: .appStorePrivacyFastlaneSession)
+            hasAppStorePrivacyFastlaneSession = true
+        } catch {
+            presentedError = error.localizedDescription
+        }
+    }
+
+    func removeAppStorePrivacyFastlaneSession() {
+        do {
+            try credentialStore.remove(.appStorePrivacyFastlaneSession)
+            hasAppStorePrivacyFastlaneSession = false
+        } catch {
+            presentedError = error.localizedDescription
+        }
+    }
+
     func publish(
         projectID: UUID,
         intent: PublishingIntent = .publish,
@@ -679,6 +703,7 @@ final class AppModel: ObservableObject {
             ?? perAppConfiguration?.releaseAutomatically
             ?? preferences.appStoreReleaseAutomatically
             ?? true
+        let appStorePrivacySession = try? credentialStore.string(for: .appStorePrivacyFastlaneSession)
         let reviewOverrides = perAppConfiguration?.review
         let reviewFirstName = reviewOverrides?.contactFirstName?.nilIfEmpty
             ?? preferences.appStoreReviewFirstName?.nilIfEmpty
@@ -733,6 +758,9 @@ final class AppModel: ObservableObject {
             appStoreConnectIssuerID: appStoreConnectCredential.issuerID,
             appStoreConnectKeyID: appStoreConnectCredential.keyID,
             appStoreConnectPrivateKey: appStoreConnectCredential.privateKey,
+            appStorePrivacyAppleID: preferences.appStorePrivacyAppleID?.nilIfEmpty,
+            appStorePrivacyTeamID: preferences.appStorePrivacyTeamID?.nilIfEmpty,
+            appStorePrivacyFastlaneSession: appStorePrivacySession?.nilIfEmpty,
             locale: preferredLocale,
             copyright: copyright,
             supportURL: supportURL,
@@ -1022,6 +1050,30 @@ final class AppModel: ObservableObject {
             )
             throw error
         }
+    }
+
+    func loadSubscriptionOfferCodeDetails(
+        projectID: UUID,
+        offerID: String
+    ) async throws -> AppStoreConnectOfferCodeDetailSnapshot {
+        guard let project = projects.first(where: { $0.id == projectID }),
+              !project.isMacOSApplication,
+              project.installMethod == .xcodebuild else {
+            throw AppStorePublishingError.unsupportedProject
+        }
+        guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
+            throw AppStorePublishingError.missingBundleIdentifier
+        }
+        let credential = try appStoreConnectCredentialMaterial(for: project)
+        let service = try AppStoreConnectService(
+            issuerID: credential.issuerID,
+            keyID: credential.keyID,
+            privateKeyPEM: credential.privateKey
+        )
+        return try await service.fetchSubscriptionOfferCodeDetails(
+            bundleIdentifier: bundleIdentifier,
+            offerID: offerID
+        )
     }
 
     private func appStoreConnectCredentialMaterial(
@@ -1592,6 +1644,7 @@ final class AppModel: ObservableObject {
     ) {
         guard var log = installationLog, log.id == id else { return }
         log.state = state
+        log.finishedAt = Date()
         if log.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let fallbackError,
            !fallbackError.isEmpty {

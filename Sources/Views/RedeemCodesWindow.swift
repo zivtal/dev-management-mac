@@ -24,7 +24,8 @@ final class RedeemCodesWindowPresenter {
             rootView: RedeemCodesWindowView(projectID: projectID)
                 .environmentObject(model)
         )
-        panel.isFloatingPanel = false
+        panel.isFloatingPanel = true
+        panel.level = .floating
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.minSize = NSSize(width: 600, height: 580)
@@ -64,8 +65,14 @@ private struct RedeemCodesWindowView: View {
     @State private var status: RedeemCodeStatus?
     @State private var generatedCodes: [String] = []
     @State private var generatedCodesWereCopied = false
+    @State private var generatedRedemptionURL: URL?
+    @State private var redemptionLinkWasCopied = false
     @State private var oneTimeCodeSaveURL: URL?
     @State private var showsConfirmation = false
+    @State private var selectedOffer: AppStoreConnectOfferSnapshot?
+    @State private var offerDetails: AppStoreConnectOfferCodeDetailSnapshot?
+    @State private var isLoadingOfferDetails = false
+    @State private var offerDetailsError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -100,23 +107,37 @@ private struct RedeemCodesWindowView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This creates an immutable free subscription offer and a production code batch in App Store Connect. The app and subscription must already be approved for production codes.")
+            Text("This creates an immutable free subscription offer and a production code batch in App Store Connect. Apple may take up to one hour to make a new code redeemable.")
         }
     }
 
     private var header: some View {
         HStack(spacing: 12) {
+            if selectedOffer != nil {
+                Button {
+                    closeOfferDetails()
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+            }
             Image(systemName: "ticket.fill")
                 .font(.system(size: 30))
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Redeem Codes")
+                Text(selectedOffer?.name ?? L10n.text("Redeem Codes"))
                     .font(.title2.bold())
-                Text(projectName)
+                Text(selectedOffer == nil ? projectName : L10n.format("Redeem Codes · %@", projectName))
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if !isLoading {
+            if selectedOffer != nil {
+                Button {
+                    Task { await loadOfferDetails() }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .disabled(isLoadingOfferDetails)
+            } else if !isLoading {
                 Button {
                     Task { await refresh() }
                 } label: {
@@ -129,7 +150,16 @@ private struct RedeemCodesWindowView: View {
 
     @ViewBuilder
     private var content: some View {
-        if isLoading {
+        if let selectedOffer {
+            RedeemCodeOfferDetailView(
+                offer: selectedOffer,
+                details: offerDetails,
+                isLoading: isLoadingOfferDetails,
+                errorMessage: offerDetailsError,
+                onRetry: { Task { await loadOfferDetails() } }
+            )
+            .id(selectedOffer.id)
+        } else if isLoading {
             VStack(spacing: 12) {
                 ProgressView().controlSize(.large)
                 Text("Checking whether this app can create production redeem codes…")
@@ -207,31 +237,41 @@ private struct RedeemCodesWindowView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(subscription.offers) { offer in
-                        VStack(alignment: .leading, spacing: 5) {
-                            HStack {
-                                Text(verbatim: offer.name)
-                                    .font(.subheadline.weight(.medium))
-                                Spacer()
-                                Label(
-                                    offer.active ? L10n.text("Active") : L10n.text("Inactive"),
-                                    systemImage: offer.active ? "checkmark.circle.fill" : "pause.circle.fill"
-                                )
-                                .font(.caption)
-                                .foregroundStyle(offer.active ? .green : .secondary)
-                            }
-                            Text(L10n.format(
-                                "%d production code(s) · %d total redemption(s)",
-                                offer.productionCodeCount,
-                                offer.totalNumberOfCodes
-                            ))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            if let duration = offer.duration {
-                                Text(verbatim: friendlyState(duration))
+                        Button {
+                            openOfferDetails(offer)
+                        } label: {
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    HStack {
+                                        Text(verbatim: offer.name)
+                                            .font(.subheadline.weight(.medium))
+                                        Spacer()
+                                        Label(
+                                            offer.active ? L10n.text("Active") : L10n.text("Inactive"),
+                                            systemImage: offer.active ? "checkmark.circle.fill" : "pause.circle.fill"
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(offer.active ? .green : .secondary)
+                                    }
+                                    Text(L10n.format(
+                                        "%d production code(s) · %d total redemption(s)",
+                                        offer.productionCodeCount,
+                                        offer.totalNumberOfCodes
+                                    ))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    if let duration = offer.duration {
+                                        Text(verbatim: friendlyState(duration))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(.tertiary)
                             }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .padding(.vertical, 3)
                     }
                 }
@@ -332,6 +372,29 @@ private struct RedeemCodesWindowView: View {
                 }
                 .frame(maxHeight: 360)
                 .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+                Label(
+                    "Use the redemption link or your app’s StoreKit flow for a custom code. Apple may take up to one hour to activate it, and each Apple Account can redeem only one code from the same offer.",
+                    systemImage: "clock.badge.exclamationmark"
+                )
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+                if let generatedRedemptionURL {
+                    Text(verbatim: generatedRedemptionURL.absoluteString)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                    HStack {
+                        Button {
+                            copyRedemptionLink()
+                        } label: {
+                            Label(
+                                redemptionLinkWasCopied ? "Link Copied" : "Copy Redemption Link",
+                                systemImage: redemptionLinkWasCopied ? "checkmark" : "link"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Link("Open Redemption Page", destination: generatedRedemptionURL)
+                    }
+                }
                 Button {
                     copyGeneratedCodes()
                 } label: {
@@ -342,7 +405,7 @@ private struct RedeemCodesWindowView: View {
                         systemImage: generatedCodesWereCopied ? "checkmark" : "doc.on.doc"
                     )
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
                 Button("Create Another Code") {
                     clearGeneratedCodes()
                     Task { await refresh(preservingForm: true) }
@@ -468,6 +531,38 @@ private struct RedeemCodesWindowView: View {
         }
     }
 
+    private func openOfferDetails(_ offer: AppStoreConnectOfferSnapshot) {
+        selectedOffer = offer
+        offerDetails = nil
+        offerDetailsError = nil
+        Task { await loadOfferDetails() }
+    }
+
+    private func closeOfferDetails() {
+        selectedOffer = nil
+        offerDetails = nil
+        offerDetailsError = nil
+        isLoadingOfferDetails = false
+    }
+
+    private func loadOfferDetails() async {
+        guard let offer = selectedOffer else { return }
+        isLoadingOfferDetails = true
+        offerDetailsError = nil
+        defer { isLoadingOfferDetails = false }
+        do {
+            offerDetails = try await model.loadSubscriptionOfferCodeDetails(
+                projectID: projectID,
+                offerID: offer.id
+            )
+        } catch is CancellationError {
+            return
+        } catch {
+            offerDetails = nil
+            offerDetailsError = error.localizedDescription
+        }
+    }
+
     private func handleGenerateAction() {
         if let validationIssue {
             status = .failure(validationIssue)
@@ -531,6 +626,7 @@ private struct RedeemCodesWindowView: View {
                 ))
             } else {
                 generatedCodes = [result.customCode ?? customCode]
+                generatedRedemptionURL = result.redemptionURL
             }
         } catch {
             status = .failure(error.localizedDescription)
@@ -544,9 +640,19 @@ private struct RedeemCodesWindowView: View {
         generatedCodesWereCopied = true
     }
 
+    private func copyRedemptionLink() {
+        guard let generatedRedemptionURL else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(generatedRedemptionURL.absoluteString, forType: .string)
+        redemptionLinkWasCopied = true
+    }
+
     private func clearGeneratedCodes() {
         generatedCodes = []
         generatedCodesWereCopied = false
+        generatedRedemptionURL = nil
+        redemptionLinkWasCopied = false
         oneTimeCodeSaveURL = nil
         status = nil
     }

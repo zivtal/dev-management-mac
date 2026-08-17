@@ -173,6 +173,8 @@ private struct PublishingWindowView: View {
     @State private var codeStatus: CodeStatus?
     @State private var generatedRedeemCodes: [String] = []
     @State private var generatedCodesWereCopied = false
+    @State private var generatedRedemptionURL: URL?
+    @State private var redemptionLinkWasCopied = false
     @State private var oneTimeCodeSaveURL: URL?
     @State private var releaseAutomaticallySelection = true
     @State private var pendingPublishingIntent = PublishingIntent.publish
@@ -649,7 +651,7 @@ private struct PublishingWindowView: View {
                 }
             }
             Label(
-                "Apple still requires the initial app record, contracts, tax/banking, trader status, App Privacy questionnaire, and the first-ever subscription submission to be completed in App Store Connect. Later releases and subscription versions are automated here.",
+                "Apple still requires the initial app record, contracts, tax/banking, trader status, collected-data App Privacy details, and the first-ever subscription submission in App Store Connect. No-data privacy declarations and later releases are automated here after authorization.",
                 systemImage: "person.crop.circle.badge.exclamationmark"
             )
             .font(.caption)
@@ -946,6 +948,13 @@ private struct PublishingWindowView: View {
             Text("Both actions synchronize the complete App Store and TestFlight setup. Publish additionally submits the app version and subscription versions together for App Review; Upload to TestFlight stops immediately before submission.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if !showsAppStoreReleaseAction {
+                Label(
+                    "For the first release, upload this build to TestFlight first. Submit for Review appears after Apple finishes processing the matching build.",
+                    systemImage: "airplane.circle"
+                )
+                .foregroundStyle(.blue)
+            }
             if let build = matchingTestFlightBuild {
                 Label(
                     L10n.format("TestFlight already has version %@ (%@). Publish will reuse it without another archive or upload.", build.version, build.buildNumber),
@@ -1141,6 +1150,29 @@ private struct PublishingWindowView: View {
             }
             .frame(maxHeight: 320)
             .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+            Label(
+                "Use the redemption link or your app’s StoreKit flow for a custom code. Apple may take up to one hour to activate it, and each Apple Account can redeem only one code from the same offer.",
+                systemImage: "clock.badge.exclamationmark"
+            )
+            .foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+            if let generatedRedemptionURL {
+                Text(verbatim: generatedRedemptionURL.absoluteString)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+                HStack {
+                    Button {
+                        copyGeneratedRedemptionLink()
+                    } label: {
+                        Label(
+                            redemptionLinkWasCopied ? "Link Copied" : "Copy Redemption Link",
+                            systemImage: redemptionLinkWasCopied ? "checkmark" : "link"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Link("Open Redemption Page", destination: generatedRedemptionURL)
+                }
+            }
             Button {
                 copyGeneratedRedeemCodes()
             } label: {
@@ -1151,7 +1183,7 @@ private struct PublishingWindowView: View {
                     systemImage: generatedCodesWereCopied ? "checkmark" : "doc.on.doc"
                 )
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
             Button("Create Another Code") {
                 clearGeneratedRedeemCodes()
             }
@@ -1375,23 +1407,34 @@ private struct PublishingWindowView: View {
                 PublishingWindowPresenter.shared.close()
             }
             if selectedAction == .release {
-                Button {
-                    handleReleaseAction(project, intent: .testFlight)
-                } label: {
-                    Label("Upload to TestFlight", systemImage: "airplane")
+                if showsAppStoreReleaseAction {
+                    Button {
+                        handleReleaseAction(project, intent: .testFlight)
+                    } label: {
+                        Label("Upload to TestFlight", systemImage: "airplane")
+                    }
+                    .disabled(model.hasActiveWork)
+                    Button {
+                        handleReleaseAction(project, intent: .publish)
+                    } label: {
+                        Label(
+                            publishButtonTitle,
+                            systemImage: "paperplane.fill"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(model.hasActiveWork)
+                } else {
+                    Button {
+                        handleReleaseAction(project, intent: .testFlight)
+                    } label: {
+                        Label("Upload to TestFlight", systemImage: "airplane")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(model.hasActiveWork)
                 }
-                .disabled(model.hasActiveWork)
-                Button {
-                    handleReleaseAction(project, intent: .publish)
-                } label: {
-                    Label(
-                        publishButtonTitle,
-                        systemImage: "paperplane.fill"
-                    )
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(model.hasActiveWork)
             }
         }
     }
@@ -1923,19 +1966,58 @@ private struct PublishingWindowView: View {
                 state: .blocked
             )
         }
-        let hasPrivacyDraft = preview.catalog.compliance?.privacyDraft != nil
+        guard let privacyDraft = preview.catalog.compliance?.privacyDraft else {
+            return PublishingReadinessItem(
+                id: "compliance",
+                title: L10n.text("App declarations are incomplete"),
+                detail: L10n.text("Generate and review the App Privacy answers before publishing."),
+                state: .blocked
+            )
+        }
         let privacyAttestation = preview.catalog.compliance?.privacyAttestation
-        let hasPrivacyAttestation = privacyAttestation?.confirmedBy?.nilIfEmpty != nil
+        let wasPublishedAutomatically = privacyAttestation?.publishedAt?.nilIfEmpty != nil
+        let wasConfirmedManually = privacyAttestation?.automaticPublishingAuthorizedAt == nil
+            && privacyAttestation?.confirmedBy?.nilIfEmpty != nil
             && privacyAttestation?.confirmedAt?.nilIfEmpty != nil
+        if wasPublishedAutomatically || wasConfirmedManually {
+            return PublishingReadinessItem(
+                id: "compliance",
+                title: L10n.text("App declarations are ready"),
+                detail: L10n.text("Categories, rights, pricing, age rating, and the published App Privacy answers are saved."),
+                state: .ready
+            )
+        }
+        guard privacyAttestation?.automaticPublishingAuthorizedAt?.nilIfEmpty != nil else {
+            return PublishingReadinessItem(
+                id: "compliance",
+                title: L10n.text("App declarations need attention"),
+                detail: L10n.text("Review and authorize automatic publishing of the App Privacy answers in App Setup."),
+                state: .blocked
+            )
+        }
+        guard !privacyDraft.collectsData else {
+            return PublishingReadinessItem(
+                id: "compliance",
+                title: L10n.text("App Privacy needs attention"),
+                detail: L10n.text("Collected-data answers need purposes, linking, and tracking details. Publish them in App Store Connect, then record the manual confirmation."),
+                state: .blocked
+            )
+        }
+        guard model.preferences.appStorePrivacyAppleID?.nilIfEmpty != nil,
+              model.hasAppStorePrivacyFastlaneSession,
+              AppStorePrivacyPublishingService.executableURL() != nil else {
+            return PublishingReadinessItem(
+                id: "privacy-account",
+                title: L10n.text("App Privacy automation needs attention"),
+                detail: L10n.text("Add the publisher Apple ID and Fastlane session in Publishing Settings. Fastlane must also be installed."),
+                state: .blocked
+            )
+        }
         return PublishingReadinessItem(
             id: "compliance",
             title: L10n.text("App declarations are ready"),
-            detail: hasPrivacyAttestation
-                ? L10n.text("Categories, rights, pricing, age rating, and the confirmed App Privacy checklist are saved.")
-                : hasPrivacyDraft
-                    ? L10n.text("The App Privacy checklist is ready but still needs one-time confirmation in App Store Connect.")
-                    : L10n.text("API-backed declarations are saved. Generate an App Privacy checklist before the one-time manual confirmation in App Store Connect."),
-            state: hasPrivacyAttestation ? .ready : .blocked
+            detail: L10n.text("The reviewed no-data App Privacy answer will be published automatically before the release upload."),
+            state: .ready
         )
     }
 
@@ -2051,7 +2133,9 @@ private struct PublishingWindowView: View {
         }
         guard report.blockers.isEmpty else {
             let blockerIDs = Set(report.blockers.map(\.id))
-            if !blockerIDs.isDisjoint(with: ["review", "content", "compliance", "screenshots"]) {
+            if blockerIDs.contains("privacy-account") {
+                openSettings()
+            } else if !blockerIDs.isDisjoint(with: ["review", "content", "compliance", "screenshots"]) {
                 configurationEditorStartsWithAI = model.hasOpenAIAPIKey && needsEditableAIDraft
                 configurationEditorInitialTab = firstConfigurationTabNeedingAttention
                 configurationEditorHighlightsMissingFields = true
@@ -2124,6 +2208,8 @@ private struct PublishingWindowView: View {
                     ?? groups.flatMap(\.subscriptions).compactMap(\.baseTerritory).first,
                 availableInAllTerritories: existing?.availableInAllTerritories
                     ?? groups.flatMap(\.subscriptions).allSatisfy { $0.availableInAllTerritories == true },
+                familySharable: existing?.familySharable
+                    ?? groups.flatMap(\.subscriptions).allSatisfy { $0.familySharable == true },
                 reviewScreenshot: existing?.reviewScreenshot,
                 groups: groups
             )
@@ -2150,6 +2236,14 @@ private struct PublishingWindowView: View {
         return version.isUnderReview
     }
 
+    private var showsAppStoreReleaseAction: Bool {
+        guard let snapshot = currentAppStoreSnapshot else { return false }
+        return AppStoreReleaseActionPolicy.showsAppStoreAction(
+            hasReleasedVersion: snapshot.hasReadyForDistributionVersion,
+            hasMatchingTestFlightBuild: matchingTestFlightBuild != nil
+        )
+    }
+
     private var olderActiveReviewVersion: AppStoreConnectVersionReferenceSnapshot? {
         guard let localVersion = selectedProject?.marketingVersion?.nilIfEmpty,
               let active = currentAppStoreSnapshot?.activeReviewVersion,
@@ -2170,7 +2264,7 @@ private struct PublishingWindowView: View {
         if matchingTestFlightBuild != nil, olderActiveReviewVersion == nil {
             return L10n.text("Submit for Review")
         }
-        if currentAppStoreSnapshot?.version != nil {
+        if currentAppStoreSnapshot?.hasReadyForDistributionVersion == true {
             return L10n.text("Update")
         }
         return L10n.text("Publish")
@@ -2344,6 +2438,7 @@ private struct PublishingWindowView: View {
                 ))
             } else {
                 generatedRedeemCodes = [result.customCode ?? customCode]
+                generatedRedemptionURL = result.redemptionURL
             }
         } catch {
             codeStatus = .failure(error.localizedDescription)
@@ -2357,9 +2452,19 @@ private struct PublishingWindowView: View {
         generatedCodesWereCopied = true
     }
 
+    private func copyGeneratedRedemptionLink() {
+        guard let generatedRedemptionURL else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(generatedRedemptionURL.absoluteString, forType: .string)
+        redemptionLinkWasCopied = true
+    }
+
     private func clearGeneratedRedeemCodes() {
         generatedRedeemCodes = []
         generatedCodesWereCopied = false
+        generatedRedemptionURL = nil
+        redemptionLinkWasCopied = false
         oneTimeCodeSaveURL = nil
         codeStatus = nil
     }
@@ -2427,6 +2532,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var privacyDataTypes: [String] = []
     @State private var privacyNotes: [String] = []
     @State private var privacyConfirmedInAppStoreConnect = false
+    @State private var privacyConfirmedManually = false
     @State private var privacyConfirmedBy = ""
     @State private var privacyConfirmedAt = ""
     @State private var complianceEvidence: [String] = []
@@ -2451,6 +2557,7 @@ private struct PerAppPublishingConfigurationEditor: View {
 
     @State private var subscriptionBaseTerritory = ""
     @State private var subscriptionsAvailableEverywhere = true
+    @State private var subscriptionsFamilySharable = true
     @State private var subscriptionReviewScreenshot = ""
     @State private var subscriptionGroups: [PublishingSubscriptionGroupForm] = []
 
@@ -2681,7 +2788,11 @@ private struct PerAppPublishingConfigurationEditor: View {
                     Toggle("Configure app price and availability", isOn: $configureCommercialSettings)
                     Toggle("The app itself is free", isOn: $appIsFree)
                         .disabled(!configureCommercialSettings)
-                    TextField("Base territory", text: $appBaseTerritory)
+                    AppStoreTerritoryPicker(
+                        title: "Base territory",
+                        selection: $appBaseTerritory,
+                        territoryIDs: currentConfiguration?.territoryIDs ?? []
+                    )
                         .disabled(!configureCommercialSettings)
                     Toggle("Available in all territories", isOn: $appAvailableEverywhere)
                         .disabled(!configureCommercialSettings)
@@ -2700,24 +2811,50 @@ private struct PerAppPublishingConfigurationEditor: View {
                 }
                 Section("App Privacy Draft") {
                     PublishingPrivacyDraftFields(
-                        collectsData: $privacyCollectsData,
+                        collectsData: Binding(
+                            get: { privacyCollectsData },
+                            set: { value in
+                                privacyCollectsData = value
+                                if value {
+                                    privacyConfirmedInAppStoreConnect = false
+                                } else {
+                                    privacyConfirmedManually = false
+                                }
+                            }
+                        ),
                         dataTypes: $privacyDataTypes,
                         notes: $privacyNotes
                     )
-                    Text("Apple does not expose the App Privacy questionnaire through its public API and requires the publisher to attest that the answers are accurate. This draft is a checklist for the one-time App Store Connect confirmation.")
+                    Text("Apple does not expose App Privacy through its public API. After you review and authorize a no-data declaration, Development Management publishes it through the Fastlane session stored in Publishing Settings.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Toggle(
-                        "I confirmed these App Privacy answers in App Store Connect",
-                        isOn: $privacyConfirmedInAppStoreConnect
-                    )
-                    TextField("Confirmed by", text: $privacyConfirmedBy)
-                        .disabled(!privacyConfirmedInAppStoreConnect)
-                    if privacyConfirmedInAppStoreConnect, !privacyConfirmedAt.isEmpty {
-                        LabeledContent("Confirmed at") {
+                    if privacyCollectsData {
+                        Toggle(
+                            "I published these App Privacy answers in App Store Connect",
+                            isOn: $privacyConfirmedManually
+                        )
+                    } else {
+                        Toggle(
+                            "I reviewed and authorize automatic App Privacy publishing",
+                            isOn: $privacyConfirmedInAppStoreConnect
+                        )
+                    }
+                    TextField("Authorized by", text: $privacyConfirmedBy)
+                        .disabled(!privacyConfirmedInAppStoreConnect && !privacyConfirmedManually)
+                    if privacyConfirmedInAppStoreConnect || privacyConfirmedManually,
+                       !privacyConfirmedAt.isEmpty {
+                        LabeledContent("Authorized at") {
                             Text(verbatim: privacyConfirmedAt)
                                 .textSelection(.enabled)
                         }
+                    }
+                    if privacyCollectsData {
+                        Label(
+                            "Automatic publishing currently supports only the “Data Not Collected” answer. Complete collected-data details in App Store Connect.",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                     }
                 }
             }
@@ -2788,8 +2925,10 @@ private struct PerAppPublishingConfigurationEditor: View {
             PublishingSubscriptionForm(
                 baseTerritory: $subscriptionBaseTerritory,
                 availableInAllTerritories: $subscriptionsAvailableEverywhere,
+                familySharable: $subscriptionsFamilySharable,
                 reviewScreenshot: $subscriptionReviewScreenshot,
-                groups: $subscriptionGroups
+                groups: $subscriptionGroups,
+                territoryIDs: currentConfiguration?.territoryIDs ?? []
             )
 
         case .advanced:
@@ -2920,6 +3059,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                     subscriptions: AppStoreSubscriptionsConfiguration(
                         baseTerritory: firstSubscription?.baseTerritory,
                         availableInAllTerritories: firstSubscription?.availableInAllTerritories,
+                        familySharable: firstSubscription?.familySharable,
                         reviewScreenshot: firstSubscription?.reviewScreenshot,
                         groups: catalog.groups.isEmpty ? nil : catalog.groups
                     )
@@ -3071,6 +3211,10 @@ private struct PerAppPublishingConfigurationEditor: View {
                     ?? currentConfiguration.subscriptionGroups
                         .flatMap(\.subscriptions)
                         .allSatisfy { $0.availableInNewTerritories == true },
+                familySharable: manifest.subscriptions?.familySharable
+                    ?? currentConfiguration.subscriptionGroups
+                        .flatMap(\.subscriptions)
+                        .allSatisfy(\.familySharable),
                 reviewScreenshot: manifest.subscriptions?.reviewScreenshot,
                 groups: groups
             )
@@ -3140,7 +3284,10 @@ private struct PerAppPublishingConfigurationEditor: View {
         privacyCollectsData = manifest.compliance?.privacyDraft?.collectsData ?? false
         privacyDataTypes = manifest.compliance?.privacyDraft?.dataTypes ?? []
         privacyNotes = manifest.compliance?.privacyDraft?.notes ?? []
-        privacyConfirmedInAppStoreConnect = manifest.compliance?.privacyAttestation != nil
+        privacyConfirmedInAppStoreConnect = manifest.compliance?.privacyAttestation?
+            .automaticPublishingAuthorizedAt?.nilIfEmpty != nil
+        privacyConfirmedManually = manifest.compliance?.privacyAttestation != nil
+            && manifest.compliance?.privacyAttestation?.automaticPublishingAuthorizedAt?.nilIfEmpty == nil
         privacyConfirmedBy = manifest.compliance?.privacyAttestation?.confirmedBy ?? ""
         privacyConfirmedAt = manifest.compliance?.privacyAttestation?.confirmedAt ?? ""
         complianceEvidence = manifest.compliance?.evidence ?? []
@@ -3148,6 +3295,10 @@ private struct PerAppPublishingConfigurationEditor: View {
 
         subscriptionBaseTerritory = manifest.subscriptions?.baseTerritory ?? ""
         subscriptionsAvailableEverywhere = manifest.subscriptions?.availableInAllTerritories ?? true
+        subscriptionsFamilySharable = manifest.subscriptions?.familySharable
+            ?? (manifest.subscriptions?.groups ?? [])
+                .flatMap(\.subscriptions)
+                .allSatisfy { $0.familySharable == true }
         subscriptionReviewScreenshot = manifest.subscriptions?.reviewScreenshot ?? ""
         subscriptionGroups = (manifest.subscriptions?.groups ?? []).map(PublishingSubscriptionGroupForm.init)
     }
@@ -3235,25 +3386,47 @@ private struct PerAppPublishingConfigurationEditor: View {
         if !privacyDataTypes.isEmpty
             || !privacyNotes.isEmpty
             || !complianceEvidence.isEmpty
-            || privacyConfirmedInAppStoreConnect {
+            || privacyConfirmedInAppStoreConnect
+            || privacyConfirmedManually {
+            let previousDraft = manifest.compliance?.privacyDraft
+            let currentDraft = AppStorePrivacyDraft(
+                collectsData: privacyCollectsData,
+                dataTypes: privacyDataTypes,
+                notes: privacyNotes
+            )
             let previousAttestation = manifest.compliance?.privacyAttestation
+            let now = ISO8601DateFormatter().string(from: Date())
             let privacyAttestation: AppStorePrivacyAttestation? = if privacyConfirmedInAppStoreConnect {
                 AppStorePrivacyAttestation(
                     confirmedBy: privacyConfirmedBy.nilIfEmpty,
-                    confirmedAt: previousAttestation?.confirmedAt?.nilIfEmpty
-                        ?? privacyConfirmedAt.nilIfEmpty
-                        ?? ISO8601DateFormatter().string(from: Date()),
+                    confirmedAt: previousDraft == currentDraft
+                        ? previousAttestation?.confirmedAt?.nilIfEmpty
+                            ?? privacyConfirmedAt.nilIfEmpty
+                            ?? now
+                        : now,
+                    projectFingerprint: previousAttestation?.projectFingerprint,
+                    automaticPublishingAuthorizedAt: previousDraft == currentDraft
+                        ? previousAttestation?.automaticPublishingAuthorizedAt?.nilIfEmpty ?? now
+                        : now,
+                    publishedAt: previousDraft == currentDraft
+                        ? previousAttestation?.publishedAt
+                        : nil
+                )
+            } else if privacyConfirmedManually {
+                AppStorePrivacyAttestation(
+                    confirmedBy: privacyConfirmedBy.nilIfEmpty,
+                    confirmedAt: previousDraft == currentDraft
+                        ? previousAttestation?.confirmedAt?.nilIfEmpty
+                            ?? privacyConfirmedAt.nilIfEmpty
+                            ?? now
+                        : now,
                     projectFingerprint: previousAttestation?.projectFingerprint
                 )
             } else {
                 nil
             }
             manifest.compliance = AppStoreComplianceConfiguration(
-                privacyDraft: AppStorePrivacyDraft(
-                    collectsData: privacyCollectsData,
-                    dataTypes: privacyDataTypes,
-                    notes: privacyNotes
-                ),
+                privacyDraft: currentDraft,
                 privacyAttestation: privacyAttestation,
                 evidence: complianceEvidence,
                 confidence: complianceConfidence
@@ -3265,6 +3438,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         manifest.subscriptions = AppStoreSubscriptionsConfiguration(
             baseTerritory: subscriptionBaseTerritory.nilIfEmpty,
             availableInAllTerritories: subscriptionsAvailableEverywhere,
+            familySharable: subscriptionsFamilySharable,
             reviewScreenshot: subscriptionReviewScreenshot.nilIfEmpty,
             groups: subscriptionGroups.isEmpty ? nil : subscriptionGroups.map(\.definition)
         )

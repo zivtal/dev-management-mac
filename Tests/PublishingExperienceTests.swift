@@ -94,6 +94,97 @@ final class PublishingExperienceTests: XCTestCase {
         ))
     }
 
+    func testFirstReleaseShowsAppStoreActionOnlyAfterMatchingTestFlightBuild() {
+        XCTAssertFalse(AppStoreReleaseActionPolicy.showsAppStoreAction(
+            hasReleasedVersion: false,
+            hasMatchingTestFlightBuild: false
+        ))
+        XCTAssertTrue(AppStoreReleaseActionPolicy.showsAppStoreAction(
+            hasReleasedVersion: false,
+            hasMatchingTestFlightBuild: true
+        ))
+        XCTAssertTrue(AppStoreReleaseActionPolicy.showsAppStoreAction(
+            hasReleasedVersion: true,
+            hasMatchingTestFlightBuild: false
+        ))
+    }
+
+    func testCustomOfferCodeBuildsAppleRedemptionURL() throws {
+        let url = try XCTUnwrap(SubscriptionOfferCodeRedemption.url(
+            appID: "1234567890",
+            code: "PRESS & FRIENDS"
+        ))
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+
+        XCTAssertEqual(components.scheme, "https")
+        XCTAssertEqual(components.host, "apps.apple.com")
+        XCTAssertEqual(components.path, "/redeem")
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+                item.value.map { (item.name, $0) }
+            }),
+            ["ctx": "offercodes", "id": "1234567890", "code": "PRESS & FRIENDS"]
+        )
+    }
+
+    func testNoDataPrivacyPayloadAndSessionNormalization() throws {
+        let payload = try AppStorePrivacyPublishingService.payload(for: AppStorePrivacyDraft(
+            collectsData: false,
+            dataTypes: [],
+            notes: []
+        ))
+
+        XCTAssertEqual(payload, [FastlaneAppPrivacyUsage(dataProtections: ["DATA_NOT_COLLECTED"])])
+        XCTAssertEqual(
+            AppStorePrivacyPublishingService.normalizedSession("export FASTLANE_SESSION='cookie value'\n"),
+            "cookie value"
+        )
+        XCTAssertThrowsError(try AppStorePrivacyPublishingService.payload(for: AppStorePrivacyDraft(
+            collectsData: true,
+            dataTypes: ["Identifiers"],
+            notes: []
+        )))
+    }
+
+    func testOfferCodeBatchesSortAvailableFirstAndNewestWithinState() {
+        let inactive = AppStoreConnectCustomCodeBatchSnapshot(
+            id: "inactive",
+            customCode: "OLD",
+            numberOfCodes: 500,
+            createdDate: "2026-08-17T10:00:00Z",
+            expirationDate: nil,
+            active: false,
+            redemptionURL: nil
+        )
+        let olderActive = AppStoreConnectCustomCodeBatchSnapshot(
+            id: "older-active",
+            customCode: "FIRST",
+            numberOfCodes: 500,
+            createdDate: "2026-08-17T11:00:00Z",
+            expirationDate: nil,
+            active: true,
+            redemptionURL: nil
+        )
+        let newerActive = AppStoreConnectCustomCodeBatchSnapshot(
+            id: "newer-active",
+            customCode: "SECOND",
+            numberOfCodes: 500,
+            createdDate: "2026-08-17T12:00:00Z",
+            expirationDate: nil,
+            active: true,
+            redemptionURL: nil
+        )
+
+        XCTAssertEqual(
+            SubscriptionOfferCodeAvailabilityOrdering.custom([
+                inactive,
+                olderActive,
+                newerActive
+            ]).map(\.id),
+            ["newer-active", "older-active", "inactive"]
+        )
+    }
+
     func testAppStoreFallbackPrefersMatchingLocaleAndKeepsReviewDetails() {
         let review = AppStoreConnectReviewSnapshot(
             contactFirstName: "Ada",
@@ -114,6 +205,7 @@ final class PublishingExperienceTests: XCTestCase {
             ageRating: nil,
             licenseAgreementText: nil,
             licenseTerritoryIDs: [],
+            territoryIDs: ["ISR", "USA"],
             appLocalizations: [],
             version: AppStoreConnectVersionSnapshot(
                 versionString: "1.0.0",

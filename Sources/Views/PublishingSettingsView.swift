@@ -7,6 +7,7 @@ struct PublishingSettingsView: View {
     @State private var openAIAPIKey = ""
     @State private var demoAccountName = ""
     @State private var demoAccountPassword = ""
+    @State private var appStorePrivacyFastlaneSession = ""
 
     var body: some View {
         Form {
@@ -142,6 +143,58 @@ struct PublishingSettingsView: View {
                 } label: {
                     Label("Add App Store Connect API", systemImage: "plus")
                 }
+            }
+
+            Section("App Privacy Automation") {
+                LabeledContent("Apple ID") {
+                    TextField(
+                        "publisher@example.com",
+                        text: optionalTextBinding(\.appStorePrivacyAppleID)
+                    )
+                    .labelsHidden()
+                    .frame(width: 300)
+                }
+                LabeledContent("App Store Connect team ID") {
+                    TextField(
+                        "Optional for a single team",
+                        text: optionalTextBinding(\.appStorePrivacyTeamID)
+                    )
+                    .labelsHidden()
+                    .frame(width: 300)
+                }
+                SecureField("FASTLANE_SESSION value", text: $appStorePrivacyFastlaneSession)
+                    .textContentType(.password)
+                HStack {
+                    credentialStatus(
+                        isStored: model.hasAppStorePrivacyFastlaneSession,
+                        storedText: "Fastlane session stored in Keychain"
+                    )
+                    Spacer()
+                    if model.hasAppStorePrivacyFastlaneSession {
+                        Button("Remove", role: .destructive) {
+                            model.removeAppStorePrivacyFastlaneSession()
+                        }
+                    }
+                    Button(model.hasAppStorePrivacyFastlaneSession ? "Replace Session" : "Save Session") {
+                        model.saveAppStorePrivacyFastlaneSession(appStorePrivacyFastlaneSession)
+                        appStorePrivacyFastlaneSession = ""
+                    }
+                    .disabled(appStorePrivacyFastlaneSession.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                Button("Copy Authentication Command and Open Terminal") {
+                    copyFastlaneAuthenticationCommand()
+                }
+                .disabled(model.preferences.appStorePrivacyAppleID?.nilIfEmpty == nil)
+                if AppStorePrivacyPublishingService.executableURL() == nil {
+                    Label(
+                        "Fastlane is not installed. Install it with Homebrew before using automatic App Privacy publishing.",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                }
+                Text("Apple does not expose App Privacy through its official API. Development Management uses a local Fastlane session only after you review and authorize the per-app privacy answers. Your Apple ID password is never stored. Generate the session with the command above, then paste only the FASTLANE_SESSION value here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Publication") {
@@ -346,6 +399,22 @@ struct PublishingSettingsView: View {
         } catch {
             model.presentedError = error.localizedDescription
         }
+    }
+
+    private func copyFastlaneAuthenticationCommand() {
+        guard let appleID = model.preferences.appStorePrivacyAppleID?.nilIfEmpty else { return }
+        let quotedAppleID = appleID.replacingOccurrences(of: "'", with: "'\\''")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(
+            "fastlane spaceauth -u '\(quotedAppleID)'",
+            forType: .string
+        )
+        let terminalURL = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
+        NSWorkspace.shared.openApplication(
+            at: terminalURL,
+            configuration: NSWorkspace.OpenConfiguration(),
+            completionHandler: { _, _ in }
+        )
     }
 
     private func statusSymbol(for state: PublishingLogSession.State) -> String {

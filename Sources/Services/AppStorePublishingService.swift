@@ -15,6 +15,7 @@ enum AppStorePublishingError: LocalizedError {
     case noSimulatorApplication
     case uploaderUnavailable
     case missingEditablePublishingDraft
+    case privacyManifestUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -44,6 +45,8 @@ enum AppStorePublishingError: LocalizedError {
             return L10n.text("Apple's App Store upload tool was not found in the selected Xcode installation.")
         case .missingEditablePublishingDraft:
             return L10n.text("Review and save the editable App Store listing and app declarations before releasing.")
+        case .privacyManifestUnavailable:
+            return L10n.text("App Privacy was published, but app-store-publishing.json could not be updated with the publication time.")
         }
     }
 }
@@ -58,6 +61,7 @@ final class AppStorePublishingService {
     private let reviewAssetService: AppStoreReviewAssetService
     private let publicationURLValidator: AppStorePublicationURLValidator
     private let xcodeGenPreparationService: XcodeGenProjectPreparationService
+    private let privacyPublishingService: AppStorePrivacyPublishingService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
@@ -72,6 +76,10 @@ final class AppStorePublishingService {
         self.reviewAssetService = reviewAssetService
         self.publicationURLValidator = publicationURLValidator
         self.xcodeGenPreparationService = XcodeGenProjectPreparationService(
+            processRunner: processRunner,
+            fileManager: fileManager
+        )
+        self.privacyPublishingService = AppStorePrivacyPublishingService(
             processRunner: processRunner,
             fileManager: fileManager
         )
@@ -135,6 +143,29 @@ final class AppStorePublishingService {
               privacyAttestation.confirmedBy?.nilIfEmpty != nil,
               privacyAttestation.confirmedAt?.nilIfEmpty != nil else {
             throw AppStorePublishingError.missingEditablePublishingDraft
+        }
+        if privacyAttestation.automaticPublishingAuthorizedAt?.nilIfEmpty != nil,
+           privacyAttestation.publishedAt?.nilIfEmpty == nil {
+            guard let privacyDraft = subscriptionCatalog.compliance?.privacyDraft else {
+                throw AppStorePublishingError.missingEditablePublishingDraft
+            }
+            eventHandler(.phase(.publishingPrivacy))
+            try await privacyPublishingService.publish(
+                draft: privacyDraft,
+                bundleIdentifier: bundleIdentifier,
+                appleID: configuration.appStorePrivacyAppleID,
+                teamID: configuration.appStorePrivacyTeamID,
+                session: configuration.appStorePrivacyFastlaneSession,
+                onOutput: { eventHandler(.output($0)) }
+            )
+            try recordPrivacyPublication(
+                catalog: subscriptionCatalog,
+                publishedAt: ISO8601DateFormatter().string(from: Date())
+            )
+        } else if privacyAttestation.publishedAt?.nilIfEmpty != nil {
+            eventHandler(.output(L10n.text("The reviewed App Privacy answers are already published.\n")))
+        } else {
+            eventHandler(.output(L10n.text("The App Privacy answers were previously confirmed manually in App Store Connect.\n")))
         }
         if subscriptionCatalog.detectedProductIDs.isEmpty {
             eventHandler(.output(L10n.text("No subscription products were found in the app project.\n")))
@@ -437,6 +468,35 @@ final class AppStorePublishingService {
 
     static func publicationURLs(configuration: PublishingConfiguration) -> [AppStorePublicationURL] {
         AppStorePublicationURLValidator.publicationURLs(configuration: configuration)
+    }
+
+    private func recordPrivacyPublication(
+        catalog: AppStoreSubscriptionCatalog,
+        publishedAt: String
+    ) throws {
+        guard let relativePath = catalog.sourceFiles.first(where: {
+            URL(fileURLWithPath: $0).lastPathComponent == "app-store-publishing.json"
+        }) else {
+            throw AppStorePublishingError.privacyManifestUnavailable
+        }
+        let manifestURL = catalog.projectDirectory.appendingPathComponent(relativePath)
+        guard var manifest = try? JSONDecoder().decode(
+            AppStorePublishingManifest.self,
+            from: Data(contentsOf: manifestURL)
+        ), var compliance = manifest.compliance,
+           var attestation = compliance.privacyAttestation else {
+            throw AppStorePublishingError.privacyManifestUnavailable
+        }
+        attestation.publishedAt = publishedAt
+        compliance.privacyAttestation = attestation
+        manifest.compliance = compliance
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        do {
+            try encoder.encode(manifest).write(to: manifestURL, options: .atomic)
+        } catch {
+            throw AppStorePublishingError.privacyManifestUnavailable
+        }
     }
 
     static func screenshotDisplayType(

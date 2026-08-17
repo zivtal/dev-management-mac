@@ -62,6 +62,8 @@ final class StoreKitSubscriptionDiscoveryService {
                     ?? defaults?.baseTerritory
                 subscription.availableInAllTerritories = subscription.availableInAllTerritories
                     ?? defaults?.availableInAllTerritories
+                subscription.familySharable = subscription.familySharable
+                    ?? defaults?.familySharable
                 subscription.reviewScreenshot = subscription.reviewScreenshot
                     ?? fallbackReviewScreenshot
                 if subscription.localizations?.isEmpty != false {

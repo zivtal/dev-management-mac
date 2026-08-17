@@ -12,6 +12,8 @@ struct AppPreferences: Codable, Equatable {
     var appStoreConnectIssuerID: String?
     var appStoreConnectKeyID: String?
     var appStoreConnectCredentialProfiles: [AppStoreConnectCredentialProfile]?
+    var appStorePrivacyAppleID: String?
+    var appStorePrivacyTeamID: String?
     var appStoreLocale: String?
     var appStoreCopyright: String?
     var appStoreSupportURL: String?
@@ -136,6 +138,7 @@ struct InstallationLogSession: Equatable, Identifiable {
     let projectName: String
     let deviceName: String
     let startedAt: Date
+    var finishedAt: Date?
     var phase: InstallationProgress.Phase
     var state: State
     private(set) var output: String
@@ -146,6 +149,7 @@ struct InstallationLogSession: Equatable, Identifiable {
         projectName: String,
         deviceName: String,
         startedAt: Date = Date(),
+        finishedAt: Date? = nil,
         phase: InstallationProgress.Phase = .preparing,
         state: State = .inProgress,
         output: String = ""
@@ -154,6 +158,7 @@ struct InstallationLogSession: Equatable, Identifiable {
         self.projectName = projectName
         self.deviceName = deviceName
         self.startedAt = startedAt
+        self.finishedAt = finishedAt
         self.phase = phase
         self.state = state
         self.output = output
@@ -180,6 +185,10 @@ struct InstallationLogSession: Equatable, Identifiable {
             .last
             .map(String.init)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    func elapsedTime(at now: Date = Date()) -> TimeInterval {
+        max(0, (finishedAt ?? now).timeIntervalSince(startedAt))
     }
 
     var statusTitle: String {

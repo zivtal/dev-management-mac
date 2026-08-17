@@ -204,6 +204,8 @@ Settings contains six tabs and is the only ordinary app window.
   copyright, age rating, and an App Privacy checklist. Public URLs, legal
   agreements, subscription prices, review contacts, credentials, and publisher
   attestations remain manual fields.
+- Store a Fastlane App Store Connect session in Keychain to publish an explicitly
+  authorized **Data Not Collected** App Privacy declaration automatically.
 - Configure a default App Store Connect API and any number of named additional
   profiles for apps that belong to different teams or require different keys.
 - Store issuer IDs, key IDs, and profile names in app preferences while keeping
@@ -274,9 +276,10 @@ presented as editable fields; Advanced JSON is optional. OpenAI reads bounded
 categories, content-rights, free-download and demo-account status, copyright,
 age-rating answers, and an App Privacy checklist. The user must review and save
 the draft before Upload or Publish; neither release action silently generates or
-changes it. App Privacy still
-requires a one-time publisher attestation in App Store Connect because Apple
-does not expose that questionnaire through its public API. Support and
+changes it. Because Apple does not expose App Privacy through its public API,
+an authorized no-data declaration is published through the Fastlane session in
+Publishing Settings. Collected-data declarations retain a manual App Store
+Connect confirmation path. Support and
 privacy-policy URLs are required;
 Terms of Use is also required for subscription apps. Marketing and
 privacy-choices URLs are optional. All public URLs remain manually entered, and
@@ -288,11 +291,24 @@ Codes window without loading the release workspace. It shows existing production
 offers and creates either one-time batches of 500–25,000 codes or reusable custom
 codes with 500–25,000 redemptions. Production code creation remains disabled until
 App Store Connect reports a released app version and an approved subscription.
+Clicking an existing offer opens One-Time and Custom tabs with active batches
+first, downloadable values, redemption links, and expiration details. Apple does
+not expose individual one-time redemption state through this API. New code views
+warn that activation can take up to one hour and each Apple Account can redeem
+only one code per offer.
+
 For one-time batches, choose a destination before generation. Development
 Management saves Apple's returned CSV directly so large batches and their
 redemption URLs are ready to distribute without filling the window with codes.
 Free offers are created for every territory currently enabled for the selected
 subscription.
+
+Base-territory controls use Apple's complete live territory catalog. Subscription
+defaults also include a Family Sharing switch that updates every product while
+retaining individual product controls. On a first release, Publish shows only the
+TestFlight action until the matching build has finished processing; only then is
+Submit for Review shown. Redeem Codes and live Installation Log panels float above
+ordinary windows while they are open, and the log includes live elapsed runtime.
 
 The full archive, metadata, screenshot, TestFlight, review-attachment, and
 submission pipeline is documented in

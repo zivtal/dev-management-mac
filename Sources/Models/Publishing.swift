@@ -117,6 +117,8 @@ struct AppStorePrivacyAttestation: Codable, Equatable, Sendable {
     var confirmedBy: String?
     var confirmedAt: String?
     var projectFingerprint: String?
+    var automaticPublishingAuthorizedAt: String? = nil
+    var publishedAt: String? = nil
 }
 
 struct AppStoreComplianceConfiguration: Codable, Equatable, Sendable {
@@ -232,6 +234,7 @@ struct AppStoreSubscriptionGroupDefinition: Codable, Equatable, Sendable {
 struct AppStoreSubscriptionsConfiguration: Codable, Equatable, Sendable {
     var baseTerritory: String?
     var availableInAllTerritories: Bool?
+    var familySharable: Bool? = nil
     var reviewScreenshot: String?
     var groups: [AppStoreSubscriptionGroupDefinition]?
 }
@@ -309,6 +312,7 @@ struct AppStoreConnectConfigurationSnapshot: Equatable, Sendable {
     let ageRating: [String: AppStoreManifestValue]?
     let licenseAgreementText: String?
     let licenseTerritoryIDs: [String]
+    let territoryIDs: [String]
     let appLocalizations: [AppStoreConnectAppLocalizationSnapshot]
     let version: AppStoreConnectVersionSnapshot?
     let testFlightBuild: AppStoreConnectBuildReference?
@@ -475,6 +479,33 @@ struct AppStoreConnectOfferSnapshot: Equatable, Sendable, Identifiable {
     let totalNumberOfCodes: Int
 }
 
+struct AppStoreConnectOfferCodeDetailSnapshot: Equatable, Sendable {
+    let offerID: String
+    let appID: String
+    let oneTimeBatches: [AppStoreConnectOneTimeCodeBatchSnapshot]
+    let customBatches: [AppStoreConnectCustomCodeBatchSnapshot]
+}
+
+struct AppStoreConnectOneTimeCodeBatchSnapshot: Equatable, Sendable, Identifiable {
+    let id: String
+    let numberOfCodes: Int
+    let createdDate: String?
+    let expirationDate: String?
+    let active: Bool
+    let environment: String?
+    let codes: [String]
+}
+
+struct AppStoreConnectCustomCodeBatchSnapshot: Equatable, Sendable, Identifiable {
+    let id: String
+    let customCode: String
+    let numberOfCodes: Int
+    let createdDate: String?
+    let expirationDate: String?
+    let active: Bool
+    let redemptionURL: URL?
+}
+
 enum SubscriptionOfferDuration: String, CaseIterable, Codable, Sendable {
     case threeDays = "THREE_DAYS"
     case oneWeek = "ONE_WEEK"
@@ -555,6 +586,7 @@ struct SubscriptionOfferCodeGenerationResult: Sendable {
     let batchID: String
     let customCode: String?
     let oneTimeCodeCSV: Data?
+    let redemptionURL: URL?
 }
 
 enum SubscriptionOfferCodeValidationError: LocalizedError {
@@ -660,6 +692,9 @@ struct PublishingConfiguration: Sendable {
     let appStoreConnectIssuerID: String
     let appStoreConnectKeyID: String
     let appStoreConnectPrivateKey: String
+    let appStorePrivacyAppleID: String?
+    let appStorePrivacyTeamID: String?
+    let appStorePrivacyFastlaneSession: String?
     let locale: String
     let copyright: String
     let supportURL: String
@@ -704,6 +739,7 @@ struct PublishingProgress: Equatable {
     enum Phase: String, CaseIterable, Equatable, Sendable {
         case preparing
         case discoveringSubscriptions
+        case publishingPrivacy
         case generatingMetadata
         case collectingScreenshots
         case archiving
@@ -720,6 +756,7 @@ struct PublishingProgress: Equatable {
             switch self {
             case .preparing: L10n.text("Preparing App Store publication…")
             case .discoveringSubscriptions: L10n.text("Inspecting StoreKit subscriptions…")
+            case .publishingPrivacy: L10n.text("Publishing App Privacy answers…")
             case .generatingMetadata: L10n.text("Generating App Store description…")
             case .collectingScreenshots: L10n.text("Collecting App Store screenshots…")
             case .archiving: L10n.text("Archiving and exporting the application…")

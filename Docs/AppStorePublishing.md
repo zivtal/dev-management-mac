@@ -61,12 +61,14 @@ action can start. OpenAI never changes fields during Upload or Publish.
     },
     "privacyAttestation": {
       "confirmedBy": "Publisher Name",
-      "confirmedAt": "2026-08-17T10:00:00Z"
+      "confirmedAt": "2026-08-17T10:00:00Z",
+      "automaticPublishingAuthorizedAt": "2026-08-17T10:00:00Z"
     }
   },
   "subscriptions": {
     "baseTerritory": "ISR",
     "availableInAllTerritories": true,
+    "familySharable": true,
     "reviewScreenshot": "Screenshots/subscription-review.png"
   }
 }
@@ -152,11 +154,16 @@ of Use links to every localized description while preserving Apple's 4,000
 character limit; OpenAI does not create or replace those links.
 
 Apple does not expose the App Privacy questionnaire through the public App Store
-Connect API. Development Management therefore generates an editable checklist,
-but it does not scrape the website or falsely attest on the publisher's behalf.
-After the publisher confirms the answers once in App Store Connect, the per-app
-editor can record who confirmed them and when. Release readiness remains blocked
-until that attestation is saved.
+Connect API. For an explicitly reviewed **Data Not Collected** declaration,
+Development Management can publish the answer with Fastlane's authenticated
+App Store Connect web session. Publishing Settings stores the Apple ID in app
+preferences and the `FASTLANE_SESSION` value in Keychain; the Apple ID password
+is never stored. Run the copied `fastlane spaceauth` command, paste the returned
+session, and authorize the per-app declaration in App Setup. A successful run
+records `publishedAt` in the manifest and does not repeat the operation unless
+the privacy draft changes. Collected-data declarations still require manual
+purpose, linking, and tracking answers in App Store Connect, followed by the
+manual confirmation in the editor.
 
 If an app doesn't use a local StoreKit configuration, the manifest can contain
 the complete subscription catalog:
@@ -220,28 +227,30 @@ new editable version receives the current localized version metadata.
 order:
 
 1. Discover StoreKit products and deterministic per-app configuration.
-2. Validate every configured public support, marketing, privacy, and terms URL
+2. Publish an authorized no-data App Privacy declaration when it has not already
+   been published.
+3. Validate every configured public support, marketing, privacy, and terms URL
    before spending time on an archive that cannot be submitted.
-3. Prepare or capture App Store screenshots for each supported simulator family.
-4. Look for the exact selected marketing version and build in TestFlight. When
+4. Prepare or capture App Store screenshots for each supported simulator family.
+5. Look for the exact selected marketing version and build in TestFlight. When
    it is already present, reuse it and skip the archive and upload. Otherwise,
    archive and export the selected iOS scheme.
-5. When an archive is required, read its bundle identifier, marketing version,
+6. When an archive is required, read its bundle identifier, marketing version,
    and build number. These archive values remain authoritative when a scheme
    pre-action increments the source version during the build. A reused
    TestFlight build is confirmed as fully processed before the App Store version
    is changed.
-6. Create or update the App Store version and reconcile localized listing text,
+7. Create or update the App Store version and reconcile localized listing text,
    app categories and declarations, availability, app pricing, subscription
    groups/products/localizations/prices, and localized screenshots. When an
    archive was required, validate and upload its IPA.
-7. Wait for Apple to process the exact archived build and attach it to the exact
+8. Wait for Apple to process the exact archived build and attach it to the exact
    archived marketing version.
-8. Reconcile localized TestFlight descriptions, URLs, beta review information,
+9. Reconcile localized TestFlight descriptions, URLs, beta review information,
    the configured internal group, and internal tester email addresses. Internal
    testers must already be App Store Connect team members; the run fails clearly
    rather than attempting to grant account access.
-9. Upload configured App Review demo videos and documents and verify Apple has
+10. Upload configured App Review demo videos and documents and verify Apple has
    processed each asset.
 
 At that boundary **Upload to TestFlight** stops. A hard intent guard prevents
@@ -287,7 +296,10 @@ border and an inline explanation.
 
 The right-hand workspace switches between **Subscriptions** and **Redeem Codes**.
 Subscription cards expose each product's duration, base territory, availability,
-and requested base price. Saved price edits update `app-store-publishing.json`
+Family Sharing, and requested base price. Every base-territory field is a picker
+backed by the complete live App Store Connect territory catalog. The subscription
+default Family Sharing switch updates every product, while product-level switches
+remain editable. Saved price edits update `app-store-publishing.json`
 and are applied to App Store Connect by the next Publish run. Redeem Codes shows
 existing production offers and creates either Apple one-time code batches or a
 custom reusable code, using the selected subscription. Switching tabs preserves
@@ -296,6 +308,11 @@ footer **Upload to TestFlight** and **Publish** or **Update** actions belong to
 the release workflow. Publish always submits for App Review; the TestFlight
 action is the explicit upload-only path. The window also remains open when
 another application or Development Management window receives focus.
+
+For a first release, the footer shows only **Upload to TestFlight** until Apple
+has processed the exact local version and build. The App Store action then
+appears as **Submit for Review**. Existing released apps continue to show the
+normal update action.
 
 When App Store Connect reports an older app version in an active review state,
 the release action is labeled **Update** and identifies that version. The final
@@ -340,8 +357,11 @@ offer and then create either:
 Offer duration, new/existing/expired subscriber eligibility, introductory-offer
 interaction, renewal behavior, product, code quantity, and expiry are chosen in
 the app. Custom-code generation replaces the setup form with the reusable code
-and a copy action. One-time batches prompt for a destination before the
-production request and save Apple's returned CSV directly to disk. Code creation
+and Apple's redemption URL. The app warns before and after creation that Apple
+can take up to one hour to make a new production code redeemable and that each
+Apple Account can redeem only one code per offer. One-time batches prompt for a
+destination before the production request and save Apple's returned CSV directly
+to disk. Code creation
 is unavailable until App Store Connect reports at least one app version ready
 for distribution and reports the selected
 subscription as approved; the same checks are repeated by the service immediately
@@ -351,10 +371,18 @@ Connect. The inline territory-price resources use App Store Connect local IDs
 in the `${local-id}` form, and the offer's price relationships reference those
 same IDs.
 
+Existing offers are clickable. Their detail view has **One-Time Codes** and
+**Custom Codes** tabs, orders active batches before inactive or expired batches,
+downloads one-time values, and provides copy actions and redemption links.
+Apple's subscription offer-code API does not expose which individual one-time
+values have already been redeemed or a custom batch's remaining redemption
+count, so the app labels that limitation instead of guessing a per-code state.
+
 Apple still requires the initial App Store Connect app record, signed legal
-agreements, banking and tax information for paid content, App Privacy answers,
-DSA trader status, any compliance declarations that aren't exposed through the
-API, and at least one eligible App Store Connect user for internal testing.
+agreements, banking and tax information for paid content, collected-data App
+Privacy answers, DSA trader status, any compliance declarations that aren't
+exposed through the API, and at least one eligible App Store Connect user for
+internal testing.
 Apple also requires the first subscription submission to be completed together
 with an app binary on the App Store Connect website; after that first submission,
 Development Management submits versioned subscription and group resources by
