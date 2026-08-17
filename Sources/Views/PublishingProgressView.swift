@@ -3,6 +3,15 @@ import SwiftUI
 
 enum PublishingLogWindowSizing {
     static let minimumContentSize = NSSize(width: 720, height: 520)
+    static let maximumInitialContentHeight: CGFloat = 900
+    static let verticalScreenInset: CGFloat = 100
+
+    static func initialContentHeight(availableScreenHeight: CGFloat) -> CGFloat {
+        max(
+            minimumContentSize.height,
+            min(maximumInitialContentHeight, availableScreenHeight - verticalScreenInset)
+        )
+    }
 
     static func correctedContentSize(for currentSize: NSSize) -> NSSize? {
         guard currentSize.width < minimumContentSize.width
@@ -29,8 +38,16 @@ final class PublishingLogWindowPresenter {
             let rootView = PublishingLogWindowView()
                 .environmentObject(model)
             let hostingController = NSHostingController(rootView: rootView)
+            let screen = NSApplication.shared.keyWindow?.screen
+                ?? NSScreen.main
+                ?? NSScreen.screens.first
+            let initialContentHeight = screen.map {
+                PublishingLogWindowSizing.initialContentHeight(
+                    availableScreenHeight: $0.visibleFrame.height
+                )
+            } ?? PublishingLogWindowSizing.maximumInitialContentHeight
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 980, height: 720),
+                contentRect: NSRect(x: 0, y: 0, width: 980, height: initialContentHeight),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable, .utilityWindow],
                 backing: .buffered,
                 defer: false
@@ -42,6 +59,7 @@ final class PublishingLogWindowPresenter {
             panel.hidesOnDeactivate = false
             panel.isReleasedWhenClosed = false
             panel.contentMinSize = PublishingLogWindowSizing.minimumContentSize
+            panel.setContentSize(NSSize(width: 980, height: initialContentHeight))
             panel.center()
             windowController = NSWindowController(window: panel)
         }

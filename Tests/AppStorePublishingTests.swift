@@ -5,6 +5,17 @@ import XCTest
 @testable import DevManagement
 
 final class AppStorePublishingTests: XCTestCase {
+    func testPublishingLogWindowStartsAt900PointsOrFitsShorterScreens() {
+        XCTAssertEqual(
+            PublishingLogWindowSizing.initialContentHeight(availableScreenHeight: 1_200),
+            900
+        )
+        XCTAssertEqual(
+            PublishingLogWindowSizing.initialContentHeight(availableScreenHeight: 850),
+            750
+        )
+    }
+
     func testPublishingLogWindowRepairsUnreadablyNarrowContentSize() {
         XCTAssertEqual(
             PublishingLogWindowSizing.correctedContentSize(
