@@ -119,15 +119,23 @@ struct PublishingProgressView: View {
     @State private var showsTechnicalDetails = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            statusHeader
-            journey
-            currentWork
-            technicalDetails
-            Spacer(minLength: 0)
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    statusHeader
+                    journey
+                    currentWork
+                    technicalDetails
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+
+            Divider()
             footer
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
         }
-        .padding(24)
         .frame(
             minWidth: PublishingLogWindowSizing.minimumContentSize.width,
             maxWidth: .infinity,
@@ -189,18 +197,10 @@ struct PublishingProgressView: View {
             ProgressView(value: completionFraction)
                 .progressViewStyle(.linear)
 
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 8) {
-                    ForEach(PublishingJourneyStage.allCases) { stage in
-                        stageView(stage)
-                            .frame(minWidth: 112)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(PublishingJourneyStage.allCases) { stage in
-                        stageView(stage)
-                    }
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(PublishingJourneyStage.allCases) { stage in
+                    stageView(stage)
+                        .frame(minWidth: 0, maxWidth: .infinity)
                 }
             }
         }
