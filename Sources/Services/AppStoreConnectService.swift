@@ -653,12 +653,22 @@ final class AppStoreConnectService {
         }
     }
 
-    private static func currentAppInfo(_ infos: [[String: Any]]) -> [String: Any]? {
-        infos.first {
-            let state = attributes($0)["appStoreState"] as? String
-                ?? attributes($0)["state"] as? String
-            return state != "REPLACED_WITH_NEW_INFO"
-        } ?? infos.first
+    static func currentAppInfo(_ infos: [[String: Any]]) -> [String: Any]? {
+        let currentInfos = infos.filter {
+            appInfoState($0) != "REPLACED_WITH_NEW_INFO"
+        }
+        return currentInfos.first {
+            appInfoState($0) == "PREPARE_FOR_SUBMISSION"
+        } ?? currentInfos.first {
+            guard let state = appInfoState($0) else { return false }
+            return AppStoreVersionLifecycle.isReusableDraftState(state)
+        } ?? currentInfos.first
+            ?? infos.first
+    }
+
+    private static func appInfoState(_ info: [String: Any]) -> String? {
+        attributes(info)["state"] as? String
+            ?? attributes(info)["appStoreState"] as? String
     }
 
     private static func latestVersionedResource(_ resources: [[String: Any]]) -> [String: Any]? {
@@ -918,11 +928,7 @@ final class AppStoreConnectService {
                 path: "/v1/apps/\(appID)/appInfos",
                 query: ["limit": "200"]
             )
-            let info = infos.first(where: {
-                let attributes = $0["attributes"] as? [String: Any]
-                let state = attributes?["appStoreState"] as? String
-                return state != "READY_FOR_SALE" && state != "REPLACED_WITH_NEW_INFO"
-            }) ?? infos.first
+            let info = Self.currentAppInfo(infos)
             guard let info, let infoID = info["id"] as? String else {
                 throw AppStoreConnectError.missingIdentifier("app information")
             }

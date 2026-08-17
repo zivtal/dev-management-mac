@@ -356,6 +356,29 @@ final class AppStorePublishingTests: XCTestCase {
         ]]))
     }
 
+    func testCurrentAppInfoPrefersEditableDraftOverLockedLiveInformation() throws {
+        let live: [String: Any] = [
+            "id": "live-info",
+            "attributes": ["state": "READY_FOR_DISTRIBUTION"]
+        ]
+        let rejected: [String: Any] = [
+            "id": "rejected-info",
+            "attributes": ["appStoreState": "DEVELOPER_REJECTED"]
+        ]
+        let draft: [String: Any] = [
+            "id": "draft-info",
+            "attributes": ["state": "PREPARE_FOR_SUBMISSION"]
+        ]
+
+        let selected = try XCTUnwrap(AppStoreConnectService.currentAppInfo([
+            live,
+            rejected,
+            draft
+        ]))
+
+        XCTAssertEqual(selected["id"] as? String, "draft-info")
+    }
+
     func testSubscriptionFieldEditorRoundTripsEveryPublishableValue() throws {
         let definition = AppStoreSubscriptionDefinition(
             referenceName: "Premium Annual",

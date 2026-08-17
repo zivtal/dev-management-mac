@@ -272,6 +272,12 @@ information, groups, testers, and subscriptions. Version-scoped storefront
 metadata, screenshots, review details and attachments, and App Store build
 attachment are deferred until the reviewed version is released or removed.
 
+App Store Connect may return both the locked live App Info record and the
+editable record for the next version. Metadata reconciliation always targets
+the editable record, preferring `PREPARE_FOR_SUBMISSION`, so localized app name,
+subtitle, privacy URLs, categories, and age rating are applied to the upcoming
+release rather than rejected against the live record.
+
 **Publish** additionally cancels an explicitly confirmed older active review
 only after the replacement archive succeeds (or a matching processed build is
 already available), then continues with the
