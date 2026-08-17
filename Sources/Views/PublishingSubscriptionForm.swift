@@ -178,66 +178,106 @@ struct PublishingSubscriptionForm: View {
     let territoryIDs: [String]
 
     var body: some View {
-        Form {
-            Section("Subscription Defaults") {
-                AppStoreTerritoryPicker(
-                    title: "Base territory",
-                    selection: $baseTerritory,
-                    territoryIDs: territoryIDs,
-                    allowsEmpty: true,
-                    emptyTitle: "Use USA default"
-                )
-                Toggle("Available in all territories", isOn: $availableInAllTerritories)
-                Toggle("Enable Family Sharing for all subscriptions", isOn: $familySharable)
-                    .onChange(of: familySharable) { _, enabled in
-                        for groupIndex in groups.indices {
-                            for productIndex in groups[groupIndex].subscriptions.indices {
-                                groups[groupIndex].subscriptions[productIndex].familySharable = enabled
-                            }
-                        }
+        GeometryReader { geometry in
+            switch PublishingWindowLayout(width: geometry.size.width) {
+            case .threeColumns:
+                HStack(alignment: .top, spacing: 16) {
+                    subscriptionForm {
+                        subscriptionDefaultsSection
                     }
-                Text("Apple applies Family Sharing per subscription. This default updates every product below; each product can still be adjusted individually. Enabling it may be effectively one-way after subscribers exist.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("Default review screenshot", text: $reviewScreenshot)
-            }
-
-            Section("Groups and Products") {
-                if groups.isEmpty {
-                    Text("No subscription groups are configured.")
-                        .foregroundStyle(.secondary)
-                }
-                ForEach($groups) { $group in
-                    DisclosureGroup(group.referenceName.nilIfEmpty ?? L10n.text("New subscription group")) {
-                        TextField("Group reference name", text: $group.referenceName)
-                        localizationEditor(localizations: $group.localizations)
-
-                        ForEach($group.subscriptions) { $product in
-                            productEditor(product: $product)
-                        }
-                        Button {
-                            group.subscriptions.append(PublishingSubscriptionProductForm())
-                        } label: {
-                            Label("Add subscription product", systemImage: "plus")
-                        }
-                    }
-                    Button(role: .destructive) {
-                        groups.removeAll { $0.id == group.id }
-                    } label: {
-                        Label("Remove subscription group", systemImage: "trash")
+                    .frame(width: max(360, (geometry.size.width - 32) / 3))
+                    subscriptionForm {
+                        groupsAndProductsSection
                     }
                 }
-                Button {
-                    groups.append(PublishingSubscriptionGroupForm())
-                } label: {
-                    Label("Add subscription group", systemImage: "plus")
+            case .twoColumns:
+                HStack(alignment: .top, spacing: 16) {
+                    subscriptionForm {
+                        subscriptionDefaultsSection
+                    }
+                    subscriptionForm {
+                        groupsAndProductsSection
+                    }
                 }
-                Text("Every subscription value is editable here. Advanced JSON is optional and exposes the same saved configuration.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            case .singleColumn:
+                subscriptionForm {
+                    subscriptionDefaultsSection
+                    groupsAndProductsSection
+                }
             }
         }
+    }
+
+    private func subscriptionForm<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Form {
+            content()
+        }
         .formStyle(.grouped)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var subscriptionDefaultsSection: some View {
+        Section("Subscription Defaults") {
+            AppStoreTerritoryPicker(
+                title: "Base territory",
+                selection: $baseTerritory,
+                territoryIDs: territoryIDs,
+                allowsEmpty: true,
+                emptyTitle: "Use USA default"
+            )
+            Toggle("Available in all territories", isOn: $availableInAllTerritories)
+            Toggle("Enable Family Sharing for all subscriptions", isOn: $familySharable)
+                .onChange(of: familySharable) { _, enabled in
+                    for groupIndex in groups.indices {
+                        for productIndex in groups[groupIndex].subscriptions.indices {
+                            groups[groupIndex].subscriptions[productIndex].familySharable = enabled
+                        }
+                    }
+                }
+            Text("Apple applies Family Sharing per subscription. This default updates every product below; each product can still be adjusted individually. Enabling it may be effectively one-way after subscribers exist.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextField("Default review screenshot", text: $reviewScreenshot)
+        }
+    }
+
+    private var groupsAndProductsSection: some View {
+        Section("Groups and Products") {
+            if groups.isEmpty {
+                Text("No subscription groups are configured.")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach($groups) { $group in
+                DisclosureGroup(group.referenceName.nilIfEmpty ?? L10n.text("New subscription group")) {
+                    TextField("Group reference name", text: $group.referenceName)
+                    localizationEditor(localizations: $group.localizations)
+
+                    ForEach($group.subscriptions) { $product in
+                        productEditor(product: $product)
+                    }
+                    Button {
+                        group.subscriptions.append(PublishingSubscriptionProductForm())
+                    } label: {
+                        Label("Add subscription product", systemImage: "plus")
+                    }
+                }
+                Button(role: .destructive) {
+                    groups.removeAll { $0.id == group.id }
+                } label: {
+                    Label("Remove subscription group", systemImage: "trash")
+                }
+            }
+            Button {
+                groups.append(PublishingSubscriptionGroupForm())
+            } label: {
+                Label("Add subscription group", systemImage: "plus")
+            }
+            Text("Every subscription value is editable here. Advanced JSON is optional and exposes the same saved configuration.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder

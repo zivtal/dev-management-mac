@@ -2708,325 +2708,20 @@ private struct PerAppPublishingConfigurationEditor: View {
 
     @ViewBuilder
     private var configurationContent: some View {
+        GeometryReader { geometry in
+            configurationContent(layout: PublishingWindowLayout(width: geometry.size.width))
+        }
+    }
+
+    @ViewBuilder
+    private func configurationContent(layout: PublishingWindowLayout) -> some View {
         switch selectedTab {
         case .listing:
-            Form {
-                Section("Localization") {
-                    LabeledContent("Detected app languages") {
-                        Text(verbatim: detectedLocales.joined(separator: ", "))
-                            .textSelection(.enabled)
-                    }
-                    TextField("Locale", text: $locale)
-                    TextField("App name", text: $appName)
-                    TextField("Subtitle", text: $subtitle)
-                    Text("OpenAI generates a separate editable draft for every language detected in the app project. Review and save the fields before releasing.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Section("Store Description") {
-                    configurationTextEditor("Description", text: $description, height: 130)
-                    TextField("Keywords", text: $keywords)
-                    TextField("Promotional text", text: $promotionalText)
-                    configurationTextEditor("What’s New", text: $whatsNew, height: 80)
-                }
-                Section("Additional Localized Listings") {
-                    if additionalLocalizations.isEmpty {
-                        Text("No additional localized listing is configured.")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(additionalLocalizations.indices, id: \.self) { index in
-                        DisclosureGroup(additionalLocalizations[index].locale) {
-                            VStack(alignment: .leading, spacing: 10) {
-                                TextField("Locale", text: $additionalLocalizations[index].locale)
-                                TextField("App name", text: $additionalLocalizations[index].appName)
-                                TextField("Subtitle", text: $additionalLocalizations[index].subtitle)
-                                configurationTextEditor(
-                                    "Description",
-                                    text: $additionalLocalizations[index].description,
-                                    height: 110
-                                )
-                                TextField("Keywords", text: $additionalLocalizations[index].keywords)
-                                TextField(
-                                    "Promotional text",
-                                    text: $additionalLocalizations[index].promotionalText
-                                )
-                                configurationTextEditor(
-                                    "What’s New",
-                                    text: $additionalLocalizations[index].whatsNew,
-                                    height: 70
-                                )
-                                Button("Remove Localization", role: .destructive) {
-                                    guard additionalLocalizations.indices.contains(index) else { return }
-                                    additionalLocalizations.remove(at: index)
-                                }
-                            }
-                            .padding(.vertical, 6)
-                        }
-                    }
-                    Button {
-                        additionalLocalizations.append(
-                            AppStoreLocalizedMetadata(
-                                locale: "en-US",
-                                appName: appName,
-                                subtitle: "",
-                                description: "",
-                                keywords: "",
-                                promotionalText: "",
-                                whatsNew: ""
-                            )
-                        )
-                    } label: {
-                        Label("Add Localization", systemImage: "plus")
-                    }
-                }
-                Section("URLs and Rights") {
-                    requiredTextField(
-                        "Support URL",
-                        text: $supportURL,
-                        validation: supportURLValidation
-                    )
-                    TextField("Marketing URL", text: $marketingURL)
-                    requiredTextField(
-                        "Privacy policy URL",
-                        text: $privacyPolicyURL,
-                        validation: privacyPolicyURLValidation
-                    )
-                    TextField("Privacy choices URL", text: $privacyChoicesURL)
-                    if requiresTermsURL {
-                        requiredTextField(
-                            "Terms of Use URL",
-                            text: $termsURL,
-                            validation: termsURLValidation
-                        )
-                    } else {
-                        TextField("Terms of Use URL", text: $termsURL)
-                    }
-                    Text("OpenAI drafts listing copy and App Store answers from the managed app’s source repository. Support, marketing, privacy, and Terms of Use URLs are entered manually and are never replaced.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    requiredTextField(
-                        "Copyright",
-                        text: $copyright,
-                        validation: copyright.nilIfEmpty == nil
-                            ? L10n.text("Copyright owner is required.")
-                            : nil
-                    )
-                }
-                Section("Screenshots") {
-                    configurationTextEditor("Paths (one file or folder per line)", text: $screenshotPaths, height: 80)
-                    Toggle("Replace existing screenshots for matching device sizes", isOn: $replaceScreenshots)
-                    Text("Relative paths are resolved from the app project. The Publish overview automatically extracts and previews missing screenshots on every supported Simulator family.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .formStyle(.grouped)
-
+            listingConfiguration(layout: layout)
         case .appSetup:
-            Form {
-                Section("Categories and Content") {
-                    Picker("Primary category", selection: $primaryCategory) {
-                        Text("Preserve / AI suggestion").tag("")
-                        ForEach(Self.categoryIdentifiers, id: \.self) { category in
-                            Text(friendlyCategory(category)).tag(category)
-                        }
-                    }
-                    Picker("Secondary category", selection: $secondaryCategory) {
-                        Text("None").tag("")
-                        ForEach(Self.categoryIdentifiers, id: \.self) { category in
-                            Text(friendlyCategory(category)).tag(category)
-                        }
-                    }
-                    Picker("Third-party content rights", selection: $contentRights) {
-                        Text("Preserve").tag("")
-                        Text("Uses third-party content").tag("USES_THIRD_PARTY_CONTENT")
-                        Text("Does not use third-party content").tag("DOES_NOT_USE_THIRD_PARTY_CONTENT")
-                    }
-                }
-                Section("Pricing and Availability") {
-                    Toggle("Configure app price and availability", isOn: $configureCommercialSettings)
-                    Toggle("The app itself is free", isOn: $appIsFree)
-                        .disabled(!configureCommercialSettings)
-                    AppStoreTerritoryPicker(
-                        title: "Base territory",
-                        selection: $appBaseTerritory,
-                        territoryIDs: currentConfiguration?.territoryIDs ?? []
-                    )
-                        .disabled(!configureCommercialSettings)
-                    Toggle("Available in all territories", isOn: $appAvailableEverywhere)
-                        .disabled(!configureCommercialSettings)
-                }
-                Section("Custom End-User License Agreement") {
-                    configurationTextEditor("Agreement text", text: $licenseAgreementText, height: 180)
-                    Text("Apple’s API accepts agreement text, not a terms URL. The Terms of Use URL from Store Listing is also appended to the App Store description.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Section("Age Ratings") {
-                    Button {
-                        Task { await generateAIAgeRatingDraft() }
-                    } label: {
-                        if isGeneratingAgeRating {
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.small)
-                                Text("Analyzing project source for Age Ratings…")
-                            }
-                        } else {
-                            Label("Fill Age Ratings with OpenAI", systemImage: "sparkles")
-                        }
-                    }
-                    .disabled(isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
-                    PublishingAgeRatingFields(ageRating: $ageRating)
-                    Text("OpenAI scans the source repository and defaults unsupported age-rating answers to No or None. Positive answers require repository evidence; review every field before publishing.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Section("App Privacy Draft") {
-                    Button {
-                        Task { await generateAIPrivacyDraft() }
-                    } label: {
-                        if isGeneratingPrivacy {
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.small)
-                                Text("Analyzing project source for App Privacy…")
-                            }
-                        } else {
-                            Label("Fill App Privacy with OpenAI", systemImage: "sparkles")
-                        }
-                    }
-                    .disabled(isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
-                    PublishingPrivacyDraftFields(
-                        isSpecified: Binding(
-                            get: { privacyDraftIsSpecified },
-                            set: { value in
-                                privacyDraftIsSpecified = value
-                                privacyConfirmedInAppStoreConnect = false
-                                privacyConfirmedManually = false
-                            }
-                        ),
-                        collectsData: Binding(
-                            get: { privacyCollectsData },
-                            set: { value in
-                                privacyCollectsData = value
-                                if value {
-                                    privacyConfirmedInAppStoreConnect = false
-                                } else {
-                                    privacyConfirmedManually = false
-                                }
-                            }
-                        ),
-                        dataTypes: $privacyDataTypes,
-                        notes: $privacyNotes
-                    )
-                    Text("Apple does not expose App Privacy through its public API. After you review and authorize a no-data declaration, Development Management publishes it through the Fastlane session stored in Publishing Settings.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if privacyDraftIsSpecified {
-                        if privacyCollectsData {
-                            Toggle(
-                                "I published these App Privacy answers in App Store Connect",
-                                isOn: $privacyConfirmedManually
-                            )
-                        } else {
-                            Toggle(
-                                "I reviewed and authorize automatic App Privacy publishing",
-                                isOn: $privacyConfirmedInAppStoreConnect
-                            )
-                        }
-                        TextField("Authorized by", text: $privacyConfirmedBy)
-                            .disabled(!privacyConfirmedInAppStoreConnect && !privacyConfirmedManually)
-                    } else {
-                        Text("Unspecified means the repository does not establish the App Privacy answer; it is never treated as No.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if showsRequiredFieldErrors, let privacyEditorValidationMessage {
-                        Label(privacyEditorValidationMessage, systemImage: "exclamationmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                    if privacyDraftIsSpecified,
-                       privacyConfirmedInAppStoreConnect || privacyConfirmedManually,
-                       !privacyConfirmedAt.isEmpty {
-                        LabeledContent("Authorized at") {
-                            Text(verbatim: privacyConfirmedAt)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    if privacyDraftIsSpecified, privacyCollectsData {
-                        Label(
-                            "Automatic publishing currently supports only the “Data Not Collected” answer. Complete collected-data details in App Store Connect.",
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                    }
-                }
-                .id(PublishingConfigurationEditorAnchor.appPrivacy)
-            }
-            .formStyle(.grouped)
-
+            appSetupConfiguration(layout: layout)
         case .review:
-            Form {
-                Section("App Review Contact") {
-                    requiredTextField(
-                        "First name",
-                        text: $reviewFirstName,
-                        validation: requiredReviewMessage(for: reviewFirstName)
-                    )
-                    requiredTextField(
-                        "Last name",
-                        text: $reviewLastName,
-                        validation: requiredReviewMessage(for: reviewLastName)
-                    )
-                    requiredTextField(
-                        "Phone",
-                        text: $reviewPhone,
-                        validation: requiredReviewMessage(for: reviewPhone)
-                    )
-                    requiredTextField(
-                        "Email",
-                        text: $reviewEmail,
-                        validation: requiredReviewMessage(for: reviewEmail)
-                    )
-                    configurationTextEditor("Review notes", text: $reviewNotes, height: 100)
-                    Toggle("A demo account is required", isOn: $demoAccountRequired)
-                    Text("Demo credentials are managed in Publishing Settings and stored only in Keychain.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Section("Submission") {
-                    Toggle("Release automatically after Apple approves it", isOn: $releaseAutomatically)
-                    Text("Both release actions synchronize this configuration. Publish submits the app and subscriptions for App Review; Upload to TestFlight stops immediately before submission.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Section("TestFlight") {
-                    TextField("Internal group name", text: $testFlightGroupName)
-                    TextField("Feedback email", text: $testFlightFeedbackEmail)
-                    configurationTextEditor("Beta review notes", text: $testFlightReviewNotes, height: 80)
-                    configurationTextEditor(
-                        "Internal tester emails (one per line)",
-                        text: $internalTesterEmails,
-                        height: 70
-                    )
-                    Text("Internal testers must already be members of the App Store Connect team. Both release actions synchronize beta descriptions, URLs, review details, the group, and these testers.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Section("Review Attachments") {
-                    configurationTextEditor(
-                        "Demo videos or documents (one file or folder per line)",
-                        text: $reviewAttachmentPaths,
-                        height: 80
-                    )
-                    Text("Relative paths are resolved from the app project. Publish also discovers files in AppStore/ReviewAttachments.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .formStyle(.grouped)
-
+            reviewConfiguration(layout: layout)
         case .subscriptions:
             PublishingSubscriptionForm(
                 baseTerritory: $subscriptionBaseTerritory,
@@ -3036,17 +2731,493 @@ private struct PerAppPublishingConfigurationEditor: View {
                 groups: $subscriptionGroups,
                 territoryIDs: currentConfiguration?.territoryIDs ?? []
             )
-
         case .advanced:
             TextEditor(text: $json)
                 .font(.system(.body, design: .monospaced))
                 .textSelection(.enabled)
                 .padding(6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.secondary.opacity(0.25))
                 }
+        }
+    }
+
+    @ViewBuilder
+    private func listingConfiguration(layout: PublishingWindowLayout) -> some View {
+        switch layout {
+        case .threeColumns:
+            HStack(alignment: .top, spacing: 16) {
+                configurationForm {
+                    localizationSection
+                    storeDescriptionSection
+                }
+                configurationForm {
+                    additionalLocalizedListingsSection
+                }
+                configurationForm {
+                    urlsAndRightsSection
+                    screenshotsSection
+                }
+            }
+        case .twoColumns:
+            HStack(alignment: .top, spacing: 16) {
+                configurationForm {
+                    localizationSection
+                    storeDescriptionSection
+                }
+                configurationForm {
+                    additionalLocalizedListingsSection
+                    urlsAndRightsSection
+                    screenshotsSection
+                }
+            }
+        case .singleColumn:
+            configurationForm {
+                localizationSection
+                storeDescriptionSection
+                additionalLocalizedListingsSection
+                urlsAndRightsSection
+                screenshotsSection
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func appSetupConfiguration(layout: PublishingWindowLayout) -> some View {
+        switch layout {
+        case .threeColumns:
+            HStack(alignment: .top, spacing: 16) {
+                configurationForm {
+                    categoriesAndContentSection
+                    pricingAndAvailabilitySection
+                }
+                configurationForm {
+                    ageRatingsSection
+                }
+                configurationForm {
+                    appPrivacySection
+                    licenseAgreementSection
+                }
+            }
+        case .twoColumns:
+            HStack(alignment: .top, spacing: 16) {
+                configurationForm {
+                    categoriesAndContentSection
+                    pricingAndAvailabilitySection
+                    ageRatingsSection
+                }
+                configurationForm {
+                    appPrivacySection
+                    licenseAgreementSection
+                }
+            }
+        case .singleColumn:
+            configurationForm {
+                categoriesAndContentSection
+                pricingAndAvailabilitySection
+                ageRatingsSection
+                appPrivacySection
+                licenseAgreementSection
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func reviewConfiguration(layout: PublishingWindowLayout) -> some View {
+        switch layout {
+        case .threeColumns:
+            HStack(alignment: .top, spacing: 16) {
+                configurationForm {
+                    appReviewContactSection
+                }
+                configurationForm {
+                    submissionSection
+                    reviewAttachmentsSection
+                }
+                configurationForm {
+                    testFlightSection
+                }
+            }
+        case .twoColumns:
+            HStack(alignment: .top, spacing: 16) {
+                configurationForm {
+                    appReviewContactSection
+                    reviewAttachmentsSection
+                }
+                configurationForm {
+                    submissionSection
+                    testFlightSection
+                }
+            }
+        case .singleColumn:
+            configurationForm {
+                appReviewContactSection
+                submissionSection
+                testFlightSection
+                reviewAttachmentsSection
+            }
+        }
+    }
+
+    private func configurationForm<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Form {
+            content()
+        }
+        .formStyle(.grouped)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var localizationSection: some View {
+        Section("Localization") {
+            LabeledContent("Detected app languages") {
+                Text(verbatim: detectedLocales.joined(separator: ", "))
+                    .textSelection(.enabled)
+            }
+            TextField("Locale", text: $locale)
+            TextField("App name", text: $appName)
+            TextField("Subtitle", text: $subtitle)
+            Text("OpenAI generates a separate editable draft for every language detected in the app project. Review and save the fields before releasing.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var storeDescriptionSection: some View {
+        Section("Store Description") {
+            configurationTextEditor("Description", text: $description, height: 130)
+            TextField("Keywords", text: $keywords)
+            TextField("Promotional text", text: $promotionalText)
+            configurationTextEditor("What’s New", text: $whatsNew, height: 80)
+        }
+    }
+
+    private var additionalLocalizedListingsSection: some View {
+        Section("Additional Localized Listings") {
+            if additionalLocalizations.isEmpty {
+                Text("No additional localized listing is configured.")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(additionalLocalizations.indices, id: \.self) { index in
+                DisclosureGroup(additionalLocalizations[index].locale) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("Locale", text: $additionalLocalizations[index].locale)
+                        TextField("App name", text: $additionalLocalizations[index].appName)
+                        TextField("Subtitle", text: $additionalLocalizations[index].subtitle)
+                        configurationTextEditor(
+                            "Description",
+                            text: $additionalLocalizations[index].description,
+                            height: 110
+                        )
+                        TextField("Keywords", text: $additionalLocalizations[index].keywords)
+                        TextField(
+                            "Promotional text",
+                            text: $additionalLocalizations[index].promotionalText
+                        )
+                        configurationTextEditor(
+                            "What’s New",
+                            text: $additionalLocalizations[index].whatsNew,
+                            height: 70
+                        )
+                        Button("Remove Localization", role: .destructive) {
+                            guard additionalLocalizations.indices.contains(index) else { return }
+                            additionalLocalizations.remove(at: index)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+            }
+            Button {
+                additionalLocalizations.append(
+                    AppStoreLocalizedMetadata(
+                        locale: "en-US",
+                        appName: appName,
+                        subtitle: "",
+                        description: "",
+                        keywords: "",
+                        promotionalText: "",
+                        whatsNew: ""
+                    )
+                )
+            } label: {
+                Label("Add Localization", systemImage: "plus")
+            }
+        }
+    }
+
+    private var urlsAndRightsSection: some View {
+        Section("URLs and Rights") {
+            requiredTextField(
+                "Support URL",
+                text: $supportURL,
+                validation: supportURLValidation
+            )
+            TextField("Marketing URL", text: $marketingURL)
+            requiredTextField(
+                "Privacy policy URL",
+                text: $privacyPolicyURL,
+                validation: privacyPolicyURLValidation
+            )
+            TextField("Privacy choices URL", text: $privacyChoicesURL)
+            if requiresTermsURL {
+                requiredTextField(
+                    "Terms of Use URL",
+                    text: $termsURL,
+                    validation: termsURLValidation
+                )
+            } else {
+                TextField("Terms of Use URL", text: $termsURL)
+            }
+            Text("OpenAI drafts listing copy and App Store answers from the managed app’s source repository. Support, marketing, privacy, and Terms of Use URLs are entered manually and are never replaced.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            requiredTextField(
+                "Copyright",
+                text: $copyright,
+                validation: copyright.nilIfEmpty == nil
+                    ? L10n.text("Copyright owner is required.")
+                    : nil
+            )
+        }
+    }
+
+    private var screenshotsSection: some View {
+        Section("Screenshots") {
+            configurationTextEditor(
+                "Paths (one file or folder per line)",
+                text: $screenshotPaths,
+                height: 80
+            )
+            Toggle("Replace existing screenshots for matching device sizes", isOn: $replaceScreenshots)
+            Text("Relative paths are resolved from the app project. The Publish overview automatically extracts and previews missing screenshots on every supported Simulator family.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var categoriesAndContentSection: some View {
+        Section("Categories and Content") {
+            Picker("Primary category", selection: $primaryCategory) {
+                Text("Preserve / AI suggestion").tag("")
+                ForEach(Self.categoryIdentifiers, id: \.self) { category in
+                    Text(friendlyCategory(category)).tag(category)
+                }
+            }
+            Picker("Secondary category", selection: $secondaryCategory) {
+                Text("None").tag("")
+                ForEach(Self.categoryIdentifiers, id: \.self) { category in
+                    Text(friendlyCategory(category)).tag(category)
+                }
+            }
+            Picker("Third-party content rights", selection: $contentRights) {
+                Text("Preserve").tag("")
+                Text("Uses third-party content").tag("USES_THIRD_PARTY_CONTENT")
+                Text("Does not use third-party content").tag("DOES_NOT_USE_THIRD_PARTY_CONTENT")
+            }
+        }
+    }
+
+    private var pricingAndAvailabilitySection: some View {
+        Section("Pricing and Availability") {
+            Toggle("Configure app price and availability", isOn: $configureCommercialSettings)
+            Toggle("The app itself is free", isOn: $appIsFree)
+                .disabled(!configureCommercialSettings)
+            AppStoreTerritoryPicker(
+                title: "Base territory",
+                selection: $appBaseTerritory,
+                territoryIDs: currentConfiguration?.territoryIDs ?? []
+            )
+                .disabled(!configureCommercialSettings)
+            Toggle("Available in all territories", isOn: $appAvailableEverywhere)
+                .disabled(!configureCommercialSettings)
+        }
+    }
+
+    private var licenseAgreementSection: some View {
+        Section("Custom End-User License Agreement") {
+            configurationTextEditor("Agreement text", text: $licenseAgreementText, height: 180)
+            Text("Apple’s API accepts agreement text, not a terms URL. The Terms of Use URL from Store Listing is also appended to the App Store description.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var ageRatingsSection: some View {
+        Section("Age Ratings") {
+            Button {
+                Task { await generateAIAgeRatingDraft() }
+            } label: {
+                if isGeneratingAgeRating {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Analyzing project source for Age Ratings…")
+                    }
+                } else {
+                    Label("Fill Age Ratings with OpenAI", systemImage: "sparkles")
+                }
+            }
+            .disabled(isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
+            PublishingAgeRatingFields(ageRating: $ageRating)
+            Text("OpenAI scans the source repository and defaults unsupported age-rating answers to No or None. Positive answers require repository evidence; review every field before publishing.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var appPrivacySection: some View {
+        Section("App Privacy Draft") {
+            Button {
+                Task { await generateAIPrivacyDraft() }
+            } label: {
+                if isGeneratingPrivacy {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Analyzing project source for App Privacy…")
+                    }
+                } else {
+                    Label("Fill App Privacy with OpenAI", systemImage: "sparkles")
+                }
+            }
+            .disabled(isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
+            PublishingPrivacyDraftFields(
+                isSpecified: Binding(
+                    get: { privacyDraftIsSpecified },
+                    set: { value in
+                        privacyDraftIsSpecified = value
+                        privacyConfirmedInAppStoreConnect = false
+                        privacyConfirmedManually = false
+                    }
+                ),
+                collectsData: Binding(
+                    get: { privacyCollectsData },
+                    set: { value in
+                        privacyCollectsData = value
+                        if value {
+                            privacyConfirmedInAppStoreConnect = false
+                        } else {
+                            privacyConfirmedManually = false
+                        }
+                    }
+                ),
+                dataTypes: $privacyDataTypes,
+                notes: $privacyNotes
+            )
+            Text("Apple does not expose App Privacy through its public API. After you review and authorize a no-data declaration, Development Management publishes it through the Fastlane session stored in Publishing Settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if privacyDraftIsSpecified {
+                if privacyCollectsData {
+                    Toggle(
+                        "I published these App Privacy answers in App Store Connect",
+                        isOn: $privacyConfirmedManually
+                    )
+                } else {
+                    Toggle(
+                        "I reviewed and authorize automatic App Privacy publishing",
+                        isOn: $privacyConfirmedInAppStoreConnect
+                    )
+                }
+                TextField("Authorized by", text: $privacyConfirmedBy)
+                    .disabled(!privacyConfirmedInAppStoreConnect && !privacyConfirmedManually)
+            } else {
+                Text("Unspecified means the repository does not establish the App Privacy answer; it is never treated as No.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if showsRequiredFieldErrors, let privacyEditorValidationMessage {
+                Label(privacyEditorValidationMessage, systemImage: "exclamationmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            if privacyDraftIsSpecified,
+               privacyConfirmedInAppStoreConnect || privacyConfirmedManually,
+               !privacyConfirmedAt.isEmpty {
+                LabeledContent("Authorized at") {
+                    Text(verbatim: privacyConfirmedAt)
+                        .textSelection(.enabled)
+                }
+            }
+            if privacyDraftIsSpecified, privacyCollectsData {
+                Label(
+                    "Automatic publishing currently supports only the “Data Not Collected” answer. Complete collected-data details in App Store Connect.",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
+        }
+        .id(PublishingConfigurationEditorAnchor.appPrivacy)
+    }
+
+    private var appReviewContactSection: some View {
+        Section("App Review Contact") {
+            requiredTextField(
+                "First name",
+                text: $reviewFirstName,
+                validation: requiredReviewMessage(for: reviewFirstName)
+            )
+            requiredTextField(
+                "Last name",
+                text: $reviewLastName,
+                validation: requiredReviewMessage(for: reviewLastName)
+            )
+            requiredTextField(
+                "Phone",
+                text: $reviewPhone,
+                validation: requiredReviewMessage(for: reviewPhone)
+            )
+            requiredTextField(
+                "Email",
+                text: $reviewEmail,
+                validation: requiredReviewMessage(for: reviewEmail)
+            )
+            configurationTextEditor("Review notes", text: $reviewNotes, height: 100)
+            Toggle("A demo account is required", isOn: $demoAccountRequired)
+            Text("Demo credentials are managed in Publishing Settings and stored only in Keychain.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var submissionSection: some View {
+        Section("Submission") {
+            Toggle("Release automatically after Apple approves it", isOn: $releaseAutomatically)
+            Text("Both release actions synchronize this configuration. Publish submits the app and subscriptions for App Review; Upload to TestFlight stops immediately before submission.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var testFlightSection: some View {
+        Section("TestFlight") {
+            TextField("Internal group name", text: $testFlightGroupName)
+            TextField("Feedback email", text: $testFlightFeedbackEmail)
+            configurationTextEditor("Beta review notes", text: $testFlightReviewNotes, height: 80)
+            configurationTextEditor(
+                "Internal tester emails (one per line)",
+                text: $internalTesterEmails,
+                height: 70
+            )
+            Text("Internal testers must already be members of the App Store Connect team. Both release actions synchronize beta descriptions, URLs, review details, the group, and these testers.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var reviewAttachmentsSection: some View {
+        Section("Review Attachments") {
+            configurationTextEditor(
+                "Demo videos or documents (one file or folder per line)",
+                text: $reviewAttachmentPaths,
+                height: 80
+            )
+            Text("Relative paths are resolved from the app project. Publish also discovers files in AppStore/ReviewAttachments.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -3061,7 +3232,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 .foregroundStyle(.secondary)
             TextEditor(text: text)
                 .font(.body)
-                .frame(minHeight: height)
+                .frame(height: height)
                 .padding(5)
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
         }
