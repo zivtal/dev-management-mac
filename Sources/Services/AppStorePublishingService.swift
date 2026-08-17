@@ -257,7 +257,9 @@ final class AppStorePublishingService {
         guard applicationConfiguration?.primaryCategory?.nilIfEmpty != nil,
               applicationConfiguration?.contentRightsDeclaration?.nilIfEmpty != nil,
               applicationConfiguration?.isFree != nil,
-              applicationConfiguration?.ageRating?.isEmpty == false else {
+              AppStoreAgeRatingAnswerPolicy.hasCompleteAnswers(
+                  applicationConfiguration?.ageRating ?? [:]
+              ) else {
             throw AppStorePublishingError.missingEditablePublishingDraft
         }
 

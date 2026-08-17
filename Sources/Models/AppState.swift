@@ -1,5 +1,15 @@
 import Foundation
 
+enum RuntimeDurationFormatter {
+    static func string(from elapsedTime: TimeInterval) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.hour, .minute, .second]
+        formatter.unitsStyle = .abbreviated
+        formatter.zeroFormattingBehavior = [.dropAll]
+        return formatter.string(from: max(0, elapsedTime)) ?? "—"
+    }
+}
+
 struct AppPreferences: Codable, Equatable {
     var automationEnabled = true
     var reinstallAfterDays = 3

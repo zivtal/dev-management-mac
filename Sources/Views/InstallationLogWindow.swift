@@ -118,11 +118,7 @@ private struct InstallationLogView: View {
     }
 
     private func runtimeText(_ log: InstallationLogSession, at now: Date) -> String {
-        let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = [.hour, .minute, .second]
-        formatter.unitsStyle = .abbreviated
-        formatter.zeroFormattingBehavior = [.pad]
-        return L10n.format("Runtime %@", formatter.string(from: log.elapsedTime(at: now)) ?? "—")
+        L10n.format("Runtime %@", RuntimeDurationFormatter.string(from: log.elapsedTime(at: now)))
     }
 
     @ViewBuilder

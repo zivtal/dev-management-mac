@@ -373,11 +373,10 @@ struct PublishingProgressView: View {
 
     private func elapsedText(at now: Date) -> String {
         let end = log.finishedAt ?? now
-        let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = [.hour, .minute, .second]
-        formatter.unitsStyle = .abbreviated
-        formatter.zeroFormattingBehavior = [.pad]
-        return L10n.format("Runtime %@", formatter.string(from: log.startedAt, to: end) ?? "—")
+        return L10n.format(
+            "Runtime %@",
+            RuntimeDurationFormatter.string(from: end.timeIntervalSince(log.startedAt))
+        )
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) {

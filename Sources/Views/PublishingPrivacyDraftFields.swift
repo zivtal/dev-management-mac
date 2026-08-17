@@ -1,17 +1,23 @@
 import SwiftUI
 
 struct PublishingPrivacyDraftFields: View {
+    @Binding var isSpecified: Bool
     @Binding var collectsData: Bool
     @Binding var dataTypes: [String]
     @Binding var notes: [String]
 
     var body: some View {
-        Toggle("The app or its SDKs collect data", isOn: $collectsData)
+        Picker("The app or its SDKs collect data", selection: collectionAnswer) {
+            Text("Unspecified").tag("")
+            Text("No").tag("NO")
+            Text("Yes").tag("YES")
+        }
         DisclosureGroup("Potential data types") {
             ForEach(Self.dataTypeNames, id: \.self) { dataType in
                 Toggle(L10n.text(dataType), isOn: dataTypeBinding(dataType))
             }
         }
+        .disabled(!isSpecified || !collectsData)
         VStack(alignment: .leading, spacing: 5) {
             Text("Privacy review notes")
                 .font(.caption)
@@ -21,6 +27,29 @@ struct PublishingPrivacyDraftFields: View {
                 .padding(5)
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
         }
+        .disabled(!isSpecified)
+    }
+
+    private var collectionAnswer: Binding<String> {
+        Binding(
+            get: {
+                guard isSpecified else { return "" }
+                return collectsData ? "YES" : "NO"
+            },
+            set: { answer in
+                switch answer {
+                case "YES":
+                    isSpecified = true
+                    collectsData = true
+                case "NO":
+                    isSpecified = true
+                    collectsData = false
+                    dataTypes = []
+                default:
+                    isSpecified = false
+                }
+            }
+        )
     }
 
     private func dataTypeBinding(_ dataType: String) -> Binding<Bool> {

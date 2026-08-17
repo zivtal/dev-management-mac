@@ -24,6 +24,7 @@ final class OpenAIStoreMetadataService {
     Name third-party providers only when they are explicitly verified by the supplied project information. Never invent a provider, legal claim, data practice, price, or capability.
     Support, marketing, privacy policy, privacy choices, and Terms of Use URLs are manual publishing fields outside the model output. Never generate, guess, replace, or return those URLs. The publisher adds the manually supplied Privacy Policy and Terms of Use links after generation.
     Base compliance answers only on explicit project evidence. Treat optional third-party services, maps, imported documents, media, and provider content as third-party content. App Privacy output is an advisory checklist because Apple requires the publisher to attest to its accuracy in App Store Connect.
+    Never treat the absence of a README mention as evidence that an age-rating topic or data collection is absent. Report age-rating and App Privacy answers as evidence-sufficient only when the supplied project information explicitly supports the complete respective checklist. Otherwise mark that checklist insufficient so the existing publisher answers remain unchanged.
     """
 
     private let session: URLSession
@@ -80,7 +81,7 @@ final class OpenAIStoreMetadataService {
         Use clear customer-facing language. Keywords must be comma-separated and no more than 100 UTF-8 bytes.
         Promotional text must be at most 170 characters. Description and release notes must each be at most 4000 characters.
         App name and subtitle must each be at most 30 characters. Select one accurate App Store primary category identifier and an optional secondary category identifier from Apple's category list. Use an empty secondary category when one is not clearly justified.
-        Also return a conservative compliance draft. Use USES_THIRD_PARTY_CONTENT whenever the app displays, accesses, or imports content owned by users or third parties, even when that feature or provider is optional. An app with subscriptions can still be free to download. A demo account is required only when the reviewer cannot use the app without signing in. Format copyright as the current year followed by the verified rights holder; return an empty string when the rights holder is not stated. For age-rating frequency fields use only NONE, INFREQUENT, or FREQUENT. Include short literal evidence excerpts from the supplied project information and lower confidence when the evidence is incomplete.
+        Also return a conservative compliance draft. Use USES_THIRD_PARTY_CONTENT whenever the app displays, accesses, or imports content owned by users or third parties, even when that feature or provider is optional. An app with subscriptions can still be free to download. A demo account is required only when the reviewer cannot use the app without signing in. Format copyright as the current year followed by the verified rights holder; return an empty string when the rights holder is not stated. For age-rating frequency fields use only NONE, INFREQUENT, or FREQUENT. Set each evidence-sufficiency flag to true only when literal supplied evidence supports the complete corresponding checklist; uncertainty or silence must produce false. Include short literal evidence excerpts from the supplied project information and lower confidence when the evidence is incomplete.
 
         Application: \(project.displayName)
         Bundle identifier: \(project.bundleIdentifier ?? "unknown")
@@ -128,7 +129,7 @@ final class OpenAIStoreMetadataService {
         let prompt = """
         Create a conservative App Store compliance draft from the project information below.
         \(Self.generationPolicy)
-        Use USES_THIRD_PARTY_CONTENT whenever optional maps, external AI, provider data, user-imported documents, or other third-party content is present. An app with in-app purchases or subscriptions may still be free to download. Set demoAccountRequired only when the app cannot be reviewed without signing in. Format copyright as the current year followed by a rights holder explicitly verified by the project information, or return an empty string if the holder is unknown. For age-rating frequency fields use NONE, INFREQUENT, or FREQUENT. App Privacy is advisory only: list every potentially collected data category and explain uncertainties in notes. Include short literal evidence excerpts and a confidence from 0 through 1.
+        Use USES_THIRD_PARTY_CONTENT whenever optional maps, external AI, provider data, user-imported documents, or other third-party content is present. An app with in-app purchases or subscriptions may still be free to download. Set demoAccountRequired only when the app cannot be reviewed without signing in. Format copyright as the current year followed by a rights holder explicitly verified by the project information, or return an empty string if the holder is unknown. For age-rating frequency fields use NONE, INFREQUENT, or FREQUENT. App Privacy is advisory only: list every explicitly supported potentially collected data category. Set each evidence-sufficiency flag to true only when literal supplied evidence supports the complete corresponding checklist; uncertainty, silence, or a generic feature description must produce false. Include short literal evidence excerpts and a confidence from 0 through 1.
 
         Application: \(project.displayName)
         Bundle identifier: \(project.bundleIdentifier ?? "unknown")
@@ -314,6 +315,7 @@ final class OpenAIStoreMetadataService {
             "demoAccountRequired": ["type": "boolean"],
             "copyright": ["type": "string"],
             "ageRating": ageRatingSchema,
+            "ageRatingEvidenceSufficient": ["type": "boolean"],
             "privacy": [
                 "type": "object",
                 "properties": [
@@ -335,12 +337,14 @@ final class OpenAIStoreMetadataService {
                 "required": ["collectsData", "dataTypes", "notes"],
                 "additionalProperties": false
             ],
+            "privacyEvidenceSufficient": ["type": "boolean"],
             "evidence": ["type": "array", "items": ["type": "string"]],
             "confidence": ["type": "number", "minimum": 0, "maximum": 1]
         ],
         "required": [
             "contentRightsDeclaration", "appIsFree", "demoAccountRequired",
-            "copyright", "ageRating", "privacy", "evidence", "confidence"
+            "copyright", "ageRating", "ageRatingEvidenceSufficient", "privacy",
+            "privacyEvidenceSufficient", "evidence", "confidence"
         ],
         "additionalProperties": false
     ]

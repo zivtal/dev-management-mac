@@ -1976,8 +1976,8 @@ private struct PublishingWindowView: View {
         if application?.isFree == nil {
             missing.append(L10n.text("free-download status"))
         }
-        if application?.ageRating?.isEmpty != false,
-           currentAppStoreSnapshot?.ageRating?.isEmpty != false {
+        if !AppStoreAgeRatingAnswerPolicy.hasCompleteAnswers(application?.ageRating ?? [:]),
+           !AppStoreAgeRatingAnswerPolicy.hasCompleteAnswers(currentAppStoreSnapshot?.ageRating ?? [:]) {
             missing.append(L10n.text("age rating"))
         }
         if !missing.isEmpty {
@@ -2133,7 +2133,7 @@ private struct PublishingWindowView: View {
            application.primaryCategory?.nilIfEmpty == nil
             || application.contentRightsDeclaration?.nilIfEmpty == nil
             || application.isFree == nil
-            || application.ageRating?.isEmpty != false {
+            || !AppStoreAgeRatingAnswerPolicy.hasCompleteAnswers(application.ageRating ?? [:]) {
             return .appSetup
         }
         if !AppStorePrivacyConfigurationPolicy.state(
@@ -2189,7 +2189,7 @@ private struct PublishingWindowView: View {
         let answersAreMissing = application?.primaryCategory?.nilIfEmpty == nil
             || application?.contentRightsDeclaration?.nilIfEmpty == nil
             || application?.isFree == nil
-            || application?.ageRating?.isEmpty != false
+            || !AppStoreAgeRatingAnswerPolicy.hasCompleteAnswers(application?.ageRating ?? [:])
         let copyrightIsMissing = reviewRequirements(publication: publication).copyrightIsComplete == false
         return listingIsMissing || answersAreMissing || copyrightIsMissing
     }
@@ -2531,6 +2531,8 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var isLoading = true
     @State private var isGeneratingAI = false
     @State private var isGeneratingAgeRating = false
+    @State private var isGeneratingPrivacy = false
+    @State private var aiGenerationNotice: String?
     @State private var showsRequiredFieldErrors = false
     @State private var pendingScrollAnchor: PublishingConfigurationEditorAnchor?
     @State private var scrollRequestRevision = 0
@@ -2558,6 +2560,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var secondaryCategory = ""
     @State private var contentRights = ""
     @State private var ageRating: [String: AppStoreManifestValue] = [:]
+    @State private var privacyDraftIsSpecified = false
     @State private var privacyCollectsData = false
     @State private var privacyDataTypes: [String] = []
     @State private var privacyNotes: [String] = []
@@ -2611,7 +2614,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                             Label("Generate Listing and App Answers with OpenAI", systemImage: "sparkles")
                         }
                     }
-                    .disabled(isLoading || isGeneratingAI || isGeneratingAgeRating)
+                    .disabled(isLoading || isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
                 }
             }
 
@@ -2644,6 +2647,13 @@ private struct PerAppPublishingConfigurationEditor: View {
                 }
             }
 
+            if let aiGenerationNotice {
+                Label(aiGenerationNotice, systemImage: "info.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
             if let validationMessage {
                 Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
@@ -2660,7 +2670,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 Button("Validate, Save, and Return") { save() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isLoading || isGeneratingAI || isGeneratingAgeRating)
+                    .disabled(isLoading || isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
             }
         }
         .padding(20)
@@ -2860,14 +2870,35 @@ private struct PerAppPublishingConfigurationEditor: View {
                             Label("Fill Age Ratings with OpenAI", systemImage: "sparkles")
                         }
                     }
-                    .disabled(isGeneratingAI || isGeneratingAgeRating)
+                    .disabled(isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
                     PublishingAgeRatingFields(ageRating: $ageRating)
-                    Text("This replaces the displayed answers with a conservative draft inferred from the project README and supported project manifests. Review every field before publishing.")
+                    Text("OpenAI applies a conservative draft only when the project documentation explicitly supports the complete checklist. Unsupported answers remain Unspecified.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Section("App Privacy Draft") {
+                    Button {
+                        Task { await generateAIPrivacyDraft() }
+                    } label: {
+                        if isGeneratingPrivacy {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("Analyzing README for App Privacy…")
+                            }
+                        } else {
+                            Label("Fill App Privacy with OpenAI", systemImage: "sparkles")
+                        }
+                    }
+                    .disabled(isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
                     PublishingPrivacyDraftFields(
+                        isSpecified: Binding(
+                            get: { privacyDraftIsSpecified },
+                            set: { value in
+                                privacyDraftIsSpecified = value
+                                privacyConfirmedInAppStoreConnect = false
+                                privacyConfirmedManually = false
+                            }
+                        ),
                         collectsData: Binding(
                             get: { privacyCollectsData },
                             set: { value in
@@ -2885,32 +2916,39 @@ private struct PerAppPublishingConfigurationEditor: View {
                     Text("Apple does not expose App Privacy through its public API. After you review and authorize a no-data declaration, Development Management publishes it through the Fastlane session stored in Publishing Settings.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if privacyCollectsData {
-                        Toggle(
-                            "I published these App Privacy answers in App Store Connect",
-                            isOn: $privacyConfirmedManually
-                        )
+                    if privacyDraftIsSpecified {
+                        if privacyCollectsData {
+                            Toggle(
+                                "I published these App Privacy answers in App Store Connect",
+                                isOn: $privacyConfirmedManually
+                            )
+                        } else {
+                            Toggle(
+                                "I reviewed and authorize automatic App Privacy publishing",
+                                isOn: $privacyConfirmedInAppStoreConnect
+                            )
+                        }
+                        TextField("Authorized by", text: $privacyConfirmedBy)
+                            .disabled(!privacyConfirmedInAppStoreConnect && !privacyConfirmedManually)
                     } else {
-                        Toggle(
-                            "I reviewed and authorize automatic App Privacy publishing",
-                            isOn: $privacyConfirmedInAppStoreConnect
-                        )
+                        Text("Unspecified means the documentation does not establish the answer; it is never treated as No.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    TextField("Authorized by", text: $privacyConfirmedBy)
-                        .disabled(!privacyConfirmedInAppStoreConnect && !privacyConfirmedManually)
                     if showsRequiredFieldErrors, let privacyEditorValidationMessage {
                         Label(privacyEditorValidationMessage, systemImage: "exclamationmark.circle.fill")
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
-                    if privacyConfirmedInAppStoreConnect || privacyConfirmedManually,
+                    if privacyDraftIsSpecified,
+                       privacyConfirmedInAppStoreConnect || privacyConfirmedManually,
                        !privacyConfirmedAt.isEmpty {
                         LabeledContent("Authorized at") {
                             Text(verbatim: privacyConfirmedAt)
                                 .textSelection(.enabled)
                         }
                     }
-                    if privacyCollectsData {
+                    if privacyDraftIsSpecified, privacyCollectsData {
                         Label(
                             "Automatic publishing currently supports only the “Data Not Collected” answer. Complete collected-data details in App Store Connect.",
                             systemImage: "exclamationmark.triangle.fill"
@@ -3094,6 +3132,12 @@ private struct PerAppPublishingConfigurationEditor: View {
     }
 
     private var privacyEditorValidationMessage: String? {
+        guard privacyDraftIsSpecified else {
+            return L10n.text("Specify the App Privacy answer before saving. Unknown is not treated as No.")
+        }
+        if privacyCollectsData, privacyDataTypes.isEmpty {
+            return L10n.text("Select at least one collected data type, or leave the App Privacy answer Unspecified.")
+        }
         let isConfirmed = privacyCollectsData
             ? privacyConfirmedManually
             : privacyConfirmedInAppStoreConnect || privacyConfirmedManually
@@ -3365,6 +3409,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         appBaseTerritory = application?.baseTerritory ?? "USA"
         appAvailableEverywhere = application?.availableInAllTerritories ?? true
         licenseAgreementText = publication.licenseAgreementText ?? ""
+        privacyDraftIsSpecified = manifest.compliance?.privacyDraft != nil
         privacyCollectsData = manifest.compliance?.privacyDraft?.collectsData ?? false
         privacyDataTypes = manifest.compliance?.privacyDraft?.dataTypes ?? []
         privacyNotes = manifest.compliance?.privacyDraft?.notes ?? []
@@ -3465,13 +3510,9 @@ private struct PerAppPublishingConfigurationEditor: View {
         application.isFree = configureCommercialSettings ? appIsFree : nil
         application.baseTerritory = configureCommercialSettings ? appBaseTerritory.nilIfEmpty : nil
         application.availableInAllTerritories = configureCommercialSettings ? appAvailableEverywhere : nil
-        application.ageRating = ageRating.isEmpty ? application.ageRating : ageRating
+        application.ageRating = ageRating.isEmpty ? nil : ageRating
         manifest.application = application
-        if !privacyDataTypes.isEmpty
-            || !privacyNotes.isEmpty
-            || !complianceEvidence.isEmpty
-            || privacyConfirmedInAppStoreConnect
-            || privacyConfirmedManually {
+        if privacyDraftIsSpecified {
             let previousDraft = manifest.compliance?.privacyDraft
             let currentDraft = AppStorePrivacyDraft(
                 collectsData: privacyCollectsData,
@@ -3552,6 +3593,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     private func generateAIDraft() async {
         isGeneratingAI = true
         defer { isGeneratingAI = false }
+        aiGenerationNotice = nil
         do {
             let generated = try await model.generateAppStoreMetadataDrafts(
                 projectID: project.id,
@@ -3593,13 +3635,15 @@ private struct PerAppPublishingConfigurationEditor: View {
                 if baseManifest?.publication?.review?.demoAccountRequired == nil {
                     demoAccountRequired = compliance.demoAccountRequired
                 }
-                if ageRating.isEmpty {
-                    ageRating = compliance.ageRating
+                if ageRating.isEmpty, let generatedAgeRating = compliance.evidenceBackedAgeRating {
+                    ageRating = generatedAgeRating
                 }
-                if baseManifest?.compliance?.privacyDraft == nil {
-                    privacyCollectsData = compliance.privacy.collectsData
-                    privacyDataTypes = compliance.privacy.dataTypes
-                    privacyNotes = compliance.privacy.notes
+                if baseManifest?.compliance?.privacyDraft == nil,
+                   let generatedPrivacy = compliance.evidenceBackedPrivacy {
+                    privacyDraftIsSpecified = true
+                    privacyCollectsData = generatedPrivacy.collectsData
+                    privacyDataTypes = generatedPrivacy.dataTypes
+                    privacyNotes = generatedPrivacy.notes
                 }
                 if complianceEvidence.isEmpty { complianceEvidence = compliance.evidence }
                 if complianceConfidence == nil { complianceConfidence = compliance.confidence }
@@ -3613,9 +3657,45 @@ private struct PerAppPublishingConfigurationEditor: View {
     private func generateAIAgeRatingDraft() async {
         isGeneratingAgeRating = true
         defer { isGeneratingAgeRating = false }
+        aiGenerationNotice = nil
         do {
             let compliance = try await model.generateAppStoreComplianceDraft(projectID: project.id)
-            ageRating = compliance.ageRating
+            guard let generatedAgeRating = compliance.evidenceBackedAgeRating else {
+                aiGenerationNotice = L10n.text(
+                    "OpenAI did not find enough explicit age-rating information in the project documentation. No answers were changed."
+                )
+                validationMessage = nil
+                return
+            }
+            ageRating = generatedAgeRating
+            complianceEvidence = compliance.evidence
+            complianceConfidence = compliance.confidence
+            validationMessage = nil
+        } catch {
+            validationMessage = error.localizedDescription
+        }
+    }
+
+    private func generateAIPrivacyDraft() async {
+        isGeneratingPrivacy = true
+        defer { isGeneratingPrivacy = false }
+        aiGenerationNotice = nil
+        do {
+            let compliance = try await model.generateAppStoreComplianceDraft(projectID: project.id)
+            guard let generatedPrivacy = compliance.evidenceBackedPrivacy else {
+                aiGenerationNotice = L10n.text(
+                    "OpenAI did not find enough explicit App Privacy information in the project documentation. No answers were changed."
+                )
+                validationMessage = nil
+                return
+            }
+            privacyDraftIsSpecified = true
+            privacyCollectsData = generatedPrivacy.collectsData
+            privacyDataTypes = generatedPrivacy.dataTypes
+            privacyNotes = generatedPrivacy.notes
+            privacyConfirmedInAppStoreConnect = false
+            privacyConfirmedManually = false
+            privacyConfirmedAt = ""
             complianceEvidence = compliance.evidence
             complianceConfidence = compliance.confidence
             validationMessage = nil
@@ -3682,6 +3762,14 @@ private struct PerAppPublishingConfigurationEditor: View {
         guard manifest.publication?.copyright?.nilIfEmpty != nil else {
             selectedTab = .listing
             throw ConfigurationEditorError.invalid(L10n.text("Copyright owner is required."))
+        }
+        if let privacyDraft = manifest.compliance?.privacyDraft,
+           privacyDraft.collectsData,
+           privacyDraft.dataTypes.isEmpty {
+            revealAppPrivacySection()
+            throw ConfigurationEditorError.invalid(
+                L10n.text("Select at least one collected data type, or leave the App Privacy answer Unspecified.")
+            )
         }
         switch AppStorePrivacyConfigurationPolicy.state(for: manifest.compliance) {
         case .missingDraft:
@@ -3760,7 +3848,7 @@ private struct PerAppPublishingConfigurationEditor: View {
               application.primaryCategory?.nilIfEmpty != nil,
               application.contentRightsDeclaration?.nilIfEmpty != nil,
               application.isFree != nil,
-              application.ageRating?.isEmpty == false else {
+              AppStoreAgeRatingAnswerPolicy.hasCompleteAnswers(application.ageRating ?? [:]) else {
             selectedTab = .appSetup
             throw ConfigurationEditorError.invalid(
                 L10n.text("Complete the editable category, content-rights, free-download, and age-rating answers before releasing.")

@@ -108,9 +108,19 @@ struct AppStoreComplianceDraft: Codable, Equatable, Sendable {
     var demoAccountRequired: Bool
     var copyright: String
     var ageRating: [String: AppStoreManifestValue]
+    var ageRatingEvidenceSufficient: Bool
     var privacy: AppStorePrivacyDraft
+    var privacyEvidenceSufficient: Bool
     var evidence: [String]
     var confidence: Double
+
+    var evidenceBackedAgeRating: [String: AppStoreManifestValue]? {
+        ageRatingEvidenceSufficient ? ageRating : nil
+    }
+
+    var evidenceBackedPrivacy: AppStorePrivacyDraft? {
+        privacyEvidenceSufficient ? privacy : nil
+    }
 }
 
 struct AppStorePrivacyAttestation: Codable, Equatable, Sendable {
@@ -174,6 +184,33 @@ enum AppStoreManifestValue: Codable, Equatable, Sendable {
         case .bool(let value): value
         case .integer(let value): value
         case .decimal(let value): value
+        }
+    }
+}
+
+enum AppStoreAgeRatingAnswerPolicy {
+    private static let booleanKeys = [
+        "advertising", "gambling", "healthOrWellnessTopics", "lootBox",
+        "messagingAndChat", "parentalControls", "ageAssurance", "socialMedia",
+        "socialMediaAgeRestricted", "unrestrictedWebAccess", "userGeneratedContent"
+    ]
+    private static let frequencyKeys = [
+        "alcoholTobaccoOrDrugUseOrReferences", "contests", "gamblingSimulated",
+        "gunsOrOtherWeapons", "medicalOrTreatmentInformation", "profanityOrCrudeHumor",
+        "sexualContentGraphicAndNudity", "sexualContentOrNudity", "horrorOrFearThemes",
+        "matureOrSuggestiveThemes", "violenceCartoonOrFantasy",
+        "violenceRealisticProlongedGraphicOrSadistic", "violenceRealistic"
+    ]
+
+    static func hasCompleteAnswers(_ answers: [String: AppStoreManifestValue]) -> Bool {
+        booleanKeys.allSatisfy { key in
+            if case .bool = answers[key] { return true }
+            return false
+        } && frequencyKeys.allSatisfy { key in
+            if case .string(let answer) = answers[key] {
+                return ["NONE", "INFREQUENT", "FREQUENT"].contains(answer)
+            }
+            return false
         }
     }
 }

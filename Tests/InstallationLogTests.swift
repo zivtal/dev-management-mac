@@ -77,6 +77,12 @@ final class InstallationLogTests: XCTestCase {
 
         XCTAssertEqual(log.elapsedTime(at: Date(timeIntervalSince1970: 500)), 65)
     }
+
+    func testRuntimeTextOmitsZeroValuedComponents() {
+        XCTAssertEqual(RuntimeDurationFormatter.string(from: 138), "2m 18s")
+        XCTAssertEqual(RuntimeDurationFormatter.string(from: 7_218), "2h 18s")
+        XCTAssertEqual(RuntimeDurationFormatter.string(from: 7_200), "2h")
+    }
 }
 
 final class ProcessRunnerCancellationTests: XCTestCase {

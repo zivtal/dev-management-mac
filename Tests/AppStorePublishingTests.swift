@@ -43,7 +43,9 @@ final class AppStorePublishingTests: XCTestCase {
             ["DOES_NOT_USE_THIRD_PARTY_CONTENT", "USES_THIRD_PARTY_CONTENT"]
         )
         XCTAssertNotNil(properties["ageRating"])
+        XCTAssertNotNil(properties["ageRatingEvidenceSufficient"])
         XCTAssertNotNil(properties["privacy"])
+        XCTAssertNotNil(properties["privacyEvidenceSufficient"])
         XCTAssertNotNil(properties["copyright"])
 
         let ageRating = try XCTUnwrap(properties["ageRating"] as? [String: Any])
@@ -55,6 +57,44 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertNotNil(ageRatingProperties["messagingAndChat"])
         XCTAssertNotNil(ageRatingProperties["medicalOrTreatmentInformation"])
         XCTAssertNotNil(ageRatingProperties["violenceRealistic"])
+
+        var explicitAgeRatingAnswers: [String: AppStoreManifestValue] = [:]
+        for (key, value) in ageRatingProperties {
+            let field = try XCTUnwrap(value as? [String: Any])
+            explicitAgeRatingAnswers[key] = field["type"] as? String == "boolean"
+                ? .bool(false)
+                : .string("NONE")
+        }
+        XCTAssertTrue(AppStoreAgeRatingAnswerPolicy.hasCompleteAnswers(explicitAgeRatingAnswers))
+        explicitAgeRatingAnswers.removeValue(forKey: "advertising")
+        XCTAssertFalse(AppStoreAgeRatingAnswerPolicy.hasCompleteAnswers(explicitAgeRatingAnswers))
+
+        let required = try XCTUnwrap(schema["required"] as? [String])
+        XCTAssertTrue(required.contains("ageRatingEvidenceSufficient"))
+        XCTAssertTrue(required.contains("privacyEvidenceSufficient"))
+    }
+
+    func testOpenAIComplianceAnswersAreAppliedOnlyWithExplicitEvidence() {
+        let unsupported = AppStoreComplianceDraft(
+            contentRightsDeclaration: "DOES_NOT_USE_THIRD_PARTY_CONTENT",
+            appIsFree: true,
+            demoAccountRequired: false,
+            copyright: "",
+            ageRating: ["advertising": .bool(false)],
+            ageRatingEvidenceSufficient: false,
+            privacy: AppStorePrivacyDraft(collectsData: false, dataTypes: [], notes: []),
+            privacyEvidenceSufficient: false,
+            evidence: [],
+            confidence: 0.2
+        )
+        XCTAssertNil(unsupported.evidenceBackedAgeRating)
+        XCTAssertNil(unsupported.evidenceBackedPrivacy)
+
+        var supported = unsupported
+        supported.ageRatingEvidenceSufficient = true
+        supported.privacyEvidenceSufficient = true
+        XCTAssertEqual(supported.evidenceBackedAgeRating, unsupported.ageRating)
+        XCTAssertEqual(supported.evidenceBackedPrivacy, unsupported.privacy)
     }
 
     func testCopyrightAutomaticallyIncludesYearExactlyOnce() {

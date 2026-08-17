@@ -5,10 +5,15 @@ struct PublishingAgeRatingFields: View {
 
     var body: some View {
         ForEach(Self.booleanFields, id: \.key) { field in
-            Toggle(L10n.text(field.title), isOn: booleanBinding(field.key))
+            Picker(L10n.text(field.title), selection: booleanBinding(field.key)) {
+                Text("Unspecified").tag("")
+                Text("No").tag("NO")
+                Text("Yes").tag("YES")
+            }
         }
         ForEach(Self.frequencyFields, id: \.key) { field in
             Picker(L10n.text(field.title), selection: frequencyBinding(field.key)) {
+                Text("Unspecified").tag("")
                 Text("None").tag("NONE")
                 Text("Infrequent").tag("INFREQUENT")
                 Text("Frequent").tag("FREQUENT")
@@ -16,13 +21,19 @@ struct PublishingAgeRatingFields: View {
         }
     }
 
-    private func booleanBinding(_ key: String) -> Binding<Bool> {
+    private func booleanBinding(_ key: String) -> Binding<String> {
         Binding(
             get: {
-                if case .bool(let value) = ageRating[key] { return value }
-                return false
+                if case .bool(let value) = ageRating[key] { return value ? "YES" : "NO" }
+                return ""
             },
-            set: { ageRating[key] = .bool($0) }
+            set: { answer in
+                switch answer {
+                case "YES": ageRating[key] = .bool(true)
+                case "NO": ageRating[key] = .bool(false)
+                default: ageRating.removeValue(forKey: key)
+                }
+            }
         )
     }
 
@@ -30,9 +41,15 @@ struct PublishingAgeRatingFields: View {
         Binding(
             get: {
                 if case .string(let value) = ageRating[key] { return value }
-                return "NONE"
+                return ""
             },
-            set: { ageRating[key] = .string($0) }
+            set: { answer in
+                if answer.isEmpty {
+                    ageRating.removeValue(forKey: key)
+                } else {
+                    ageRating[key] = .string(answer)
+                }
+            }
         )
     }
 
