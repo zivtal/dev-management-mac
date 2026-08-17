@@ -253,7 +253,7 @@ private struct PublishingWindowView: View {
                                 configurationEditorHighlightsMissingFields = true
                                 selectedWorkspace = .configuration
                             },
-                            onOpenSettings: { openSettings() }
+                            onOpenSettings: openPublishingSettings
                         )
                         projectOptions(project)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -766,7 +766,7 @@ private struct PublishingWindowView: View {
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)
                 HStack {
-                    Button("Publishing Settings…") { openSettings() }
+                    Button("Publishing Settings…") { openPublishingSettings() }
                     Button("Try Again") {
                         Task { await refreshAppStoreConfiguration() }
                     }
@@ -1424,7 +1424,7 @@ private struct PublishingWindowView: View {
     private func footer(_ project: ManagedProject) -> some View {
         HStack {
             Button("Publishing Settings…") {
-                openSettings()
+                openPublishingSettings()
             }
             Spacer()
             Button("Cancel") {
@@ -2161,14 +2161,14 @@ private struct PublishingWindowView: View {
         guard report.blockers.isEmpty else {
             let blockerIDs = Set(report.blockers.map(\.id))
             if blockerIDs.contains("privacy-account") {
-                openSettings()
+                openPublishingSettings()
             } else if !blockerIDs.isDisjoint(with: ["review", "content", "compliance", "screenshots"]) {
                 configurationEditorStartsWithAI = model.hasOpenAIAPIKey && needsEditableAIDraft
                 configurationEditorInitialTab = firstConfigurationTabNeedingAttention
                 configurationEditorHighlightsMissingFields = true
                 selectedWorkspace = .configuration
             } else if blockerIDs.contains("account") {
-                openSettings()
+                openPublishingSettings()
             } else {
                 model.presentedError = report.blockers
                     .map { "\($0.title): \($0.detail)" }
@@ -2178,6 +2178,11 @@ private struct PublishingWindowView: View {
         }
         pendingPublishingIntent = intent
         showsConfirmation = true
+    }
+
+    private func openPublishingSettings() {
+        model.selectedSettingsSection = .publishing
+        openSettings()
     }
 
     private var needsEditableAIDraft: Bool {

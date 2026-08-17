@@ -1,5 +1,14 @@
 import Foundation
 
+enum SettingsSection: Hashable {
+    case general
+    case applications
+    case publishing
+    case sandbox
+    case activity
+    case devices
+}
+
 enum RuntimeDurationFormatter {
     static func string(from elapsedTime: TimeInterval) -> String {
         let formatter = DateComponentsFormatter()

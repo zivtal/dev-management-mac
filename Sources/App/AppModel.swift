@@ -43,6 +43,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var developerTeams: [DeveloperTeam] = []
     @Published private(set) var isRefreshingDeveloperTeams = false
     @Published private(set) var isSettingsWindowOpen = false
+    @Published var selectedSettingsSection = SettingsSection.general
     @Published var presentedError: String?
 
     var installableDevices: [ConnectedDevice] {

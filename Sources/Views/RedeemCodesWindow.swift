@@ -176,7 +176,7 @@ private struct RedeemCodesWindowView: View {
                     Task { await refresh() }
                 }
                 Button("Publishing Settings…") {
-                    openSettings()
+                    openPublishingSettings()
                 }
             }
         } else if generatedCodes.isEmpty {
@@ -418,7 +418,7 @@ private struct RedeemCodesWindowView: View {
     private var footer: some View {
         HStack {
             Button("Publishing Settings…") {
-                openSettings()
+                openPublishingSettings()
             }
             Spacer()
             Button("Close") {
@@ -431,6 +431,11 @@ private struct RedeemCodesWindowView: View {
     private var projectName: String {
         model.projects.first(where: { $0.id == projectID })?.displayName
             ?? L10n.text("Application")
+    }
+
+    private func openPublishingSettings() {
+        model.selectedSettingsSection = .publishing
+        openSettings()
     }
 
     private var subscriptions: [AppStoreConnectSubscriptionSnapshot] {

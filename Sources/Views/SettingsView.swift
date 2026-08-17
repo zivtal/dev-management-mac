@@ -5,30 +5,36 @@ struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        TabView {
+        TabView(selection: $model.selectedSettingsSection) {
             GeneralSettingsView()
                 .environmentObject(model)
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsSection.general)
 
             ProjectsSettingsView()
                 .environmentObject(model)
                 .tabItem { Label("Applications", systemImage: "app.badge") }
+                .tag(SettingsSection.applications)
 
             PublishingSettingsView()
                 .environmentObject(model)
                 .tabItem { Label("Publishing", systemImage: "paperplane") }
+                .tag(SettingsSection.publishing)
 
             SandboxTestersSettingsView()
                 .environmentObject(model)
                 .tabItem { Label("Sandbox", systemImage: "testtube.2") }
+                .tag(SettingsSection.sandbox)
 
             ActivityView()
                 .environmentObject(model)
                 .tabItem { Label("Activity", systemImage: "list.bullet.rectangle") }
+                .tag(SettingsSection.activity)
 
             DevicesSettingsView()
                 .environmentObject(model)
                 .tabItem { Label("Devices", systemImage: "iphone.and.arrow.forward") }
+                .tag(SettingsSection.devices)
         }
         .frame(minWidth: 820, idealWidth: 900, minHeight: 620, idealHeight: 720)
         .tint(.blue)
