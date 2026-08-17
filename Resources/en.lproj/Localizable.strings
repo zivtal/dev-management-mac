@@ -1114,8 +1114,8 @@
 "OpenAI applies a conservative draft only when the project documentation explicitly supports the complete checklist. Unsupported answers remain Unspecified." = "OpenAI applies a conservative draft only when the project documentation explicitly supports the complete checklist. Unsupported answers remain Unspecified.";
 "Fill App Privacy with OpenAI" = "Fill App Privacy with OpenAI";
 "Analyzing README for App Privacy…" = "Analyzing README for App Privacy…";
-"OpenAI did not find enough explicit age-rating information in the project documentation. No answers were changed." = "OpenAI did not find enough explicit age-rating information in the project documentation. No answers were changed.";
-"OpenAI did not find enough explicit App Privacy information in the project documentation. No answers were changed." = "OpenAI did not find enough explicit App Privacy information in the project documentation. No answers were changed.";
+"OpenAI did not find enough explicit age-rating information in the project documentation. The answers are now Unspecified for manual review." = "OpenAI did not find enough explicit age-rating information in the project documentation. The answers are now Unspecified for manual review.";
+"OpenAI did not find enough explicit App Privacy information in the project documentation. The answer is now Unspecified for manual review." = "OpenAI did not find enough explicit App Privacy information in the project documentation. The answer is now Unspecified for manual review.";
 "Unspecified means the documentation does not establish the answer; it is never treated as No." = "Unspecified means the documentation does not establish the answer; it is never treated as No.";
 "Specify the App Privacy answer before saving. Unknown is not treated as No." = "Specify the App Privacy answer before saving. Unknown is not treated as No.";
 "Select at least one collected data type, or leave the App Privacy answer Unspecified." = "Select at least one collected data type, or leave the App Privacy answer Unspecified.";

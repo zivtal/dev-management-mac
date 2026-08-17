@@ -3661,8 +3661,11 @@ private struct PerAppPublishingConfigurationEditor: View {
         do {
             let compliance = try await model.generateAppStoreComplianceDraft(projectID: project.id)
             guard let generatedAgeRating = compliance.evidenceBackedAgeRating else {
+                ageRating = [:]
+                complianceEvidence = compliance.evidence
+                complianceConfidence = compliance.confidence
                 aiGenerationNotice = L10n.text(
-                    "OpenAI did not find enough explicit age-rating information in the project documentation. No answers were changed."
+                    "OpenAI did not find enough explicit age-rating information in the project documentation. The answers are now Unspecified for manual review."
                 )
                 validationMessage = nil
                 return
@@ -3683,8 +3686,18 @@ private struct PerAppPublishingConfigurationEditor: View {
         do {
             let compliance = try await model.generateAppStoreComplianceDraft(projectID: project.id)
             guard let generatedPrivacy = compliance.evidenceBackedPrivacy else {
+                privacyDraftIsSpecified = false
+                privacyCollectsData = false
+                privacyDataTypes = []
+                privacyNotes = []
+                privacyConfirmedInAppStoreConnect = false
+                privacyConfirmedManually = false
+                privacyConfirmedBy = ""
+                privacyConfirmedAt = ""
+                complianceEvidence = compliance.evidence
+                complianceConfidence = compliance.confidence
                 aiGenerationNotice = L10n.text(
-                    "OpenAI did not find enough explicit App Privacy information in the project documentation. No answers were changed."
+                    "OpenAI did not find enough explicit App Privacy information in the project documentation. The answer is now Unspecified for manual review."
                 )
                 validationMessage = nil
                 return

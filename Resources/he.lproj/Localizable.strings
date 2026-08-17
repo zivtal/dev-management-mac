@@ -1114,8 +1114,8 @@
 "OpenAI applies a conservative draft only when the project documentation explicitly supports the complete checklist. Unsupported answers remain Unspecified." = "OpenAI מחיל טיוטה שמרנית רק כאשר תיעוד הפרויקט תומך במפורש ברשימה המלאה. תשובות ללא תמיכה נשארות במצב לא צוין.";
 "Fill App Privacy with OpenAI" = "מילוי פרטיות היישום באמצעות OpenAI";
 "Analyzing README for App Privacy…" = "ניתוח README לצורך פרטיות היישום…";
-"OpenAI did not find enough explicit age-rating information in the project documentation. No answers were changed." = "OpenAI לא מצא בתיעוד הפרויקט מידע מפורש מספיק על דירוג הגיל. לא בוצע שינוי בתשובות.";
-"OpenAI did not find enough explicit App Privacy information in the project documentation. No answers were changed." = "OpenAI לא מצא בתיעוד הפרויקט מידע מפורש מספיק על פרטיות היישום. לא בוצע שינוי בתשובות.";
+"OpenAI did not find enough explicit age-rating information in the project documentation. The answers are now Unspecified for manual review." = "OpenAI לא מצא בתיעוד הפרויקט מידע מפורש מספיק על דירוג הגיל. התשובות הוחזרו למצב לא צוין לצורך בדיקה ידנית.";
+"OpenAI did not find enough explicit App Privacy information in the project documentation. The answer is now Unspecified for manual review." = "OpenAI לא מצא בתיעוד הפרויקט מידע מפורש מספיק על פרטיות היישום. התשובה הוחזרה למצב לא צוין לצורך בדיקה ידנית.";
 "Unspecified means the documentation does not establish the answer; it is never treated as No." = "לא צוין פירושו שהתיעוד אינו מבסס את התשובה; מצב זה לעולם אינו נחשב ללא.";
 "Specify the App Privacy answer before saving. Unknown is not treated as No." = "יש לציין את תשובת פרטיות היישום לפני השמירה. מצב לא ידוע אינו נחשב ללא.";
 "Select at least one collected data type, or leave the App Privacy answer Unspecified." = "יש לבחור לפחות סוג נתונים אחד שנאסף, או להשאיר את תשובת פרטיות היישום במצב לא צוין.";
