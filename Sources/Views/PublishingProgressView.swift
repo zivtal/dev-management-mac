@@ -268,7 +268,9 @@ struct PublishingProgressView: View {
                         "Destination",
                         result.submittedForReview
                             ? L10n.text("TestFlight and App Review")
-                            : L10n.text("App Store Connect and TestFlight")
+                            : L10n.text(result.deferredStorefrontSetup
+                                ? "TestFlight"
+                                : "App Store Connect and TestFlight")
                     )
                     if result.reusedExistingBuild {
                         resultValue("Build source", L10n.text("Existing TestFlight build"))
@@ -376,9 +378,13 @@ struct PublishingProgressView: View {
         case .inProgress:
             L10n.text("Development Management is completing the release steps automatically.")
         case .succeeded:
-            log.result?.submittedForReview == true
-                ? L10n.text("The build is available in TestFlight and the release was submitted to Apple.")
-                : L10n.text("The complete App Store and TestFlight setup is synchronized, the build is available to internal testers, and nothing was submitted for App Review.")
+            if log.result?.submittedForReview == true {
+                L10n.text("The build is available in TestFlight and the release was submitted to Apple.")
+            } else if log.result?.deferredStorefrontSetup == true {
+                L10n.text("The build is available to internal testers. Storefront setup remains deferred until the version in review is released or removed.")
+            } else {
+                L10n.text("The complete App Store and TestFlight setup is synchronized, the build is available to internal testers, and nothing was submitted for App Review.")
+            }
         case .failed:
             log.failureMessage?.nilIfEmpty
                 ?? L10n.text("Review the issue below, adjust the settings, and try again.")

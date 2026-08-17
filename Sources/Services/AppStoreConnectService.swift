@@ -97,11 +97,12 @@ struct AppStoreScreenshotPreview: Equatable, Sendable {
 
 struct AppStoreConnectPublication: Sendable {
     let appID: String
-    let versionID: String
-    let localizationID: String
+    let versionID: String?
+    let localizationID: String?
     let localizationIDsByLocale: [String: String]
     let isVersionOnlyUpdate: Bool
     let preservedLockedAppInformation: Bool
+    let deferredStorefrontSetup: Bool
 }
 
 enum AppStoreConnectError: LocalizedError {
@@ -758,13 +759,35 @@ final class AppStoreConnectService {
     ) async throws -> AppStoreConnectPublication {
         let appID = try await findApplication(bundleIdentifier: bundleIdentifier)
         let isVersionOnlyUpdate = try await hasPublishedVersion(appID: appID, otherThan: version)
-        let versionID = try await findOrCreateVersion(
-            appID: appID,
-            version: version,
-            copyright: copyright,
-            releaseAutomatically: releaseAutomatically,
-            reusableVersionID: reusableVersionID
-        )
+        let versionID: String
+        do {
+            versionID = try await findOrCreateVersion(
+                appID: appID,
+                version: version,
+                copyright: copyright,
+                releaseAutomatically: releaseAutomatically,
+                reusableVersionID: reusableVersionID
+            )
+        } catch AppStoreConnectError.requestFailed(let status, let message)
+            where intent == .testFlight && status == 409 {
+            let versions = try await pagedData(
+                path: "/v1/apps/\(appID)/appStoreVersions",
+                query: ["filter[platform]": "IOS", "limit": "200"]
+            )
+            guard Self.hasVersionBlockingNewStorefront(in: versions) else {
+                throw AppStoreConnectError.requestFailed(status, message)
+            }
+            onOutput(L10n.text("App Store Connect cannot create or edit the target App Store version while another version is in review. Storefront listing, screenshots, review details, and build attachment are deferred; continuing with TestFlight setup.\n"))
+            return AppStoreConnectPublication(
+                appID: appID,
+                versionID: nil,
+                localizationID: nil,
+                localizationIDsByLocale: [:],
+                isVersionOnlyUpdate: isVersionOnlyUpdate,
+                preservedLockedAppInformation: true,
+                deferredStorefrontSetup: true
+            )
+        }
         let fallbackListing = AppStoreLocalizedMetadata(
             locale: locale,
             appName: appName ?? "",
@@ -858,7 +881,8 @@ final class AppStoreConnectService {
             localizationID: localizationID,
             localizationIDsByLocale: localizationIDsByLocale,
             isVersionOnlyUpdate: isVersionOnlyUpdate,
-            preservedLockedAppInformation: preservedLockedAppInformation
+            preservedLockedAppInformation: preservedLockedAppInformation,
+            deferredStorefrontSetup: false
         )
     }
 
@@ -2198,6 +2222,15 @@ final class AppStoreConnectService {
                   let state = attributes["appStoreState"] as? String,
                   publishedStates.contains(state) else { return false }
             return attributes["versionString"] as? String != currentVersion
+        }
+    }
+
+    static func hasVersionBlockingNewStorefront(in versions: [[String: Any]]) -> Bool {
+        versions.contains { resource in
+            guard let state = Self.attributes(resource)["appStoreState"] as? String else {
+                return false
+            }
+            return AppStoreVersionLifecycle.blocksNewStorefront(state)
         }
     }
 

@@ -545,6 +545,17 @@ enum AppStoreVersionLifecycle {
         "PREORDER_READY_FOR_SALE"
     ]
 
+    static let statesBlockingNewStorefront: Set<String> = [
+        "ACCEPTED",
+        "WAITING_FOR_EXPORT_COMPLIANCE",
+        "WAITING_FOR_REVIEW",
+        "IN_REVIEW",
+        "PENDING_APPLE_RELEASE",
+        "PENDING_DEVELOPER_RELEASE",
+        "PROCESSING_FOR_DISTRIBUTION",
+        "PROCESSING_FOR_APP_STORE"
+    ]
+
     static func isCancellableReviewState(_ state: String) -> Bool {
         cancellableReviewStates.contains(state)
     }
@@ -555,6 +566,10 @@ enum AppStoreVersionLifecycle {
 
     static func isReusableDraftState(_ state: String) -> Bool {
         reusableDraftStates.contains(state)
+    }
+
+    static func blocksNewStorefront(_ state: String) -> Bool {
+        statesBlockingNewStorefront.contains(state)
     }
 }
 
@@ -871,6 +886,7 @@ struct PublishingResult: Equatable, Sendable {
     let buildNumber: String
     let intent: PublishingIntent
     let reusedExistingBuild: Bool
+    let deferredStorefrontSetup: Bool
 
     var submittedForReview: Bool {
         intent.submitsForReview

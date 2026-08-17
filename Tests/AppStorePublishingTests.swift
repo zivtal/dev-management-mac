@@ -241,6 +241,117 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertFalse(PublishingIntent.publish.preservesLockedAppInformation(forHTTPStatus: 409))
     }
 
+    func testTestFlightDefersStorefrontSetupWhenAnotherVersionIsInReview() async throws {
+        let service = try appStoreConnectTestService { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/apps"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [["type": "apps", "id": "app-id"]]]
+                )
+            case ("GET", "/v1/apps/app-id/appStoreVersions"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: [
+                        "data": [[
+                            "type": "appStoreVersions",
+                            "id": "version-in-review",
+                            "attributes": [
+                                "versionString": "2.1.7",
+                                "appStoreState": "WAITING_FOR_REVIEW"
+                            ]
+                        ]]
+                    ]
+                )
+            case ("POST", "/v1/appStoreVersions"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 409,
+                    json: ["errors": [["detail": "You cannot create a new version of the App in the current state."]]]
+                )
+            default:
+                XCTFail("Unexpected App Store Connect request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
+                return try Self.appStoreConnectResponse(for: request, status: 500, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+
+        let publication = try await preparePublication(service: service, intent: .testFlight)
+
+        XCTAssertTrue(publication.deferredStorefrontSetup)
+        XCTAssertTrue(publication.preservedLockedAppInformation)
+        XCTAssertNil(publication.versionID)
+        XCTAssertNil(publication.localizationID)
+        XCTAssertTrue(publication.localizationIDsByLocale.isEmpty)
+        XCTAssertEqual(
+            AppStoreConnectURLProtocolStub.requests.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" },
+            [
+                "GET /v1/apps",
+                "GET /v1/apps/app-id/appStoreVersions",
+                "GET /v1/apps/app-id/appStoreVersions",
+                "POST /v1/appStoreVersions",
+                "GET /v1/apps/app-id/appStoreVersions"
+            ]
+        )
+    }
+
+    func testTestFlightDoesNotIgnoreUnrelatedVersionCreationConflict() async throws {
+        let service = try appStoreConnectTestService { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/apps"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [["type": "apps", "id": "app-id"]]]
+                )
+            case ("GET", "/v1/apps/app-id/appStoreVersions"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": []]
+                )
+            case ("POST", "/v1/appStoreVersions"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 409,
+                    json: ["errors": [["detail": "Version creation is unavailable."]]]
+                )
+            default:
+                XCTFail("Unexpected App Store Connect request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
+                return try Self.appStoreConnectResponse(for: request, status: 500, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+
+        do {
+            _ = try await preparePublication(service: service, intent: .testFlight)
+            XCTFail("Expected the App Store version creation conflict to be preserved")
+        } catch AppStoreConnectError.requestFailed(let status, let message) {
+            XCTAssertEqual(status, 409)
+            XCTAssertEqual(message, "Version creation is unavailable.")
+        }
+    }
+
+    func testStorefrontBlockingStatesMatchAppleReviewAndReleaseLifecycle() {
+        XCTAssertTrue(AppStoreConnectService.hasVersionBlockingNewStorefront(in: [[
+            "attributes": ["appStoreState": "WAITING_FOR_REVIEW"]
+        ]]))
+        XCTAssertTrue(AppStoreConnectService.hasVersionBlockingNewStorefront(in: [[
+            "attributes": ["appStoreState": "PENDING_DEVELOPER_RELEASE"]
+        ]]))
+        XCTAssertTrue(AppStoreConnectService.hasVersionBlockingNewStorefront(in: [[
+            "attributes": ["appStoreState": "PROCESSING_FOR_DISTRIBUTION"]
+        ]]))
+        XCTAssertFalse(AppStoreConnectService.hasVersionBlockingNewStorefront(in: [[
+            "attributes": ["appStoreState": "READY_FOR_DISTRIBUTION"]
+        ]]))
+        XCTAssertFalse(AppStoreConnectService.hasVersionBlockingNewStorefront(in: [[
+            "attributes": ["appStoreState": "PREPARE_FOR_SUBMISSION"]
+        ]]))
+    }
+
     func testSubscriptionFieldEditorRoundTripsEveryPublishableValue() throws {
         let definition = AppStoreSubscriptionDefinition(
             referenceName: "Premium Annual",
@@ -1174,6 +1285,143 @@ private extension AppStorePublishingTests {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [PublicationURLProtocolStub.self]
         return URLSession(configuration: configuration)
+    }
+
+    func appStoreConnectTestService(
+        handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
+    ) throws -> AppStoreConnectService {
+        AppStoreConnectURLProtocolStub.configure(handler: handler)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AppStoreConnectURLProtocolStub.self]
+        return try AppStoreConnectService(
+            issuerID: "issuer",
+            keyID: "key",
+            privateKeyPEM: P256.Signing.PrivateKey().pemRepresentation,
+            session: URLSession(configuration: configuration)
+        )
+    }
+
+    func preparePublication(
+        service: AppStoreConnectService,
+        intent: PublishingIntent
+    ) async throws -> AppStoreConnectPublication {
+        try await service.preparePublication(
+            bundleIdentifier: "com.example.app",
+            version: "2.2.0",
+            intent: intent,
+            locale: "en-US",
+            metadata: AppStoreMetadata(
+                description: "Description",
+                keywords: "keywords",
+                promotionalText: "Promotional text",
+                whatsNew: "What's new"
+            ),
+            localizedMetadata: [],
+            copyright: "2026 Example",
+            supportURL: "https://example.com/support",
+            marketingURL: nil,
+            termsURL: nil,
+            appName: "Example",
+            subtitle: nil,
+            privacyPolicyURL: "https://example.com/privacy",
+            privacyChoicesURL: nil,
+            licenseAgreementText: nil,
+            review: AppStoreReviewConfiguration(
+                contactFirstName: "Ada",
+                contactLastName: "Lovelace",
+                contactPhone: "+1 555 0100",
+                contactEmail: "review@example.com",
+                notes: "No login required.",
+                demoAccountRequired: false,
+                demoAccountName: nil,
+                demoAccountPassword: nil
+            ),
+            releaseAutomatically: true,
+            onOutput: { _ in }
+        )
+    }
+
+    static func appStoreConnectResponse(
+        for request: URLRequest,
+        status: Int,
+        json: [String: Any]
+    ) throws -> (HTTPURLResponse, Data) {
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: try XCTUnwrap(request.url),
+            statusCode: status,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        ))
+        return (response, try JSONSerialization.data(withJSONObject: json))
+    }
+}
+
+private final class AppStoreConnectURLProtocolStub: URLProtocol {
+    private static let state = AppStoreConnectURLProtocolState()
+
+    static var requests: [URLRequest] { state.requests }
+    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get { state.requestHandler }
+        set { state.requestHandler = newValue }
+    }
+
+    static func configure(
+        handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
+    ) {
+        state.configure(handler: handler)
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        do {
+            let (response, data) = try Self.state.response(for: request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+private final class AppStoreConnectURLProtocolState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+    private var recordedRequests: [URLRequest] = []
+
+    var requests: [URLRequest] {
+        lock.withLock { recordedRequests }
+    }
+
+    var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))? {
+        get { lock.withLock { handler } }
+        set {
+            lock.withLock {
+                handler = newValue
+                if newValue == nil { recordedRequests = [] }
+            }
+        }
+    }
+
+    func configure(
+        handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
+    ) {
+        lock.withLock {
+            self.handler = handler
+            recordedRequests = []
+        }
+    }
+
+    func response(for request: URLRequest) throws -> (HTTPURLResponse, Data) {
+        let currentHandler = lock.withLock { () -> ((URLRequest) throws -> (HTTPURLResponse, Data))? in
+            recordedRequests.append(request)
+            return handler
+        }
+        return try XCTUnwrap(currentHandler)(request)
     }
 }
 

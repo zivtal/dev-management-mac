@@ -267,6 +267,10 @@ submission. Review attachments are prepared and uploaded before that boundary.
 A hard intent guard prevents the TestFlight path from
 submitting review items. If the exact selected version and build are already in
 TestFlight, either action reuses it without another archive or upload.
+When another App Store version is in review, TestFlight upload continues while
+Apple's locked version-scoped storefront metadata, screenshots, review assets,
+and App Store build attachment are deferred until that version is released or
+removed.
 
 For a new app, the publishing editor can generate `app-store-publishing.json`
 with OpenAI or accept fully manual input. All normal configuration—including

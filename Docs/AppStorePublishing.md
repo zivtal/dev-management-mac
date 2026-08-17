@@ -259,6 +259,13 @@ that action from creating, canceling, or submitting an App Review submission.
 It is idempotent: existing builds, metadata, products, prices, screenshots,
 groups, and tester assignments are reused when they already match.
 
+When another App Store version is already in review, Apple does not allow the
+TestFlight build's new App Store version record to be created. The TestFlight
+action continues by uploading and processing the build and reconciling beta
+information, groups, testers, and subscriptions. Version-scoped storefront
+metadata, screenshots, review details and attachments, and App Store build
+attachment are deferred until the reviewed version is released or removed.
+
 **Publish** additionally cancels an explicitly confirmed older active review
 only after the replacement archive succeeds (or a matching processed build is
 already available), then continues with the

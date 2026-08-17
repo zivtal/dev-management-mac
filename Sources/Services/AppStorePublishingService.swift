@@ -384,9 +384,11 @@ final class AppStorePublishingService {
             reusableVersionID: reusableVersionID,
             onOutput: { eventHandler(.output($0)) }
         )
-        eventHandler(.output(L10n.text(publication.preservedLockedAppInformation
-            ? "Editable App Store version metadata updated; locked app-level information was preserved.\n"
-            : "App Store metadata updated.\n")))
+        if !publication.deferredStorefrontSetup {
+            eventHandler(.output(L10n.text(publication.preservedLockedAppInformation
+                ? "Editable App Store version metadata updated; locked app-level information was preserved.\n"
+                : "App Store metadata updated.\n")))
+        }
 
         eventHandler(.phase(.configuringTestFlight))
         try await appStoreConnect.configureTestFlightInformation(
@@ -422,14 +424,16 @@ final class AppStorePublishingService {
             onOutput: { eventHandler(.output($0)) }
         )
 
-        eventHandler(.phase(.uploadingScreenshots))
-        try await appStoreConnect.uploadScreenshots(
-            screenshots,
-            localizationIDsByLocale: publication.localizationIDsByLocale,
-            primaryLocale: configuration.locale,
-            replaceExisting: configuration.replaceScreenshots,
-            onOutput: { eventHandler(.output($0)) }
-        )
+        if !publication.deferredStorefrontSetup {
+            eventHandler(.phase(.uploadingScreenshots))
+            try await appStoreConnect.uploadScreenshots(
+                screenshots,
+                localizationIDsByLocale: publication.localizationIDsByLocale,
+                primaryLocale: configuration.locale,
+                replaceExisting: configuration.replaceScreenshots,
+                onOutput: { eventHandler(.output($0)) }
+            )
+        }
 
         if let artifact, let temporaryDirectory, !reusedExistingBuild {
             eventHandler(.phase(.uploadingBuild))
@@ -455,8 +459,12 @@ final class AppStorePublishingService {
                 onOutput: { eventHandler(.output($0)) }
             )
         }
-        try await appStoreConnect.attachBuild(buildID, toVersion: publication.versionID)
-        eventHandler(.output(L10n.text("The processed build is attached to the App Store version.\n")))
+        if let versionID = publication.versionID {
+            try await appStoreConnect.attachBuild(buildID, toVersion: versionID)
+            eventHandler(.output(L10n.text("The processed build is attached to the App Store version.\n")))
+        } else {
+            eventHandler(.output(L10n.text("The processed build is available in TestFlight. App Store version attachment remains deferred until the version in review is released or removed.\n")))
+        }
 
         eventHandler(.phase(.configuringTestFlight))
         try await appStoreConnect.assignBuildToInternalTestFlight(
@@ -466,24 +474,29 @@ final class AppStorePublishingService {
             onOutput: { eventHandler(.output($0)) }
         )
 
-        if !reviewAttachments.isEmpty {
+        if !reviewAttachments.isEmpty, let versionID = publication.versionID {
             eventHandler(.phase(.uploadingReviewAssets))
             try await appStoreConnect.uploadReviewAttachments(
                 reviewAttachments,
-                versionID: publication.versionID,
+                versionID: versionID,
                 onOutput: { eventHandler(.output($0)) }
             )
         }
 
         if intent.submitsForReview {
+            guard let versionID = publication.versionID else {
+                throw AppStoreConnectError.missingIdentifier("App Store version")
+            }
             eventHandler(.phase(.submitting))
             try await appStoreConnect.submitForReview(
                 appID: publication.appID,
-                versionID: publication.versionID,
+                versionID: versionID,
                 additionalItems: subscriptionReviewItems,
                 intent: intent
             )
             eventHandler(.output(L10n.text("The App Store version and configured subscriptions were submitted for review.\n")))
+        } else if publication.deferredStorefrontSetup {
+            eventHandler(.output(L10n.text("TestFlight setup completed. Locked storefront work remains deferred until the version in review is released or removed.\n")))
         } else {
             eventHandler(.output(L10n.text("Full App Store and TestFlight setup completed. Review submission was intentionally skipped.\n")))
         }
@@ -492,7 +505,8 @@ final class AppStorePublishingService {
             version: targetVersion,
             buildNumber: targetBuildNumber,
             intent: intent,
-            reusedExistingBuild: reusedExistingBuild
+            reusedExistingBuild: reusedExistingBuild,
+            deferredStorefrontSetup: publication.deferredStorefrontSetup
         )
     }
 
