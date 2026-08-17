@@ -895,7 +895,6 @@ final class AppModel: ObservableObject {
                     details: publishingLog?.output,
                     projectID: project.id
                 )
-                if !cancelled { presentedError = error.localizedDescription }
             }
         }
         activePublishingTask = task

@@ -1,8 +1,83 @@
+import AppKit
 import CryptoKit
+import Foundation
 import XCTest
 @testable import DevManagement
 
 final class AppStorePublishingTests: XCTestCase {
+    func testPublishingLogWindowRepairsUnreadablyNarrowContentSize() {
+        XCTAssertEqual(
+            PublishingLogWindowSizing.correctedContentSize(
+                for: NSSize(width: 344, height: 1_024)
+            ),
+            NSSize(width: 720, height: 1_024)
+        )
+        XCTAssertNil(PublishingLogWindowSizing.correctedContentSize(
+            for: NSSize(width: 980, height: 720)
+        ))
+    }
+
+    func testPublicationURLValidatorRetriesRejectedHEADWithFullGET() async throws {
+        let session = publicationURLTestSession { request in
+            let statusCode = request.httpMethod == "HEAD" ? 405 : 200
+            return HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: statusCode,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+        }
+        defer {
+            session.invalidateAndCancel()
+            PublicationURLProtocolStub.reset()
+        }
+
+        try await AppStorePublicationURLValidator(session: session).validate([
+            AppStorePublicationURL(
+                label: "support",
+                url: try XCTUnwrap(URL(string: "https://example.com/support"))
+            )
+        ])
+
+        XCTAssertEqual(PublicationURLProtocolStub.requestMethods, ["HEAD", "GET"])
+        XCTAssertNil(PublicationURLProtocolStub.requests.last?.value(
+            forHTTPHeaderField: "Range"
+        ))
+    }
+
+    func testPublicationURLValidatorExplainsHowToFixHTTPFailure() async throws {
+        let session = publicationURLTestSession { request in
+            HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 404,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+        }
+        defer {
+            session.invalidateAndCancel()
+            PublicationURLProtocolStub.reset()
+        }
+        let url = try XCTUnwrap(URL(string: "https://example.com/missing-support"))
+
+        do {
+            try await AppStorePublicationURLValidator(session: session).validate([
+                AppStorePublicationURL(label: "support", url: url)
+            ])
+            XCTFail("Expected a public URL validation failure")
+        } catch let error as AppStorePublicationURLValidationError {
+            guard case .httpFailure(let label, let failedURL, let statusCode) = error else {
+                return XCTFail("Unexpected URL validation error: \(error)")
+            }
+            XCTAssertEqual(label, "support")
+            XCTAssertEqual(failedURL, url)
+            XCTAssertEqual(statusCode, 404)
+            XCTAssertTrue(error.localizedDescription.contains("HTTP 404"))
+            XCTAssertTrue(error.localizedDescription.contains("HTTP 200–399"))
+        }
+        XCTAssertEqual(PublicationURLProtocolStub.requestMethods, ["HEAD", "GET"])
+    }
+
     func testPublishingWindowLayoutExpandsAcrossTheAvailableWidth() {
         XCTAssertEqual(PublishingWindowLayout(width: 899), .singleColumn)
         XCTAssertEqual(PublishingWindowLayout(width: 900), .twoColumns)
@@ -955,5 +1030,78 @@ final class AppStorePublishingTests: XCTestCase {
             buildNumber: "1",
             bundleIdentifier: "com.example.app"
         )
+    }
+}
+
+private extension AppStorePublishingTests {
+    func publicationURLTestSession(
+        handler: @escaping (URLRequest) throws -> HTTPURLResponse
+    ) -> URLSession {
+        PublicationURLProtocolStub.configure(handler: handler)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PublicationURLProtocolStub.self]
+        return URLSession(configuration: configuration)
+    }
+}
+
+private final class PublicationURLProtocolStub: URLProtocol {
+    private static let state = PublicationURLProtocolState()
+
+    static var requests: [URLRequest] { state.requests }
+    static var requestMethods: [String] { requests.compactMap(\.httpMethod) }
+
+    static func configure(handler: @escaping (URLRequest) throws -> HTTPURLResponse) {
+        state.configure(handler: handler)
+    }
+
+    static func reset() {
+        state.reset()
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        do {
+            let response = try Self.state.response(for: request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+}
+
+private final class PublicationURLProtocolState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handler: ((URLRequest) throws -> HTTPURLResponse)?
+    private var recordedRequests: [URLRequest] = []
+
+    var requests: [URLRequest] {
+        lock.withLock { recordedRequests }
+    }
+
+    func configure(handler: @escaping (URLRequest) throws -> HTTPURLResponse) {
+        lock.withLock {
+            self.handler = handler
+            recordedRequests = []
+        }
+    }
+
+    func reset() {
+        lock.withLock {
+            handler = nil
+            recordedRequests = []
+        }
+    }
+
+    func response(for request: URLRequest) throws -> HTTPURLResponse {
+        let currentHandler = lock.withLock { () -> ((URLRequest) throws -> HTTPURLResponse)? in
+            recordedRequests.append(request)
+            return handler
+        }
+        return try XCTUnwrap(currentHandler)(request)
     }
 }

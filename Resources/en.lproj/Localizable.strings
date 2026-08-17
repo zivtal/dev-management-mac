@@ -675,13 +675,13 @@
 "Uploading App Review attachments…" = "Uploading App Review attachments…";
 "Xcode created an archive, but its iOS application metadata could not be read." = "Xcode created an archive, but its iOS application metadata could not be read.";
 "The archived app uses bundle identifier %@ instead of %@." = "The archived app uses bundle identifier %@ instead of %@.";
-"Validating %d public App Store URL(s) before building…\n" = "Validating %d public App Store URL(s) before building…\n";
 "All configured public App Store URLs are reachable.\n" = "All configured public App Store URLs are reachable.\n";
 "Prepared %d App Review attachment(s) from the project.\n" = "Prepared %d App Review attachment(s) from the project.\n";
 "Archive contains %@ %@ (%@).\n" = "Archive contains %@ %@ (%@).\n";
 "The Xcode scheme changed the version during archive; continuing with the archived version.\n" = "The Xcode scheme changed the version during archive; continuing with the archived version.\n";
-"The %@ URL is not publicly reachable: %@" = "The %@ URL is not publicly reachable: %@";
-"%@ returned HTTP %d." = "%@ returned HTTP %d.";
+"The %@ URL returned HTTP %d: %@. Update it to a public page that returns HTTP 200–399, then try again." = "The %@ URL returned HTTP %d: %@. Update it to a public page that returns HTTP 200–399, then try again.";
+"The %@ URL could not be reached: %@ (%@). Check the URL and internet connection, then try again." = "The %@ URL could not be reached: %@ (%@). Check the URL and internet connection, then try again.";
+"Validating %d public App Store URL(s) before publishing…\n" = "Validating %d public App Store URL(s) before publishing…\n";
 "Created an Internal Testing group with automatic build access.\n" = "Created an Internal Testing group with automatic build access.\n";
 "Internal TestFlight group %@ receives every build automatically.\n" = "Internal TestFlight group %@ receives every build automatically.\n";
 "Build available to the internal TestFlight group %@.\n" = "Build available to the internal TestFlight group %@.\n";

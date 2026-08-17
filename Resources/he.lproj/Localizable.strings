@@ -675,13 +675,13 @@
 "Uploading App Review attachments…" = "מעלה קבצים מצורפים לבדיקת האפליקציה…";
 "Xcode created an archive, but its iOS application metadata could not be read." = "Xcode יצר ארכיון, אך לא ניתן לקרוא את מטא־נתוני אפליקציית iOS שבו.";
 "The archived app uses bundle identifier %@ instead of %@." = "האפליקציה שבארכיון משתמשת במזהה החבילה %@ במקום %@.";
-"Validating %d public App Store URL(s) before building…\n" = "מאמת %d כתובות ציבוריות של App Store לפני הבנייה…\n";
 "All configured public App Store URLs are reachable.\n" = "כל כתובות App Store הציבוריות שהוגדרו זמינות.\n";
 "Prepared %d App Review attachment(s) from the project.\n" = "הוכנו %d קבצים מצורפים לבדיקת האפליקציה מהפרויקט.\n";
 "Archive contains %@ %@ (%@).\n" = "הארכיון מכיל %@ %@ (%@).\n";
 "The Xcode scheme changed the version during archive; continuing with the archived version.\n" = "ערכת Xcode שינתה את הגרסה בזמן יצירת הארכיון; ממשיכים עם גרסת הארכיון.\n";
-"The %@ URL is not publicly reachable: %@" = "הכתובת של %@ אינה זמינה לציבור: %@";
-"%@ returned HTTP %d." = "%@ החזירה HTTP %d.";
+"The %@ URL returned HTTP %d: %@. Update it to a public page that returns HTTP 200–399, then try again." = "הכתובת של %@ החזירה HTTP %d: %@. יש לעדכן אותה לדף ציבורי שמחזיר HTTP 200–399 ולנסות שוב.";
+"The %@ URL could not be reached: %@ (%@). Check the URL and internet connection, then try again." = "לא ניתן להגיע לכתובת של %@: %@ (%@). יש לבדוק את הכתובת ואת החיבור לאינטרנט ולנסות שוב.";
+"Validating %d public App Store URL(s) before publishing…\n" = "מתבצע אימות של %d כתובות App Store ציבוריות לפני הפרסום…\n";
 "Created an Internal Testing group with automatic build access.\n" = "נוצרה קבוצת בדיקה פנימית עם גישה אוטומטית לבניות.\n";
 "Internal TestFlight group %@ receives every build automatically.\n" = "קבוצת TestFlight הפנימית %@ מקבלת כל בנייה באופן אוטומטי.\n";
 "Build available to the internal TestFlight group %@.\n" = "הבנייה זמינה לקבוצת TestFlight הפנימית %@.\n";

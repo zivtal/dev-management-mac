@@ -1,6 +1,21 @@
 import AppKit
 import SwiftUI
 
+enum PublishingLogWindowSizing {
+    static let minimumContentSize = NSSize(width: 720, height: 520)
+
+    static func correctedContentSize(for currentSize: NSSize) -> NSSize? {
+        guard currentSize.width < minimumContentSize.width
+                || currentSize.height < minimumContentSize.height else {
+            return nil
+        }
+        return NSSize(
+            width: max(currentSize.width, minimumContentSize.width),
+            height: max(currentSize.height, minimumContentSize.height)
+        )
+    }
+}
+
 @MainActor
 final class PublishingLogWindowPresenter {
     static let shared = PublishingLogWindowPresenter()
@@ -26,12 +41,19 @@ final class PublishingLogWindowPresenter {
             panel.level = .floating
             panel.hidesOnDeactivate = false
             panel.isReleasedWhenClosed = false
-            panel.minSize = NSSize(width: 720, height: 520)
+            panel.contentMinSize = PublishingLogWindowSizing.minimumContentSize
             panel.center()
             windowController = NSWindowController(window: panel)
         }
 
         NSApplication.shared.activate(ignoringOtherApps: true)
+        if let window = windowController?.window,
+           let correctedSize = PublishingLogWindowSizing.correctedContentSize(
+               for: window.contentLayoutRect.size
+           ) {
+            window.setContentSize(correctedSize)
+            window.center()
+        }
         windowController?.showWindow(nil)
         windowController?.window?.makeKeyAndOrderFront(nil)
     }
@@ -88,7 +110,12 @@ struct PublishingProgressView: View {
             footer
         }
         .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(
+            minWidth: PublishingLogWindowSizing.minimumContentSize.width,
+            maxWidth: .infinity,
+            minHeight: PublishingLogWindowSizing.minimumContentSize.height,
+            maxHeight: .infinity
+        )
     }
 
     private var statusHeader: some View {
@@ -144,9 +171,18 @@ struct PublishingProgressView: View {
             ProgressView(value: completionFraction)
                 .progressViewStyle(.linear)
 
-            HStack(alignment: .top, spacing: 8) {
-                ForEach(PublishingJourneyStage.allCases) { stage in
-                    stageView(stage)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 8) {
+                    ForEach(PublishingJourneyStage.allCases) { stage in
+                        stageView(stage)
+                            .frame(minWidth: 112)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(PublishingJourneyStage.allCases) { stage in
+                        stageView(stage)
+                    }
                 }
             }
         }
@@ -162,7 +198,8 @@ struct PublishingProgressView: View {
                     .foregroundStyle(state.color)
                 Text(stage.title)
                     .font(.subheadline.weight(state.isCurrent ? .semibold : .regular))
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Text(stage.detail)
                 .font(.caption2)

@@ -144,6 +144,15 @@ final class AppStorePublishingService {
               privacyAttestation.confirmedAt?.nilIfEmpty != nil else {
             throw AppStorePublishingError.missingEditablePublishingDraft
         }
+
+        let publicationURLs = Self.publicationURLs(configuration: configuration)
+        eventHandler(.output(L10n.format(
+            "Validating %d public App Store URL(s) before publishing…\n",
+            publicationURLs.count
+        )))
+        try await publicationURLValidator.validate(publicationURLs)
+        eventHandler(.output(L10n.text("All configured public App Store URLs are reachable.\n")))
+
         if privacyAttestation.automaticPublishingAuthorizedAt?.nilIfEmpty != nil,
            privacyAttestation.publishedAt?.nilIfEmpty == nil {
             guard let privacyDraft = subscriptionCatalog.compliance?.privacyDraft else {
@@ -181,14 +190,6 @@ final class AppStorePublishingService {
                 )))
             }
         }
-
-        let publicationURLs = Self.publicationURLs(configuration: configuration)
-        eventHandler(.output(L10n.format(
-            "Validating %d public App Store URL(s) before building…\n",
-            publicationURLs.count
-        )))
-        try await publicationURLValidator.validate(publicationURLs)
-        eventHandler(.output(L10n.text("All configured public App Store URLs are reachable.\n")))
 
         let reviewAttachments = reviewAssetService.discover(
             project: project,

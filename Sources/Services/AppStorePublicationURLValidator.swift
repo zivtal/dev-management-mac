@@ -6,12 +6,25 @@ struct AppStorePublicationURL: Equatable, Sendable {
 }
 
 enum AppStorePublicationURLValidationError: LocalizedError {
-    case unreachable(String, String)
+    case httpFailure(label: String, url: URL, statusCode: Int)
+    case connectionFailure(label: String, url: URL, reason: String)
 
     var errorDescription: String? {
         switch self {
-        case .unreachable(let label, let reason):
-            L10n.format("The %@ URL is not publicly reachable: %@", label, reason)
+        case .httpFailure(let label, let url, let statusCode):
+            L10n.format(
+                "The %@ URL returned HTTP %d: %@. Update it to a public page that returns HTTP 200–399, then try again.",
+                label,
+                statusCode,
+                url.absoluteString
+            )
+        case .connectionFailure(let label, let url, let reason):
+            L10n.format(
+                "The %@ URL could not be reached: %@ (%@). Check the URL and internet connection, then try again.",
+                label,
+                url.absoluteString,
+                reason
+            )
         }
     }
 }
@@ -54,23 +67,24 @@ final class AppStorePublicationURLValidator {
                 if let http = response as? HTTPURLResponse,
                    !(200..<400).contains(http.statusCode) {
                     request.httpMethod = "GET"
-                    request.setValue("bytes=0-1023", forHTTPHeaderField: "Range")
                     (_, response) = try await session.data(for: request)
                 }
                 guard let http = response as? HTTPURLResponse,
                       (200..<400).contains(http.statusCode) else {
                     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    throw AppStorePublicationURLValidationError.unreachable(
-                        value.label,
-                        L10n.format("%@ returned HTTP %d.", value.url.absoluteString, status)
+                    throw AppStorePublicationURLValidationError.httpFailure(
+                        label: value.label,
+                        url: value.url,
+                        statusCode: status
                     )
                 }
             } catch let error as AppStorePublicationURLValidationError {
                 throw error
             } catch {
-                throw AppStorePublicationURLValidationError.unreachable(
-                    value.label,
-                    "\(value.url.absoluteString) (\(error.localizedDescription))"
+                throw AppStorePublicationURLValidationError.connectionFailure(
+                    label: value.label,
+                    url: value.url,
+                    reason: error.localizedDescription
                 )
             }
         }
