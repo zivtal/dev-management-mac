@@ -145,13 +145,15 @@ final class AppStorePublishingService {
             throw AppStorePublishingError.missingEditablePublishingDraft
         }
 
-        let publicationURLs = Self.publicationURLs(configuration: configuration)
-        eventHandler(.output(L10n.format(
-            "Validating %d public App Store URL(s) before publishing…\n",
-            publicationURLs.count
-        )))
-        try await publicationURLValidator.validate(publicationURLs)
-        eventHandler(.output(L10n.text("All configured public App Store URLs are reachable.\n")))
+        if Self.requiresReachablePublicationURLs(for: intent) {
+            let publicationURLs = Self.publicationURLs(configuration: configuration)
+            eventHandler(.output(L10n.format(
+                "Validating %d public App Store URL(s) before publishing…\n",
+                publicationURLs.count
+            )))
+            try await publicationURLValidator.validate(publicationURLs)
+            eventHandler(.output(L10n.text("All configured public App Store URLs are reachable.\n")))
+        }
 
         if privacyAttestation.automaticPublishingAuthorizedAt?.nilIfEmpty != nil,
            privacyAttestation.publishedAt?.nilIfEmpty == nil {
@@ -471,6 +473,10 @@ final class AppStorePublishingService {
 
     static func publicationURLs(configuration: PublishingConfiguration) -> [AppStorePublicationURL] {
         AppStorePublicationURLValidator.publicationURLs(configuration: configuration)
+    }
+
+    static func requiresReachablePublicationURLs(for intent: PublishingIntent) -> Bool {
+        intent.submitsForReview
     }
 
     private func recordPrivacyPublication(

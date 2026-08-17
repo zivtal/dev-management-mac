@@ -28,6 +28,11 @@ final class AppStorePublishingTests: XCTestCase {
         ))
     }
 
+    func testTestFlightUploadDoesNotRequireStorefrontURLsToBeReachable() {
+        XCTAssertFalse(AppStorePublishingService.requiresReachablePublicationURLs(for: .testFlight))
+        XCTAssertTrue(AppStorePublishingService.requiresReachablePublicationURLs(for: .publish))
+    }
+
     func testPublicationURLValidatorRetriesRejectedHEADWithFullGET() async throws {
         let session = publicationURLTestSession { request in
             let statusCode = request.httpMethod == "HEAD" ? 405 : 200
