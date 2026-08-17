@@ -31,7 +31,7 @@ struct PublishingSubscriptionLocalizationForm: Identifiable {
             locale: locale,
             name: name,
             description: description.nilIfEmpty
-        )
+        ).normalizingLocale()
     }
 }
 

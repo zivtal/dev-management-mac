@@ -46,11 +46,15 @@ final class StoreKitSubscriptionDiscoveryService {
             if groupIndex < groups.count, groups[groupIndex].localizations?.isEmpty != false {
                 groups[groupIndex].localizations = [
                     AppStoreSubscriptionLocalization(
-                        locale: effectiveLocale,
+                        locale: Self.normalizedLocale(effectiveLocale),
                         name: groups[groupIndex].referenceName,
                         description: nil
                     )
                 ]
+            } else {
+                groups[groupIndex].localizations = groups[groupIndex].localizations?.map {
+                    $0.normalizingLocale()
+                }
             }
             for subscriptionIndex in groups[groupIndex].subscriptions.indices {
                 var subscription = groups[groupIndex].subscriptions[subscriptionIndex]
@@ -69,7 +73,7 @@ final class StoreKitSubscriptionDiscoveryService {
                 if subscription.localizations?.isEmpty != false {
                     subscription.localizations = [
                         AppStoreSubscriptionLocalization(
-                            locale: effectiveLocale,
+                            locale: Self.normalizedLocale(effectiveLocale),
                             name: Self.readableName(subscription.referenceName),
                             description: Self.fallbackDescription(
                                 name: subscription.referenceName,
@@ -79,11 +83,7 @@ final class StoreKitSubscriptionDiscoveryService {
                     ]
                 } else {
                     subscription.localizations = subscription.localizations?.map {
-                        AppStoreSubscriptionLocalization(
-                            locale: Self.normalizedLocale($0.locale),
-                            name: $0.name,
-                            description: $0.description
-                        )
+                        $0.normalizingLocale()
                     }
                 }
                 groups[groupIndex].subscriptions[subscriptionIndex] = subscription
@@ -351,7 +351,9 @@ final class StoreKitSubscriptionDiscoveryService {
     }
 
     private static func normalizedLocale(_ locale: String) -> String {
-        locale.replacingOccurrences(of: "_", with: "-")
+        AppStoreLocale.canonicalIdentifier(locale)
+            ?? locale.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "_", with: "-")
     }
 
     private static func readableName(_ value: String) -> String {

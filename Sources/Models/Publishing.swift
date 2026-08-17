@@ -347,6 +347,14 @@ struct AppStoreSubscriptionLocalization: Codable, Equatable, Sendable {
     var locale: String
     var name: String
     var description: String?
+
+    func normalizingLocale() -> AppStoreSubscriptionLocalization {
+        var normalized = self
+        normalized.locale = AppStoreLocale.canonicalIdentifier(locale)
+            ?? locale.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "_", with: "-")
+        return normalized
+    }
 }
 
 struct AppStoreSubscriptionDefinition: Codable, Equatable, Sendable {

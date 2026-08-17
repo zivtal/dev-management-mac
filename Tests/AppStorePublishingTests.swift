@@ -393,6 +393,18 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(saved.localizations?.first?.name, "Premium Annual")
     }
 
+    func testSubscriptionFieldEditorCanonicalizesImportedAppStoreLocale() {
+        let form = PublishingSubscriptionLocalizationForm(
+            AppStoreSubscriptionLocalization(
+                locale: "he-IL",
+                name: "פרימיום",
+                description: nil
+            )
+        )
+
+        XCTAssertEqual(form.definition.locale, "he")
+    }
+
     func testOpenAIResponseDecodesStructuredMetadata() throws {
         let generated = AppStoreMetadata(
             description: "A useful application.",

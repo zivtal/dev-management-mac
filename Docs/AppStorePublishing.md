@@ -224,7 +224,9 @@ new editable version receives the current localized version metadata. Listing,
 subscription-group, and subscription-product locales are normalized to App Store
 Connect's supported identifiers, including `he-IL` to `he`, before reconciliation.
 The locale is sent when a localization is created and omitted from later updates
-because App Store Connect treats that attribute as immutable.
+because App Store Connect treats that attribute as immutable. Locales imported
+from App Store Connect are canonicalized before the generated per-app JSON is
+saved, so regional aliases do not persist through a configuration round trip.
 
 ## Shared release pipeline
 

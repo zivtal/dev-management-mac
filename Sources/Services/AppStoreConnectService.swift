@@ -693,7 +693,7 @@ final class AppStoreConnectService {
             locale: locale,
             name: name,
             description: attributes["description"] as? String
-        )
+        ).normalizingLocale()
     }
 
     private static func offerSnapshot(
