@@ -2727,14 +2727,12 @@ final class AppStoreConnectService {
                 guard let locale = attributes?["locale"] as? String else { return false }
                 return AppStoreLocale.canonicalIdentifier(locale) == localization.locale
             })
-            var attributes: [String: Any] = [
-                "locale": localization.locale,
-                "name": localization.name
-            ]
-            if let customName = localization.description?.nilIfEmpty {
-                attributes["customAppName"] = customName
-            }
-            if let localizationID = match?["id"] as? String {
+            let localizationID = match?["id"] as? String
+            let attributes = Self.subscriptionGroupLocalizationAttributes(
+                localization,
+                includesLocale: localizationID == nil
+            )
+            if let localizationID {
                 _ = try await request(
                     method: "PATCH",
                     path: "/v2/subscriptionGroupLocalizations/\(localizationID)",
@@ -2783,14 +2781,12 @@ final class AppStoreConnectService {
                 guard let locale = attributes?["locale"] as? String else { return false }
                 return AppStoreLocale.canonicalIdentifier(locale) == localization.locale
             })
-            var attributes: [String: Any] = [
-                "locale": localization.locale,
-                "name": localization.name
-            ]
-            if let description = localization.description?.nilIfEmpty {
-                attributes["description"] = description
-            }
-            if let localizationID = match?["id"] as? String {
+            let localizationID = match?["id"] as? String
+            let attributes = Self.subscriptionLocalizationAttributes(
+                localization,
+                includesLocale: localizationID == nil
+            )
+            if let localizationID {
                 _ = try await request(
                     method: "PATCH",
                     path: "/v2/subscriptionLocalizations/\(localizationID)",
@@ -2820,6 +2816,34 @@ final class AppStoreConnectService {
                 )
             }
         }
+    }
+
+    static func subscriptionGroupLocalizationAttributes(
+        _ localization: AppStoreSubscriptionLocalization,
+        includesLocale: Bool
+    ) -> [String: Any] {
+        var attributes: [String: Any] = ["name": localization.name]
+        if includesLocale {
+            attributes["locale"] = localization.locale
+        }
+        if let customName = localization.description?.nilIfEmpty {
+            attributes["customAppName"] = customName
+        }
+        return attributes
+    }
+
+    static func subscriptionLocalizationAttributes(
+        _ localization: AppStoreSubscriptionLocalization,
+        includesLocale: Bool
+    ) -> [String: Any] {
+        var attributes: [String: Any] = ["name": localization.name]
+        if includesLocale {
+            attributes["locale"] = localization.locale
+        }
+        if let description = localization.description?.nilIfEmpty {
+            attributes["description"] = description
+        }
+        return attributes
     }
 
     static func normalizedSubscriptionLocalizations(

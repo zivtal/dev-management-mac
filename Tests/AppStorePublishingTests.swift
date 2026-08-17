@@ -709,6 +709,40 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertFalse(localizations.contains { $0.name == "Unsupported" })
     }
 
+    func testSubscriptionLocalizationUpdatesOmitImmutableLocaleAttribute() {
+        let localization = AppStoreSubscriptionLocalization(
+            locale: "he",
+            name: "פרימיום",
+            description: "גישה לכל התכונות."
+        )
+
+        let groupCreate = AppStoreConnectService.subscriptionGroupLocalizationAttributes(
+            localization,
+            includesLocale: true
+        )
+        let groupUpdate = AppStoreConnectService.subscriptionGroupLocalizationAttributes(
+            localization,
+            includesLocale: false
+        )
+        XCTAssertEqual(groupCreate["locale"] as? String, "he")
+        XCTAssertNil(groupUpdate["locale"])
+        XCTAssertEqual(groupUpdate["name"] as? String, "פרימיום")
+        XCTAssertEqual(groupUpdate["customAppName"] as? String, "גישה לכל התכונות.")
+
+        let productCreate = AppStoreConnectService.subscriptionLocalizationAttributes(
+            localization,
+            includesLocale: true
+        )
+        let productUpdate = AppStoreConnectService.subscriptionLocalizationAttributes(
+            localization,
+            includesLocale: false
+        )
+        XCTAssertEqual(productCreate["locale"] as? String, "he")
+        XCTAssertNil(productUpdate["locale"])
+        XCTAssertEqual(productUpdate["name"] as? String, "פרימיום")
+        XCTAssertEqual(productUpdate["description"] as? String, "גישה לכל התכונות.")
+    }
+
     func testScreenshotDimensionsMapToAppStoreDisplayTypes() {
         XCTAssertEqual(
             AppStorePublishingService.screenshotDisplayType(width: 1_320, height: 2_868),
