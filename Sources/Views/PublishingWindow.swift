@@ -2623,7 +2623,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 }
             }
 
-            Text("Current App Store Connect values are loaded as the starting point. OpenAI analyzes the managed app’s first-party source repository to generate an editable listing, categories, rights, price/download, sign-in, age-rating, and App Privacy checklist. Nothing is uploaded until a release action is confirmed.")
+            Text("Current App Store Connect values are loaded as the starting point. OpenAI analyzes the managed app’s first-party source repository to generate an editable listing, categories, rights, price/download, sign-in, age-rating, and App Privacy checklist. Each generation refreshes the age-rating and App Privacy drafts for review. Nothing is uploaded until a release action is confirmed.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -3626,33 +3626,24 @@ private struct PerAppPublishingConfigurationEditor: View {
             detectedLocales = generated.localizations.map(\.locale)
             if primaryCategory.isEmpty { primaryCategory = generated.primaryCategory }
             if secondaryCategory.isEmpty { secondaryCategory = generated.secondaryCategory }
-            if let compliance = generated.compliance {
-                if contentRights.isEmpty {
-                    contentRights = compliance.contentRightsDeclaration
-                }
-                if copyright.isEmpty, !compliance.copyright.isEmpty {
-                    copyright = AppStoreCopyrightNormalizer.normalized(compliance.copyright)
-                }
-                if baseManifest?.application?.isFree == nil {
-                    configureCommercialSettings = true
-                    appIsFree = compliance.appIsFree
-                }
-                if baseManifest?.publication?.review?.demoAccountRequired == nil {
-                    demoAccountRequired = compliance.demoAccountRequired
-                }
-                if ageRating.isEmpty {
-                    ageRating = compliance.ageRatingDefaultingUnknownToNo
-                }
-                if baseManifest?.compliance?.privacyDraft == nil,
-                   let generatedPrivacy = compliance.evidenceBackedPrivacy {
-                    privacyDraftIsSpecified = true
-                    privacyCollectsData = generatedPrivacy.collectsData
-                    privacyDataTypes = generatedPrivacy.dataTypes
-                    privacyNotes = generatedPrivacy.notes
-                }
-                if complianceEvidence.isEmpty { complianceEvidence = compliance.evidence }
-                if complianceConfidence == nil { complianceConfidence = compliance.confidence }
+            let compliance = generated.compliance
+            if contentRights.isEmpty {
+                contentRights = compliance.contentRightsDeclaration
             }
+            if copyright.isEmpty, !compliance.copyright.isEmpty {
+                copyright = AppStoreCopyrightNormalizer.normalized(compliance.copyright)
+            }
+            if baseManifest?.application?.isFree == nil {
+                configureCommercialSettings = true
+                appIsFree = compliance.appIsFree
+            }
+            if baseManifest?.publication?.review?.demoAccountRequired == nil {
+                demoAccountRequired = compliance.demoAccountRequired
+            }
+            ageRating = compliance.ageRatingDefaultingUnknownToNo
+            applyGeneratedPrivacyDraft(from: compliance)
+            complianceEvidence = compliance.evidence
+            complianceConfidence = compliance.confidence
             validationMessage = nil
         } catch {
             validationMessage = error.localizedDescription
@@ -3680,36 +3671,37 @@ private struct PerAppPublishingConfigurationEditor: View {
         aiGenerationNotice = nil
         do {
             let compliance = try await model.generateAppStoreComplianceDraft(projectID: project.id)
-            guard let generatedPrivacy = compliance.evidenceBackedPrivacy else {
-                privacyDraftIsSpecified = false
-                privacyCollectsData = false
-                privacyDataTypes = []
-                privacyNotes = []
-                privacyConfirmedInAppStoreConnect = false
-                privacyConfirmedManually = false
-                privacyConfirmedBy = ""
-                privacyConfirmedAt = ""
-                complianceEvidence = compliance.evidence
-                complianceConfidence = compliance.confidence
-                aiGenerationNotice = L10n.text(
-                    "OpenAI could not establish the complete App Privacy answer from the source repository. The answer is now Unspecified for manual review."
-                )
-                validationMessage = nil
-                return
-            }
-            privacyDraftIsSpecified = true
-            privacyCollectsData = generatedPrivacy.collectsData
-            privacyDataTypes = generatedPrivacy.dataTypes
-            privacyNotes = generatedPrivacy.notes
-            privacyConfirmedInAppStoreConnect = false
-            privacyConfirmedManually = false
-            privacyConfirmedAt = ""
+            applyGeneratedPrivacyDraft(from: compliance)
             complianceEvidence = compliance.evidence
             complianceConfidence = compliance.confidence
             validationMessage = nil
         } catch {
             validationMessage = error.localizedDescription
         }
+    }
+
+    private func applyGeneratedPrivacyDraft(from compliance: AppStoreComplianceDraft) {
+        guard let generatedPrivacy = compliance.evidenceBackedPrivacy else {
+            privacyDraftIsSpecified = false
+            privacyCollectsData = false
+            privacyDataTypes = []
+            privacyNotes = []
+            privacyConfirmedInAppStoreConnect = false
+            privacyConfirmedManually = false
+            privacyConfirmedBy = ""
+            privacyConfirmedAt = ""
+            aiGenerationNotice = L10n.text(
+                "OpenAI could not establish the complete App Privacy answer from the source repository. The answer is now Unspecified for manual review."
+            )
+            return
+        }
+        privacyDraftIsSpecified = true
+        privacyCollectsData = generatedPrivacy.collectsData
+        privacyDataTypes = generatedPrivacy.dataTypes
+        privacyNotes = generatedPrivacy.notes
+        privacyConfirmedInAppStoreConnect = false
+        privacyConfirmedManually = false
+        privacyConfirmedAt = ""
     }
 
     private func save() {

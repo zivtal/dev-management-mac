@@ -131,12 +131,13 @@ untrusted evidence and returns structured fields only. Descriptions cover
 verified features, audience, value, privacy-relevant behavior, and named
 third-party providers found in that evidence.
 
-The same pass can draft the primary/secondary category, third-party content
+The same pass drafts the primary/secondary category, third-party content
 rights, whether the app is free to download, whether a demo account is needed,
-the copyright holder, age-rating answers, and an App Privacy checklist. Saved
-manifest answers always win; generated values fill only empty editor fields and
-never run inside a release action. The publisher can edit all of them before
-saving. OpenAI never invents public URLs, prices,
+the copyright holder, age-rating answers, and an App Privacy checklist. Each
+explicit generation refreshes the age-rating and App Privacy drafts while saved
+listing and manually entered values remain in place. Generation never runs
+inside a release action. The publisher can edit all fields before saving. OpenAI
+never invents public URLs, prices,
 credentials, provider capabilities, legal agreements, release behavior, or
 offer-code terms. Copyright input such as `Company Name` is normalized to
 `<current year> Company Name`; an existing leading year is preserved.

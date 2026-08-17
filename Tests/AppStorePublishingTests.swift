@@ -247,6 +247,59 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(try OpenAIStoreMetadataService.decodeMetadata(from: responseData), generated)
     }
 
+    func testLocalizedOpenAIResponseRequiresAndDecodesAppAnswers() throws {
+        let generated = AppStoreGeneratedMetadata(
+            primaryCategory: "FINANCE",
+            secondaryCategory: "",
+            localizations: [
+                AppStoreLocalizedMetadata(
+                    locale: "en-US",
+                    appName: "Example",
+                    subtitle: "Useful example",
+                    description: "A useful application.",
+                    keywords: "useful,application",
+                    promotionalText: "Try it today.",
+                    whatsNew: "Performance improvements."
+                )
+            ],
+            compliance: AppStoreComplianceDraft(
+                contentRightsDeclaration: "DOES_NOT_USE_THIRD_PARTY_CONTENT",
+                appIsFree: true,
+                demoAccountRequired: false,
+                copyright: "2026 Example",
+                ageRating: ["advertising": .bool(false)],
+                ageRatingEvidenceSufficient: true,
+                privacy: AppStorePrivacyDraft(
+                    collectsData: false,
+                    dataTypes: [],
+                    notes: ["No collection path is present."]
+                ),
+                privacyEvidenceSufficient: true,
+                evidence: ["Sources/App.swift — local storage only"],
+                confidence: 0.9
+            )
+        )
+        let generatedData = try JSONEncoder().encode(generated)
+        let generatedJSON = try XCTUnwrap(String(data: generatedData, encoding: .utf8))
+        let responseData = try JSONSerialization.data(withJSONObject: ["output_text": generatedJSON])
+
+        let decoded = try OpenAIStoreMetadataService.decodeLocalizedMetadata(from: responseData)
+
+        XCTAssertEqual(decoded, generated)
+        XCTAssertEqual(decoded.compliance.ageRating["advertising"], .bool(false))
+        XCTAssertEqual(decoded.compliance.evidenceBackedPrivacy, generated.compliance.privacy)
+
+        let missingComplianceJSON = """
+        {"primaryCategory":"FINANCE","secondaryCategory":"","localizations":[]}
+        """
+        let missingComplianceResponse = try JSONSerialization.data(
+            withJSONObject: ["output_text": missingComplianceJSON]
+        )
+        XCTAssertThrowsError(
+            try OpenAIStoreMetadataService.decodeLocalizedMetadata(from: missingComplianceResponse)
+        )
+    }
+
     func testGeneratedMetadataIsLimitedToAppStoreLengths() {
         let metadata = AppStoreMetadata(
             description: String(repeating: "d", count: 4_100),

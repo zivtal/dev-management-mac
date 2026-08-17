@@ -23,7 +23,7 @@ struct PublishingPrivacyDraftFields: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             TextEditor(text: notesBinding)
-                .frame(minHeight: 72)
+                .frame(height: 150)
                 .padding(5)
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
         }

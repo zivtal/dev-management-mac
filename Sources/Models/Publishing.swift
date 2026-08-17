@@ -81,7 +81,7 @@ struct AppStoreGeneratedMetadata: Codable, Equatable, Sendable {
     var primaryCategory: String
     var secondaryCategory: String
     var localizations: [AppStoreLocalizedMetadata]
-    var compliance: AppStoreComplianceDraft? = nil
+    var compliance: AppStoreComplianceDraft
 
     func normalized() -> AppStoreGeneratedMetadata {
         var seen = Set<String>()
