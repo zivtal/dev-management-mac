@@ -72,6 +72,9 @@ configurable number of days.
 - A default App Store Connect API plus named additional credential profiles,
   selected independently for each managed app and backed by separate Keychain
   private keys.
+- Sandbox Apple Account management that lists team testers and clears a selected
+  tester's complete sandbox purchase history so subscriptions and StoreKit
+  introductory offers can be exercised repeatedly.
 - Manual-only support, marketing, privacy-policy, privacy-choices, and Terms of
   Use URLs. Required privacy and legal links are appended to localized store
   descriptions without allowing AI-generated replacements.
@@ -160,7 +163,7 @@ that device. Otherwise, it shows the latest installation across devices.
 
 ### Settings
 
-Settings contains five tabs and is the only ordinary app window.
+Settings contains six tabs and is the only ordinary app window.
 
 #### General
 
@@ -207,6 +210,18 @@ Settings contains five tabs and is the only ordinary app window.
   URL, review contact, and automatic release behavior.
 - Store optional App Review demo credentials only in Keychain.
 - Review and cancel the latest publication from its copyable technical log.
+
+#### Sandbox
+
+- Choose the default or an additional App Store Connect API profile.
+- Load the Sandbox Apple Accounts belonging to that developer team.
+- Clear one account's sandbox in-app purchase and subscription history after a
+  destructive-action confirmation. The operation is team-wide for that account,
+  is irreversible, and never affects production purchases.
+- Follow Apple's required device cache refresh by signing out of the Sandbox
+  Apple Account and signing back in after a successful reset.
+- App-managed trials based on an original download date are outside StoreKit
+  purchase history and are not changed by this operation.
 
 #### Activity
 

@@ -2950,7 +2950,7 @@ final class AppStoreConnectService {
         return (data, included)
     }
 
-    private func pagedData(
+    func pagedData(
         path: String,
         query: [String: String] = [:]
     ) async throws -> [[String: Any]] {
@@ -2971,7 +2971,7 @@ final class AppStoreConnectService {
         return results
     }
 
-    private func request(
+    func request(
         method: String,
         path: String,
         query: [String: String] = [:],

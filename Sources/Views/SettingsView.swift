@@ -18,6 +18,10 @@ struct SettingsView: View {
                 .environmentObject(model)
                 .tabItem { Label("Publishing", systemImage: "paperplane") }
 
+            SandboxTestersSettingsView()
+                .environmentObject(model)
+                .tabItem { Label("Sandbox", systemImage: "testtube.2") }
+
             ActivityView()
                 .environmentObject(model)
                 .tabItem { Label("Activity", systemImage: "list.bullet.rectangle") }

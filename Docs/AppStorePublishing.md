@@ -62,6 +62,15 @@ Publish window. Issuer and key identifiers are stored in app preferences, while
 each profile's private key is kept under a distinct macOS Keychain account.
 Removing a profile returns apps that selected it to the default API.
 
+The same credential profiles power the Sandbox settings tab. Development
+Management uses Apple's sandbox-tester API to list accounts for the selected
+team and, after explicit confirmation, clear one account's complete sandbox
+in-app purchase and subscription history. This restores StoreKit introductory
+offer eligibility but does not alter production purchases or app-managed trial
+state derived from an original download date. Testers must sign out of their
+Sandbox Apple Account on the device and sign in again after the reset so the
+device discards its cached transaction history.
+
 Keychain status checks inspect item attributes without decrypting the stored
 secret, so opening the app or Settings does not ask for credential access. The
 secret is read only when its publishing operation needs it and is cached in

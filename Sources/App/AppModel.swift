@@ -502,7 +502,11 @@ final class AppModel: ObservableObject {
     }
 
     func appStoreConnectCredential(for project: ManagedProject) -> AppStoreConnectResolvedCredential? {
-        if let profileID = project.appStoreConnectCredentialProfileID {
+        appStoreConnectCredential(profileID: project.appStoreConnectCredentialProfileID)
+    }
+
+    func appStoreConnectCredential(profileID: UUID?) -> AppStoreConnectResolvedCredential? {
+        if let profileID {
             guard let profile = preferences.appStoreConnectCredentialProfiles?.first(where: {
                 $0.id == profileID
             }) else {
@@ -523,11 +527,51 @@ final class AppModel: ObservableObject {
         )
     }
 
+    var appStoreConnectCredentials: [AppStoreConnectResolvedCredential] {
+        let defaultCredential = appStoreConnectCredential(profileID: nil)
+        let additionalCredentials = (preferences.appStoreConnectCredentialProfiles ?? []).compactMap {
+            appStoreConnectCredential(profileID: $0.id)
+        }
+        return [defaultCredential].compactMap { $0 } + additionalCredentials
+    }
+
     func appStoreConnectCredentialIsComplete(for project: ManagedProject) -> Bool {
         guard let credential = appStoreConnectCredential(for: project) else { return false }
+        return appStoreConnectCredentialIsComplete(profileID: credential.profileID)
+    }
+
+    func appStoreConnectCredentialIsComplete(profileID: UUID?) -> Bool {
+        guard let credential = appStoreConnectCredential(profileID: profileID) else { return false }
         return credential.issuerID.nilIfEmpty != nil
             && credential.keyID.nilIfEmpty != nil
             && hasAppStoreConnectPrivateKey(profileID: credential.profileID)
+    }
+
+    func loadSandboxTesters(profileID: UUID?) async throws -> [SandboxTester] {
+        let service = try appStoreConnectService(profileID: profileID)
+        return try await service.fetchSandboxTesters()
+    }
+
+    func clearSandboxPurchaseHistory(
+        for tester: SandboxTester,
+        profileID: UUID?
+    ) async throws {
+        let service = try appStoreConnectService(profileID: profileID)
+        do {
+            try await service.clearSandboxPurchaseHistory(testerIDs: [tester.id])
+            addActivity(
+                level: .success,
+                title: L10n.format("Reset sandbox purchases for %@", tester.accountName),
+                details: L10n.text("All sandbox in-app purchase and subscription history for this account was cleared.")
+            )
+        } catch {
+            addActivity(
+                level: .error,
+                title: L10n.format("Could not reset sandbox purchases for %@", tester.accountName),
+                details: error.localizedDescription
+            )
+            throw error
+        }
     }
 
     func saveAppReviewDemoAccount(name: String, password: String) {
@@ -1020,6 +1064,35 @@ final class AppModel: ObservableObject {
             issuerID: issuerID,
             keyID: keyID,
             privateKey: privateKey
+        )
+    }
+
+    private func appStoreConnectService(profileID: UUID?) throws -> AppStoreConnectService {
+        guard let credential = appStoreConnectCredential(profileID: profileID) else {
+            throw AppStoreConnectError.requestFailed(
+                0,
+                L10n.text("The selected App Store Connect API profile no longer exists.")
+            )
+        }
+        guard let issuerID = credential.issuerID.nilIfEmpty,
+              let keyID = credential.keyID.nilIfEmpty else {
+            throw AppStoreConnectError.requestFailed(
+                0,
+                L10n.format("Complete Issuer ID and Key ID for %@ in Publishing settings.", credential.name)
+            )
+        }
+        guard let privateKey = try credentialStore.appStoreConnectPrivateKey(
+            profileID: credential.profileID
+        )?.nilIfEmpty else {
+            throw AppStoreConnectError.requestFailed(
+                0,
+                L10n.format("Import the .p8 private key for %@ in Publishing settings.", credential.name)
+            )
+        }
+        return try AppStoreConnectService(
+            issuerID: issuerID,
+            keyID: keyID,
+            privateKeyPEM: privateKey
         )
     }
 
