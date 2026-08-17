@@ -93,6 +93,7 @@ final class StoreKitSubscriptionDiscoveryService {
         return AppStoreSubscriptionCatalog(
             publication: manifest?.publication,
             application: manifest?.application,
+            compliance: manifest?.compliance,
             groups: groups,
             detectedProductIDs: sourceProducts.identifiers.union(configuredIDs),
             sourceFiles: manifestURLs.map { Self.relativePath($0, from: project.folderURL) }

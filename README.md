@@ -200,8 +200,10 @@ Settings contains six tabs and is the only ordinary app window.
 #### Publishing
 
 - Store the OpenAI API key and choose the model used to draft editable localized
-  listing metadata and category suggestions. Public URLs, legal text, pricing,
-  review facts, and other deterministic declarations remain manual.
+  listing metadata, categories, content rights, free-download/sign-in answers,
+  copyright, age rating, and an App Privacy checklist. Public URLs, legal
+  agreements, subscription prices, review contacts, credentials, and publisher
+  attestations remain manual fields.
 - Configure a default App Store Connect API and any number of named additional
   profiles for apps that belong to different teams or require different keys.
 - Store issuer IDs, key IDs, and profile names in app preferences while keeping
@@ -255,16 +257,27 @@ submitted identical version/build are blockers. When an older version is still
 in active review, the action becomes **Update**: after the replacement archive
 succeeds, Development Management cancels the old submission and its items,
 reuses the editable version record, uploads the replacement, and starts the
-review queue again. **Upload to TestFlight** provides a separate internal-only
-path that does not create an App Store version or submit for review. It can start
-as soon as the local version/build and API credentials are configured, without
-waiting for the full release-readiness scan. If the exact selected version and
-build are already in TestFlight, **Publish** reuses that build, creates or updates
-the App Store version, and proceeds directly to App Review without another
-archive or upload.
+review queue again. **Upload to TestFlight** runs the same complete setup as
+Publish—localized store metadata, app declarations, subscriptions and territory
+prices, screenshots, TestFlight information, internal group/testers, archive,
+upload, processing, and build assignment—but stops immediately before App Review
+submission. Review attachments are prepared and uploaded before that boundary.
+A hard intent guard prevents the TestFlight path from
+submitting review items. If the exact selected version and build are already in
+TestFlight, either action reuses it without another archive or upload.
 
-Store listing drafts may be generated with OpenAI or supplied manually in
-`app-store-publishing.json`. Support and privacy-policy URLs are required;
+For a new app, the publishing editor can generate `app-store-publishing.json`
+with OpenAI or accept fully manual input. All normal configuration—including
+subscriptions, territory prices, age rating, and the privacy checklist—is
+presented as editable fields; Advanced JSON is optional. OpenAI reads bounded
+`README.md` and project-manifest excerpts and can draft localized listing text,
+categories, content-rights, free-download and demo-account status, copyright,
+age-rating answers, and an App Privacy checklist. The user must review and save
+the draft before Upload or Publish; neither release action silently generates or
+changes it. App Privacy still
+requires a one-time publisher attestation in App Store Connect because Apple
+does not expose that questionnaire through its public API. Support and
+privacy-policy URLs are required;
 Terms of Use is also required for subscription apps. Marketing and
 privacy-choices URLs are optional. All public URLs remain manually entered, and
 the supplied Privacy Policy and Terms of Use links are appended to every

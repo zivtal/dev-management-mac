@@ -649,7 +649,7 @@ private struct PublishingWindowView: View {
                 }
             }
             Label(
-                "Apple still requires the initial app record, contracts, tax/banking, trader status, and App Privacy questionnaire to be completed in App Store Connect because those actions are not exposed by the API.",
+                "Apple still requires the initial app record, contracts, tax/banking, trader status, App Privacy questionnaire, and the first-ever subscription submission to be completed in App Store Connect. Later releases and subscription versions are automated here.",
                 systemImage: "person.crop.circle.badge.exclamationmark"
             )
             .font(.caption)
@@ -943,7 +943,7 @@ private struct PublishingWindowView: View {
 
         Section("Submission") {
             Toggle("Release automatically after Apple approves it", isOn: $releaseAutomaticallySelection)
-            Text("Publish creates or updates the App Store version, makes the exact build available to internal TestFlight testers, and submits it for App Review. Upload to TestFlight stops before the App Store version and review steps.")
+            Text("Both actions synchronize the complete App Store and TestFlight setup. Publish additionally submits the app version and subscription versions together for App Review; Upload to TestFlight stops immediately before submission.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let build = matchingTestFlightBuild {
@@ -1619,6 +1619,7 @@ private struct PublishingWindowView: View {
             sourceReadiness(for: project),
             accountReadiness,
             contentReadiness,
+            complianceReadiness,
             screenshotReadiness,
             reviewReadiness
         ])
@@ -1629,7 +1630,11 @@ private struct PublishingWindowView: View {
             testFlightSourceReadiness(for: project),
             TestFlightReadinessPolicy.accountItem(
                 credentialIsComplete: model.appStoreConnectCredentialIsComplete(for: project)
-            )
+            ),
+            contentReadiness,
+            complianceReadiness,
+            screenshotReadiness,
+            reviewReadiness
         ])
     }
 
@@ -1642,6 +1647,18 @@ private struct PublishingWindowView: View {
                 id: "source",
                 title: L10n.text("Source version"),
                 detail: L10n.text("The selected project does not provide a version and build number."),
+                state: .blocked
+            )
+        }
+        if currentVersionIsAlreadySubmitted, let remote = currentAppStoreSnapshot?.version {
+            return PublishingReadinessItem(
+                id: "source",
+                title: L10n.text("The App Store version is not editable"),
+                detail: L10n.format(
+                    "Version %@ is %@. Full TestFlight setup cannot change its listing until Apple returns it to an editable state.",
+                    remote.versionString,
+                    friendlyState(remote.state)
+                ),
                 state: .blocked
             )
         }
@@ -1798,11 +1815,13 @@ private struct PublishingWindowView: View {
         let publication = preview.catalog.publication
         let hasManualMetadata = publication?.metadata != nil
             || publication?.localizations?.isEmpty == false
-        guard hasManualMetadata || model.hasOpenAIAPIKey else {
+        guard hasManualMetadata else {
             return PublishingReadinessItem(
                 id: "content",
                 title: L10n.text("Store listing needs content"),
-                detail: L10n.text("Add editable metadata or configure OpenAI to generate the listing."),
+                detail: model.hasOpenAIAPIKey
+                    ? L10n.text("Generate an editable draft with OpenAI, review it, and save it before releasing.")
+                    : L10n.text("Add editable metadata or configure OpenAI to generate the listing."),
                 state: .blocked
             )
         }
@@ -1865,6 +1884,58 @@ private struct PublishingWindowView: View {
                 ? L10n.format("%d screenshot(s) are prepared; missing sizes will be captured automatically.", screenshots)
                 : L10n.text("Compatible simulators are ready to capture every required device family."),
             state: .ready
+        )
+    }
+
+    private var complianceReadiness: PublishingReadinessItem {
+        guard let preview = localPublishingPreview else {
+            return PublishingReadinessItem(
+                id: "compliance",
+                title: L10n.text("App declarations"),
+                detail: L10n.text("Checking the saved App Store declarations…"),
+                state: .checking
+            )
+        }
+        let application = preview.catalog.application
+        var missing: [String] = []
+        if application?.primaryCategory?.nilIfEmpty == nil,
+           currentAppStoreSnapshot?.primaryCategory?.nilIfEmpty == nil {
+            missing.append(L10n.text("category"))
+        }
+        if application?.contentRightsDeclaration?.nilIfEmpty == nil,
+           currentAppStoreSnapshot?.contentRightsDeclaration?.nilIfEmpty == nil {
+            missing.append(L10n.text("content rights"))
+        }
+        if application?.isFree == nil {
+            missing.append(L10n.text("free-download status"))
+        }
+        if application?.ageRating?.isEmpty != false,
+           currentAppStoreSnapshot?.ageRating?.isEmpty != false {
+            missing.append(L10n.text("age rating"))
+        }
+        if !missing.isEmpty {
+            return PublishingReadinessItem(
+                id: "compliance",
+                title: L10n.text("App declarations are incomplete"),
+                detail: model.hasOpenAIAPIKey
+                    ? L10n.format("Generate and review README-backed answers for: %@.", missing.joined(separator: ", "))
+                    : L10n.format("Missing: %@. Generate settings with OpenAI or edit App Setup.", missing.joined(separator: ", ")),
+                state: .blocked
+            )
+        }
+        let hasPrivacyDraft = preview.catalog.compliance?.privacyDraft != nil
+        let privacyAttestation = preview.catalog.compliance?.privacyAttestation
+        let hasPrivacyAttestation = privacyAttestation?.confirmedBy?.nilIfEmpty != nil
+            && privacyAttestation?.confirmedAt?.nilIfEmpty != nil
+        return PublishingReadinessItem(
+            id: "compliance",
+            title: L10n.text("App declarations are ready"),
+            detail: hasPrivacyAttestation
+                ? L10n.text("Categories, rights, pricing, age rating, and the confirmed App Privacy checklist are saved.")
+                : hasPrivacyDraft
+                    ? L10n.text("The App Privacy checklist is ready but still needs one-time confirmation in App Store Connect.")
+                    : L10n.text("API-backed declarations are saved. Generate an App Privacy checklist before the one-time manual confirmation in App Store Connect."),
+            state: hasPrivacyAttestation ? .ready : .blocked
         )
     }
 
@@ -1954,6 +2025,13 @@ private struct PublishingWindowView: View {
             return .listing
         }
         if !requirements.contactIsComplete { return .review }
+        if let application = localPublishingPreview?.catalog.application,
+           application.primaryCategory?.nilIfEmpty == nil
+            || application.contentRightsDeclaration?.nilIfEmpty == nil
+            || application.isFree == nil
+            || application.ageRating?.isEmpty != false {
+            return .appSetup
+        }
         if let selectedProject,
            releaseReadinessReport(for: selectedProject).blockers.contains(where: {
                $0.id == "content" || $0.id == "screenshots"
@@ -1973,8 +2051,8 @@ private struct PublishingWindowView: View {
         }
         guard report.blockers.isEmpty else {
             let blockerIDs = Set(report.blockers.map(\.id))
-            if !blockerIDs.isDisjoint(with: ["review", "content", "screenshots"]) {
-                configurationEditorStartsWithAI = false
+            if !blockerIDs.isDisjoint(with: ["review", "content", "compliance", "screenshots"]) {
+                configurationEditorStartsWithAI = model.hasOpenAIAPIKey && needsEditableAIDraft
                 configurationEditorInitialTab = firstConfigurationTabNeedingAttention
                 configurationEditorHighlightsMissingFields = true
                 selectedWorkspace = .configuration
@@ -1989,6 +2067,20 @@ private struct PublishingWindowView: View {
         }
         pendingPublishingIntent = intent
         showsConfirmation = true
+    }
+
+    private var needsEditableAIDraft: Bool {
+        guard let preview = localPublishingPreview else { return false }
+        let publication = preview.catalog.publication
+        let application = preview.catalog.application
+        let listingIsMissing = publication?.metadata == nil
+            && publication?.localizations?.isEmpty != false
+        let answersAreMissing = application?.primaryCategory?.nilIfEmpty == nil
+            || application?.contentRightsDeclaration?.nilIfEmpty == nil
+            || application?.isFree == nil
+            || application?.ageRating?.isEmpty != false
+        let copyrightIsMissing = reviewRequirements(publication: publication).copyrightIsComplete == false
+        return listingIsMissing || answersAreMissing || copyrightIsMissing
     }
 
     private func saveSubscriptionPrices() {
@@ -2120,8 +2212,8 @@ private struct PublishingWindowView: View {
     private var releaseConfirmationMessage: String {
         if pendingPublishingIntent == .testFlight {
             return matchingTestFlightBuild == nil
-                ? L10n.text("This action archives and uploads the selected build, waits for Apple to process it, and makes it available to every internal TestFlight group. It does not create an App Store version or submit for review.")
-                : L10n.text("The exact selected version and build are already in TestFlight. Development Management will confirm that the processed build is available to every internal testing group without uploading it again.")
+                ? L10n.text("This action synchronizes the complete App Store listing, app setup, subscriptions, localized screenshots, beta information, internal testers, pricing, review details, and review attachments; then archives, uploads, processes, and assigns the build to TestFlight. It stops immediately before App Review submission.")
+                : L10n.text("The exact build is already in TestFlight. Development Management will synchronize the complete App Store and TestFlight setup, reuse the build, and stop before App Review submission.")
         }
         if let active = olderActiveReviewVersion {
             return L10n.format(
@@ -2133,8 +2225,8 @@ private struct PublishingWindowView: View {
             )
         }
         return matchingTestFlightBuild == nil
-            ? L10n.text("This production action creates or updates the App Store version, archives and uploads the selected build to TestFlight, and submits it for review. First publications also reconcile app setup and subscriptions discovered in the project; later versions reuse the approved setup.")
-            : L10n.text("The exact selected version and build are already in TestFlight. Publish will create or update the App Store version, attach that build, and submit it for review without archiving or uploading it again.")
+            ? L10n.text("Publish synchronizes the complete localized listing, app declarations, free price and availability, subscriptions and territory prices, screenshots, TestFlight information, internal testers, and review details. It then archives and uploads the build, attaches review assets, and submits the app version plus subscription group and subscription versions together.")
+            : L10n.text("The exact build is already in TestFlight. Publish will synchronize the complete App Store and TestFlight setup, reuse that build, attach review assets, and submit the app version plus subscription group and subscription versions together without another archive or upload.")
     }
 
     private var earliestExpirationDate: Date {
@@ -2317,7 +2409,6 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var whatsNew = ""
     @State private var additionalLocalizations: [AppStoreLocalizedMetadata] = []
     @State private var detectedLocales: [String] = []
-    @State private var useAIMetadata = true
     @State private var copyright = ""
     @State private var supportURL = ""
     @State private var marketingURL = ""
@@ -2331,6 +2422,15 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var primaryCategory = ""
     @State private var secondaryCategory = ""
     @State private var contentRights = ""
+    @State private var ageRating: [String: AppStoreManifestValue] = [:]
+    @State private var privacyCollectsData = false
+    @State private var privacyDataTypes: [String] = []
+    @State private var privacyNotes: [String] = []
+    @State private var privacyConfirmedInAppStoreConnect = false
+    @State private var privacyConfirmedBy = ""
+    @State private var privacyConfirmedAt = ""
+    @State private var complianceEvidence: [String] = []
+    @State private var complianceConfidence: Double?
     @State private var configureCommercialSettings = false
     @State private var appIsFree = true
     @State private var appBaseTerritory = "USA"
@@ -2344,11 +2444,15 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var reviewNotes = ""
     @State private var demoAccountRequired = false
     @State private var releaseAutomatically = true
+    @State private var testFlightGroupName = "Internal Testing"
+    @State private var testFlightFeedbackEmail = ""
+    @State private var testFlightReviewNotes = ""
+    @State private var internalTesterEmails = ""
 
     @State private var subscriptionBaseTerritory = ""
     @State private var subscriptionsAvailableEverywhere = true
     @State private var subscriptionReviewScreenshot = ""
-    @State private var subscriptionGroupsJSON = "[]"
+    @State private var subscriptionGroups: [PublishingSubscriptionGroupForm] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2367,14 +2471,14 @@ private struct PerAppPublishingConfigurationEditor: View {
                         if isGeneratingAI {
                             ProgressView().controlSize(.small)
                         } else {
-                            Label("Generate All Languages with OpenAI", systemImage: "sparkles")
+                            Label("Generate Listing and App Answers with OpenAI", systemImage: "sparkles")
                         }
                     }
                     .disabled(isLoading || isGeneratingAI)
                 }
             }
 
-            Text("Current App Store Connect values are loaded as the starting point. AI can generate an editable draft; nothing is uploaded until Publish is confirmed. Advanced JSON remains available for every API-specific field.")
+            Text("Current App Store Connect values are loaded as the starting point. OpenAI reads bounded README and project-manifest excerpts to generate an editable listing, categories, rights, price/download, sign-in, age-rating, and App Privacy checklist. Nothing is uploaded until a release action is confirmed.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -2449,8 +2553,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                     TextField("Locale", text: $locale)
                     TextField("App name", text: $appName)
                     TextField("Subtitle", text: $subtitle)
-                    Toggle("Generate metadata with OpenAI during Publish", isOn: $useAIMetadata)
-                    Text("OpenAI generates a separate editable listing for every language detected in the app project.")
+                    Text("OpenAI generates a separate editable draft for every language detected in the app project. Review and save the fields before releasing.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -2532,7 +2635,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                     } else {
                         TextField("Terms of Use URL", text: $termsURL)
                     }
-                    Text("OpenAI generates listing copy and category suggestions only. Support, marketing, privacy, and Terms of Use URLs are entered manually and are never replaced.")
+                    Text("OpenAI drafts listing copy and App Store answers from README and project manifests. Support, marketing, privacy, and Terms of Use URLs are entered manually and are never replaced.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     requiredTextField(
@@ -2590,8 +2693,32 @@ private struct PerAppPublishingConfigurationEditor: View {
                         .foregroundStyle(.secondary)
                 }
                 Section("Age Ratings") {
-                    Text("Age-rating answers remain fully editable in Advanced JSON under application.ageRating so new Apple questionnaire fields can be used without an app update.")
+                    PublishingAgeRatingFields(ageRating: $ageRating)
+                    Text("OpenAI drafts these answers from the project README. Review every field here before publishing.")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                Section("App Privacy Draft") {
+                    PublishingPrivacyDraftFields(
+                        collectsData: $privacyCollectsData,
+                        dataTypes: $privacyDataTypes,
+                        notes: $privacyNotes
+                    )
+                    Text("Apple does not expose the App Privacy questionnaire through its public API and requires the publisher to attest that the answers are accurate. This draft is a checklist for the one-time App Store Connect confirmation.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle(
+                        "I confirmed these App Privacy answers in App Store Connect",
+                        isOn: $privacyConfirmedInAppStoreConnect
+                    )
+                    TextField("Confirmed by", text: $privacyConfirmedBy)
+                        .disabled(!privacyConfirmedInAppStoreConnect)
+                    if privacyConfirmedInAppStoreConnect, !privacyConfirmedAt.isEmpty {
+                        LabeledContent("Confirmed at") {
+                            Text(verbatim: privacyConfirmedAt)
+                                .textSelection(.enabled)
+                        }
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -2627,7 +2754,20 @@ private struct PerAppPublishingConfigurationEditor: View {
                 }
                 Section("Submission") {
                     Toggle("Release automatically after Apple approves it", isOn: $releaseAutomatically)
-                    Text("Publish always submits this version for App Review. Use Upload to TestFlight in the overview when you only want an internal build.")
+                    Text("Both release actions synchronize this configuration. Publish submits the app and subscriptions for App Review; Upload to TestFlight stops immediately before submission.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section("TestFlight") {
+                    TextField("Internal group name", text: $testFlightGroupName)
+                    TextField("Feedback email", text: $testFlightFeedbackEmail)
+                    configurationTextEditor("Beta review notes", text: $testFlightReviewNotes, height: 80)
+                    configurationTextEditor(
+                        "Internal tester emails (one per line)",
+                        text: $internalTesterEmails,
+                        height: 70
+                    )
+                    Text("Internal testers must already be members of the App Store Connect team. Both release actions synchronize beta descriptions, URLs, review details, the group, and these testers.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -2645,20 +2785,12 @@ private struct PerAppPublishingConfigurationEditor: View {
             .formStyle(.grouped)
 
         case .subscriptions:
-            Form {
-                Section("Subscription Defaults") {
-                    TextField("Base territory", text: $subscriptionBaseTerritory)
-                    Toggle("Available in all territories", isOn: $subscriptionsAvailableEverywhere)
-                    TextField("Default review screenshot", text: $subscriptionReviewScreenshot)
-                }
-                Section("Groups and Products") {
-                    configurationTextEditor("Subscription configuration JSON", text: $subscriptionGroupsJSON, height: 390)
-                    Text("Edit reference names, product IDs, duration, base price, availability, Family Sharing, group level, review notes/screenshots, and every localization. Existing approved subscriptions are preserved for version-only releases unless their setup is part of a first publication.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .formStyle(.grouped)
+            PublishingSubscriptionForm(
+                baseTerritory: $subscriptionBaseTerritory,
+                availableInAllTerritories: $subscriptionsAvailableEverywhere,
+                reviewScreenshot: $subscriptionReviewScreenshot,
+                groups: $subscriptionGroups
+            )
 
         case .advanced:
             TextEditor(text: $json)
@@ -2972,9 +3104,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         } else {
             additionalLocalizations = []
         }
-        useAIMetadata = publication.metadata == nil
-            && publication.localizations?.isEmpty != false
-        copyright = publication.copyright ?? ""
+        copyright = AppStoreCopyrightNormalizer.normalized(publication.copyright ?? "")
         supportURL = publication.supportURL ?? ""
         marketingURL = publication.marketingURL ?? ""
         termsURL = publication.termsURL ?? ""
@@ -2990,31 +3120,47 @@ private struct PerAppPublishingConfigurationEditor: View {
         reviewEmail = publication.review?.contactEmail ?? ""
         reviewNotes = publication.review?.notes ?? ""
         demoAccountRequired = publication.review?.demoAccountRequired ?? false
+        testFlightGroupName = publication.testFlight?.groupName ?? "Internal Testing"
+        testFlightFeedbackEmail = publication.testFlight?.feedbackEmail
+            ?? publication.review?.contactEmail
+            ?? ""
+        testFlightReviewNotes = publication.testFlight?.reviewNotes ?? publication.review?.notes ?? ""
+        internalTesterEmails = (publication.testFlight?.internalTesterEmails ?? []).joined(separator: "\n")
 
         let application = manifest.application
         primaryCategory = application?.primaryCategory ?? publication.metadata?.primaryCategory ?? ""
         secondaryCategory = application?.secondaryCategory ?? publication.metadata?.secondaryCategory ?? ""
         contentRights = application?.contentRightsDeclaration ?? ""
+        ageRating = application?.ageRating ?? [:]
         configureCommercialSettings = application?.isFree != nil || application?.availableInAllTerritories != nil
         appIsFree = application?.isFree ?? true
         appBaseTerritory = application?.baseTerritory ?? "USA"
         appAvailableEverywhere = application?.availableInAllTerritories ?? true
         licenseAgreementText = publication.licenseAgreementText ?? ""
+        privacyCollectsData = manifest.compliance?.privacyDraft?.collectsData ?? false
+        privacyDataTypes = manifest.compliance?.privacyDraft?.dataTypes ?? []
+        privacyNotes = manifest.compliance?.privacyDraft?.notes ?? []
+        privacyConfirmedInAppStoreConnect = manifest.compliance?.privacyAttestation != nil
+        privacyConfirmedBy = manifest.compliance?.privacyAttestation?.confirmedBy ?? ""
+        privacyConfirmedAt = manifest.compliance?.privacyAttestation?.confirmedAt ?? ""
+        complianceEvidence = manifest.compliance?.evidence ?? []
+        complianceConfidence = manifest.compliance?.confidence
 
         subscriptionBaseTerritory = manifest.subscriptions?.baseTerritory ?? ""
         subscriptionsAvailableEverywhere = manifest.subscriptions?.availableInAllTerritories ?? true
         subscriptionReviewScreenshot = manifest.subscriptions?.reviewScreenshot ?? ""
-        subscriptionGroupsJSON = (try? Self.encodedJSON(manifest.subscriptions?.groups ?? [])) ?? "[]"
+        subscriptionGroups = (manifest.subscriptions?.groups ?? []).map(PublishingSubscriptionGroupForm.init)
     }
 
     private func makeManifest() throws -> AppStorePublishingManifest {
+        try validateSubscriptionForm()
         var manifest = baseManifest ?? AppStorePublishingManifest(
             schemaVersion: 1,
             publication: nil,
             application: nil,
             subscriptions: nil
         )
-        let metadata = useAIMetadata ? nil : AppStoreMetadata(
+        let metadata = AppStoreMetadata(
             description: description,
             keywords: keywords,
             promotionalText: promotionalText,
@@ -3023,24 +3169,20 @@ private struct PerAppPublishingConfigurationEditor: View {
             primaryCategory: primaryCategory.nilIfEmpty,
             secondaryCategory: secondaryCategory.nilIfEmpty
         )
-        let localizations: [AppStoreLocalizedMetadata]? = if useAIMetadata {
-            nil
-        } else {
-            [
-                AppStoreLocalizedMetadata(
-                    locale: locale,
-                    appName: appName,
-                    subtitle: subtitle,
-                    description: description,
-                    keywords: keywords,
-                    promotionalText: promotionalText,
-                    whatsNew: whatsNew
-                )
-            ] + additionalLocalizations
-        }
+        let localizations: [AppStoreLocalizedMetadata]? = [
+            AppStoreLocalizedMetadata(
+                locale: locale,
+                appName: appName,
+                subtitle: subtitle,
+                description: description,
+                keywords: keywords,
+                promotionalText: promotionalText,
+                whatsNew: whatsNew
+            )
+        ] + additionalLocalizations
         manifest.publication = AppStorePublicationConfiguration(
             locale: locale.nilIfEmpty,
-            copyright: copyright.nilIfEmpty,
+            copyright: copyright.nilIfEmpty.map { AppStoreCopyrightNormalizer.normalized($0) },
             supportURL: supportURL.nilIfEmpty,
             marketingURL: marketingURL.nilIfEmpty,
             termsURL: termsURL.nilIfEmpty,
@@ -3062,6 +3204,15 @@ private struct PerAppPublishingConfigurationEditor: View {
                 contactEmail: reviewEmail.nilIfEmpty,
                 notes: reviewNotes.nilIfEmpty,
                 demoAccountRequired: demoAccountRequired
+            ),
+            testFlight: AppStoreTestFlightConfiguration(
+                groupName: testFlightGroupName.nilIfEmpty,
+                feedbackEmail: testFlightFeedbackEmail.nilIfEmpty,
+                reviewNotes: testFlightReviewNotes.nilIfEmpty,
+                internalTesterEmails: internalTesterEmails
+                    .split(whereSeparator: \.isNewline)
+                    .map(String.init)
+                    .filter { $0.nilIfEmpty != nil }
             )
         )
         var application = manifest.application ?? AppStoreApplicationConfiguration(
@@ -3079,15 +3230,43 @@ private struct PerAppPublishingConfigurationEditor: View {
         application.isFree = configureCommercialSettings ? appIsFree : nil
         application.baseTerritory = configureCommercialSettings ? appBaseTerritory.nilIfEmpty : nil
         application.availableInAllTerritories = configureCommercialSettings ? appAvailableEverywhere : nil
+        application.ageRating = ageRating.isEmpty ? application.ageRating : ageRating
         manifest.application = application
+        if !privacyDataTypes.isEmpty
+            || !privacyNotes.isEmpty
+            || !complianceEvidence.isEmpty
+            || privacyConfirmedInAppStoreConnect {
+            let previousAttestation = manifest.compliance?.privacyAttestation
+            let privacyAttestation: AppStorePrivacyAttestation? = if privacyConfirmedInAppStoreConnect {
+                AppStorePrivacyAttestation(
+                    confirmedBy: privacyConfirmedBy.nilIfEmpty,
+                    confirmedAt: previousAttestation?.confirmedAt?.nilIfEmpty
+                        ?? privacyConfirmedAt.nilIfEmpty
+                        ?? ISO8601DateFormatter().string(from: Date()),
+                    projectFingerprint: previousAttestation?.projectFingerprint
+                )
+            } else {
+                nil
+            }
+            manifest.compliance = AppStoreComplianceConfiguration(
+                privacyDraft: AppStorePrivacyDraft(
+                    collectsData: privacyCollectsData,
+                    dataTypes: privacyDataTypes,
+                    notes: privacyNotes
+                ),
+                privacyAttestation: privacyAttestation,
+                evidence: complianceEvidence,
+                confidence: complianceConfidence
+            )
+        } else {
+            manifest.compliance = nil
+        }
 
-        let groupsData = Data(subscriptionGroupsJSON.utf8)
-        let groups = try JSONDecoder().decode([AppStoreSubscriptionGroupDefinition].self, from: groupsData)
         manifest.subscriptions = AppStoreSubscriptionsConfiguration(
             baseTerritory: subscriptionBaseTerritory.nilIfEmpty,
             availableInAllTerritories: subscriptionsAvailableEverywhere,
             reviewScreenshot: subscriptionReviewScreenshot.nilIfEmpty,
-            groups: groups.isEmpty ? nil : groups
+            groups: subscriptionGroups.isEmpty ? nil : subscriptionGroups.map(\.definition)
         )
         return manifest
     }
@@ -3126,20 +3305,47 @@ private struct PerAppPublishingConfigurationEditor: View {
                 throw OpenAIStoreMetadataError.missingGeneratedText
             }
             let primary = generated.localizations[primaryIndex]
-            locale = primary.locale
-            appName = primary.appName
-            subtitle = primary.subtitle
-            description = primary.description
-            keywords = primary.keywords
-            promotionalText = primary.promotionalText
-            whatsNew = primary.whatsNew
-            additionalLocalizations = generated.localizations.enumerated().compactMap { index, localization in
-                index == primaryIndex ? nil : localization
-            }
+            if locale.isEmpty { locale = primary.locale }
+            if appName.isEmpty { appName = primary.appName }
+            if subtitle.isEmpty { subtitle = primary.subtitle }
+            if description.isEmpty { description = primary.description }
+            if keywords.isEmpty { keywords = primary.keywords }
+            if promotionalText.isEmpty { promotionalText = primary.promotionalText }
+            if whatsNew.isEmpty { whatsNew = primary.whatsNew }
+            let savedLocales = Set(additionalLocalizations.map { $0.locale.lowercased() })
+            additionalLocalizations.append(contentsOf: generated.localizations.enumerated().compactMap { index, localization in
+                guard index != primaryIndex,
+                      !savedLocales.contains(localization.locale.lowercased()) else { return nil }
+                return localization
+            })
             detectedLocales = generated.localizations.map(\.locale)
             if primaryCategory.isEmpty { primaryCategory = generated.primaryCategory }
             if secondaryCategory.isEmpty { secondaryCategory = generated.secondaryCategory }
-            useAIMetadata = false
+            if let compliance = generated.compliance {
+                if contentRights.isEmpty {
+                    contentRights = compliance.contentRightsDeclaration
+                }
+                if copyright.isEmpty, !compliance.copyright.isEmpty {
+                    copyright = AppStoreCopyrightNormalizer.normalized(compliance.copyright)
+                }
+                if baseManifest?.application?.isFree == nil {
+                    configureCommercialSettings = true
+                    appIsFree = compliance.appIsFree
+                }
+                if baseManifest?.publication?.review?.demoAccountRequired == nil {
+                    demoAccountRequired = compliance.demoAccountRequired
+                }
+                if ageRating.isEmpty {
+                    ageRating = compliance.ageRating
+                }
+                if baseManifest?.compliance?.privacyDraft == nil {
+                    privacyCollectsData = compliance.privacy.collectsData
+                    privacyDataTypes = compliance.privacy.dataTypes
+                    privacyNotes = compliance.privacy.notes
+                }
+                if complianceEvidence.isEmpty { complianceEvidence = compliance.evidence }
+                if complianceConfidence == nil { complianceConfidence = compliance.confidence }
+            }
             validationMessage = nil
         } catch {
             validationMessage = error.localizedDescription
@@ -3205,6 +3411,15 @@ private struct PerAppPublishingConfigurationEditor: View {
             selectedTab = .listing
             throw ConfigurationEditorError.invalid(L10n.text("Copyright owner is required."))
         }
+        if let attestation = manifest.compliance?.privacyAttestation {
+            guard attestation.confirmedBy?.nilIfEmpty != nil,
+                  attestation.confirmedAt?.nilIfEmpty != nil else {
+                selectedTab = .appSetup
+                throw ConfigurationEditorError.invalid(
+                    L10n.text("Enter who confirmed the App Privacy answers before saving the attestation.")
+                )
+            }
+        }
         let review = manifest.publication?.review
         let contact = [
             review?.contactFirstName?.nilIfEmpty,
@@ -3235,6 +3450,13 @@ private struct PerAppPublishingConfigurationEditor: View {
            metadata.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw ConfigurationEditorError.invalid(L10n.text("Manual metadata requires a non-empty description."))
         }
+        guard manifest.publication?.metadata != nil
+                || manifest.publication?.localizations?.isEmpty == false else {
+            selectedTab = .listing
+            throw ConfigurationEditorError.invalid(
+                L10n.text("Generate or enter the App Store listing, review it, and save it before releasing.")
+            )
+        }
         var locales: Set<String> = []
         for localization in manifest.publication?.localizations ?? [] {
             let normalizedLocale = localization.locale
@@ -3252,7 +3474,20 @@ private struct PerAppPublishingConfigurationEditor: View {
                 )
             }
         }
+        guard let application = manifest.application,
+              application.primaryCategory?.nilIfEmpty != nil,
+              application.contentRightsDeclaration?.nilIfEmpty != nil,
+              application.isFree != nil,
+              application.ageRating?.isEmpty == false else {
+            selectedTab = .appSetup
+            throw ConfigurationEditorError.invalid(
+                L10n.text("Complete the editable category, content-rights, free-download, and age-rating answers before releasing.")
+            )
+        }
         var productIDs: Set<String> = []
+        let existingProductIDs = Set(
+            currentConfiguration?.subscriptionGroups.flatMap(\.subscriptions).map(\.productID) ?? []
+        )
         for group in manifest.subscriptions?.groups ?? [] {
             guard group.referenceName.nilIfEmpty != nil else {
                 throw ConfigurationEditorError.invalid(L10n.text("Every subscription group requires a referenceName."))
@@ -3266,6 +3501,48 @@ private struct PerAppPublishingConfigurationEditor: View {
                     subscription.period,
                     productID: subscription.productID
                 )
+                if !existingProductIDs.contains(subscription.productID),
+                   subscription.basePrice?.nilIfEmpty == nil {
+                    selectedTab = .subscriptions
+                    throw ConfigurationEditorError.invalid(
+                        L10n.format("New subscription %@ requires a base price.", subscription.productID)
+                    )
+                }
+            }
+        }
+    }
+
+    private func validateSubscriptionForm() throws {
+        for group in subscriptionGroups {
+            for product in group.subscriptions {
+                guard let level = Int(product.groupLevel), level > 0 else {
+                    selectedTab = .subscriptions
+                    throw ConfigurationEditorError.invalid(
+                        L10n.format("Subscription %@ requires a positive numeric group level.", product.productID)
+                    )
+                }
+                var territories = Set<String>()
+                for entry in product.territoryPrices {
+                    guard let territory = entry.territory.nilIfEmpty,
+                          let price = entry.price.nilIfEmpty else {
+                        selectedTab = .subscriptions
+                        throw ConfigurationEditorError.invalid(
+                            L10n.format("Complete every territory and price for %@.", product.productID)
+                        )
+                    }
+                    guard territories.insert(territory.uppercased()).inserted else {
+                        selectedTab = .subscriptions
+                        throw ConfigurationEditorError.invalid(
+                            L10n.format("Territory prices for %@ contain duplicate territory %@.", product.productID, territory)
+                        )
+                    }
+                    guard Decimal(string: price, locale: Locale(identifier: "en_US_POSIX")) != nil else {
+                        selectedTab = .subscriptions
+                        throw ConfigurationEditorError.invalid(
+                            L10n.format("%@ is not a valid price for territory %@.", price, territory)
+                        )
+                    }
+                }
             }
         }
     }
@@ -3286,6 +3563,12 @@ private struct PerAppPublishingConfigurationEditor: View {
                 contactEmail: defaults.appStoreReviewEmail,
                 notes: defaults.appStoreReviewNotes,
                 demoAccountRequired: defaults.appStoreReviewDemoAccountRequired ?? false
+            ),
+            testFlight: AppStoreTestFlightConfiguration(
+                groupName: "Internal Testing",
+                feedbackEmail: defaults.appStoreReviewEmail,
+                reviewNotes: defaults.appStoreReviewNotes,
+                internalTesterEmails: defaults.appStoreReviewEmail.map { [$0] }
             )
         )
     }
@@ -3298,13 +3581,6 @@ private struct PerAppPublishingConfigurationEditor: View {
             throw ConfigurationEditorError.invalid(L10n.text("Could not encode the configuration as UTF-8."))
         }
         return result + "\n"
-    }
-
-    private static func encodedJSON<T: Encodable>(_ value: T) throws -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        let data = try encoder.encode(value)
-        return String(data: data, encoding: .utf8) ?? "[]"
     }
 
     private func friendlyCategory(_ identifier: String) -> String {

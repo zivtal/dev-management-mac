@@ -51,6 +51,7 @@ struct AppStoreScreenshotAsset: Equatable, Sendable {
     let url: URL
     let displayType: String
     let platform: AppStoreScreenshotPlatform
+    let locale: String?
     let deviceName: String?
     let automaticallyCaptured: Bool
 
@@ -58,12 +59,14 @@ struct AppStoreScreenshotAsset: Equatable, Sendable {
         url: URL,
         displayType: String,
         platform: AppStoreScreenshotPlatform? = nil,
+        locale: String? = nil,
         deviceName: String? = nil,
         automaticallyCaptured: Bool = false
     ) {
         self.url = url
         self.displayType = displayType
         self.platform = platform ?? AppStoreScreenshotPlatform(displayType: displayType) ?? .iPhone
+        self.locale = locale
         self.deviceName = deviceName
         self.automaticallyCaptured = automaticallyCaptured
     }
@@ -96,6 +99,7 @@ struct AppStoreConnectPublication: Sendable {
     let appID: String
     let versionID: String
     let localizationID: String
+    let localizationIDsByLocale: [String: String]
     let isVersionOnlyUpdate: Bool
 }
 
@@ -116,6 +120,8 @@ enum AppStoreConnectError: LocalizedError {
     case offerCodesRequireApprovedSubscription(String, String?)
     case activeReviewSubmissionNotFound(String)
     case activeReviewCancellationTimedOut(String)
+    case reviewSubmissionNotAllowed
+    case internalTesterIsNotTeamMember(String)
 
     var errorDescription: String? {
         switch self {
@@ -155,6 +161,10 @@ enum AppStoreConnectError: LocalizedError {
             return L10n.format("Version %@ is in review, but its active review submission could not be found.", version)
         case .activeReviewCancellationTimedOut(let version):
             return L10n.format("Apple accepted the cancellation for version %@, but it is still processing. Try Update again shortly.", version)
+        case .reviewSubmissionNotAllowed:
+            return L10n.text("The TestFlight action is not permitted to submit anything for App Review.")
+        case .internalTesterIsNotTeamMember(let email):
+            return L10n.format("%@ must be added to the App Store Connect team before Development Management can add that person as an internal tester.", email)
         }
     }
 }
@@ -759,6 +769,7 @@ final class AppStoreConnectService {
             return lhsIsPrimary && !rhsIsPrimary
         }
         var primaryLocalizationID: String?
+        var localizationIDsByLocale: [String: String] = [:]
         for listing in orderedListings {
             let localizationID = try await findOrCreateLocalization(
                 versionID: versionID,
@@ -768,6 +779,7 @@ final class AppStoreConnectService {
                 || listing.locale.caseInsensitiveCompare(locale) == .orderedSame {
                 primaryLocalizationID = localizationID
             }
+            localizationIDsByLocale[listing.locale.lowercased()] = localizationID
             let localizedStoreMetadata = listing.metadata(
                 primaryCategory: metadata.primaryCategory,
                 secondaryCategory: metadata.secondaryCategory
@@ -816,6 +828,7 @@ final class AppStoreConnectService {
             appID: appID,
             versionID: versionID,
             localizationID: localizationID,
+            localizationIDsByLocale: localizationIDsByLocale,
             isVersionOnlyUpdate: isVersionOnlyUpdate
         )
     }
@@ -1042,6 +1055,7 @@ final class AppStoreConnectService {
                         productID: definition.productID,
                         basePrice: price,
                         baseTerritory: definition.baseTerritory?.nilIfEmpty ?? "USA",
+                        territoryPrices: definition.territoryPrices ?? [:],
                         allTerritories: definition.availableInAllTerritories == true,
                         onOutput: onOutput
                     )
@@ -1237,13 +1251,30 @@ final class AppStoreConnectService {
 
     func uploadScreenshots(
         _ screenshots: [AppStoreScreenshotAsset],
-        localizationID: String,
+        localizationIDsByLocale: [String: String],
+        primaryLocale: String,
         replaceExisting: Bool,
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws {
-        for group in Dictionary(grouping: screenshots, by: \AppStoreScreenshotAsset.displayType).sorted(by: { $0.key < $1.key }) {
+        let primaryLocalizationID = localizationIDsByLocale[primaryLocale.lowercased()]
+            ?? localizationIDsByLocale.values.first
+        guard let primaryLocalizationID else {
+            throw AppStoreConnectError.missingIdentifier("primary App Store localization")
+        }
+        let grouped = Dictionary(grouping: screenshots) { screenshot in
+            "\(screenshot.locale?.lowercased() ?? primaryLocale.lowercased())|\(screenshot.displayType)"
+        }
+        for group in grouped.sorted(by: { $0.key < $1.key }) {
             try Task.checkCancellation()
-            let displayType = group.key
+            let sample = group.value[0]
+            let displayType = sample.displayType
+            let requestedLocale = sample.locale?.lowercased() ?? primaryLocale.lowercased()
+            guard let localizationID = localizationIDsByLocale[requestedLocale] ?? (sample.locale == nil ? primaryLocalizationID : nil) else {
+                throw AppStoreConnectError.requestFailed(
+                    422,
+                    L10n.format("Screenshot locale %@ has no matching App Store localization.", sample.locale ?? requestedLocale)
+                )
+            }
             let setResponse = try await request(
                 method: "GET",
                 path: "/v1/appStoreVersionLocalizations/\(localizationID)/appScreenshotSets",
@@ -1441,6 +1472,7 @@ final class AppStoreConnectService {
     func assignBuildToInternalTestFlight(
         appID: String,
         buildID: String,
+        configuration: AppStoreTestFlightConfiguration? = nil,
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws {
         let response = try await request(
@@ -1451,7 +1483,10 @@ final class AppStoreConnectService {
         var groups = (response["data"] as? [[String: Any]] ?? []).filter {
             Self.attributes($0)["isInternalGroup"] as? Bool == true
         }
-        if groups.isEmpty {
+        let requestedGroupName = configuration?.groupName?.nilIfEmpty ?? "Internal Testing"
+        if !groups.contains(where: {
+            (Self.attributes($0)["name"] as? String)?.caseInsensitiveCompare(requestedGroupName) == .orderedSame
+        }) {
             let created = try await request(
                 method: "POST",
                 path: "/v1/betaGroups",
@@ -1459,7 +1494,7 @@ final class AppStoreConnectService {
                     "data": [
                         "type": "betaGroups",
                         "attributes": [
-                            "name": "Internal Testing",
+                            "name": requestedGroupName,
                             "isInternalGroup": true,
                             "hasAccessToAllBuilds": true,
                             "feedbackEnabled": true
@@ -1473,8 +1508,8 @@ final class AppStoreConnectService {
             guard let group = created["data"] as? [String: Any] else {
                 throw AppStoreConnectError.missingIdentifier("internal TestFlight group")
             }
-            groups = [group]
-            onOutput(L10n.text("Created an Internal Testing group with automatic build access.\n"))
+            groups.append(group)
+            onOutput(L10n.format("Created the internal TestFlight group %@ with automatic build access.\n", requestedGroupName))
         }
 
         for group in groups {
@@ -1510,6 +1545,176 @@ final class AppStoreConnectService {
                 }
             }
             onOutput(L10n.format("Build available to the internal TestFlight group %@.\n", name))
+        }
+        if let targetGroup = groups.first(where: {
+            (Self.attributes($0)["name"] as? String)?.caseInsensitiveCompare(requestedGroupName) == .orderedSame
+        }), let targetGroupID = targetGroup["id"] as? String {
+            try await ensureInternalTesters(
+                configuration?.internalTesterEmails ?? [],
+                groupID: targetGroupID,
+                onOutput: onOutput
+            )
+        }
+    }
+
+    func configureTestFlightInformation(
+        appID: String,
+        listings: [AppStoreLocalizedMetadata],
+        configuration: AppStoreTestFlightConfiguration?,
+        marketingURL: String?,
+        privacyPolicyURL: String?,
+        review: AppStoreReviewConfiguration,
+        onOutput: @escaping @Sendable (String) -> Void
+    ) async throws {
+        let existing = try await pagedData(
+            path: "/v1/apps/\(appID)/betaAppLocalizations",
+            query: ["limit": "200"]
+        )
+        for listing in listings {
+            var attributes: [String: Any] = [
+                "locale": listing.locale,
+                "description": listing.description
+            ]
+            if let feedbackEmail = configuration?.feedbackEmail?.nilIfEmpty ?? review.contactEmail.nilIfEmpty {
+                attributes["feedbackEmail"] = feedbackEmail
+            }
+            if let marketingURL = marketingURL?.nilIfEmpty {
+                attributes["marketingUrl"] = marketingURL
+            }
+            if let privacyPolicyURL = privacyPolicyURL?.nilIfEmpty {
+                attributes["privacyPolicyUrl"] = privacyPolicyURL
+            }
+            if let resource = existing.first(where: {
+                (Self.attributes($0)["locale"] as? String)?.caseInsensitiveCompare(listing.locale) == .orderedSame
+            }), let localizationID = resource["id"] as? String {
+                attributes.removeValue(forKey: "locale")
+                _ = try await request(
+                    method: "PATCH",
+                    path: "/v1/betaAppLocalizations/\(localizationID)",
+                    body: [
+                        "data": [
+                            "type": "betaAppLocalizations",
+                            "id": localizationID,
+                            "attributes": attributes
+                        ]
+                    ]
+                )
+            } else {
+                _ = try await request(
+                    method: "POST",
+                    path: "/v1/betaAppLocalizations",
+                    body: [
+                        "data": [
+                            "type": "betaAppLocalizations",
+                            "attributes": attributes,
+                            "relationships": [
+                                "app": ["data": ["type": "apps", "id": appID]]
+                            ]
+                        ]
+                    ]
+                )
+            }
+        }
+
+        let betaReviewAttributes: [String: Any] = [
+            "contactFirstName": review.contactFirstName,
+            "contactLastName": review.contactLastName,
+            "contactPhone": review.contactPhone,
+            "contactEmail": review.contactEmail,
+            "demoAccountRequired": review.demoAccountRequired,
+            "demoAccountName": review.demoAccountRequired ? (review.demoAccountName ?? "") : "",
+            "demoAccountPassword": review.demoAccountRequired ? (review.demoAccountPassword ?? "") : "",
+            "notes": configuration?.reviewNotes?.nilIfEmpty ?? review.notes
+        ]
+        do {
+            let response = try await request(method: "GET", path: "/v1/apps/\(appID)/betaAppReviewDetail")
+            let detailID = try Self.identifier(in: response, named: "TestFlight review details")
+            _ = try await request(
+                method: "PATCH",
+                path: "/v1/betaAppReviewDetails/\(detailID)",
+                body: [
+                    "data": [
+                        "type": "betaAppReviewDetails",
+                        "id": detailID,
+                        "attributes": betaReviewAttributes
+                    ]
+                ]
+            )
+        } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
+            _ = try await request(
+                method: "POST",
+                path: "/v1/betaAppReviewDetails",
+                body: [
+                    "data": [
+                        "type": "betaAppReviewDetails",
+                        "attributes": betaReviewAttributes,
+                        "relationships": [
+                            "app": ["data": ["type": "apps", "id": appID]]
+                        ]
+                    ]
+                ]
+            )
+        }
+        onOutput(L10n.format("Updated TestFlight information for %d language(s).\n", listings.count))
+    }
+
+    private func ensureInternalTesters(
+        _ emails: [String],
+        groupID: String,
+        onOutput: @escaping @Sendable (String) -> Void
+    ) async throws {
+        let normalizedEmails = Array(Set(emails.compactMap { $0.nilIfEmpty?.lowercased() })).sorted()
+        guard !normalizedEmails.isEmpty else { return }
+        let users = try await pagedData(path: "/v1/users", query: ["limit": "200"])
+        for email in normalizedEmails {
+            guard let member = users.first(where: {
+                let attributes = Self.attributes($0)
+                return [attributes["username"] as? String, attributes["email"] as? String]
+                    .compactMap { $0?.lowercased() }
+                    .contains(email)
+            }) else {
+                throw AppStoreConnectError.internalTesterIsNotTeamMember(email)
+            }
+            let memberAttributes = Self.attributes(member)
+            let testers = try await pagedData(
+                path: "/v1/betaTesters",
+                query: ["filter[email]": email, "limit": "20"]
+            )
+            let testerID: String
+            if let tester = testers.first, let existingID = tester["id"] as? String {
+                testerID = existingID
+            } else {
+                let created = try await request(
+                    method: "POST",
+                    path: "/v1/betaTesters",
+                    body: [
+                        "data": [
+                            "type": "betaTesters",
+                            "attributes": [
+                                "email": email,
+                                "firstName": memberAttributes["firstName"] as? String ?? "",
+                                "lastName": memberAttributes["lastName"] as? String ?? ""
+                            ],
+                            "relationships": [
+                                "betaGroups": [
+                                    "data": [["type": "betaGroups", "id": groupID]]
+                                ]
+                            ]
+                        ]
+                    ]
+                )
+                testerID = try Self.identifier(in: created, named: "internal TestFlight tester")
+            }
+            do {
+                _ = try await request(
+                    method: "POST",
+                    path: "/v1/betaGroups/\(groupID)/relationships/betaTesters",
+                    body: ["data": [["type": "betaTesters", "id": testerID]]]
+                )
+            } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 || status == 422 {
+                // The tester is already assigned to the group.
+            }
+            onOutput(L10n.format("Internal tester %@ is assigned to the configured TestFlight group.\n", email))
         }
     }
 
@@ -1725,8 +1930,12 @@ final class AppStoreConnectService {
     func submitForReview(
         appID: String,
         versionID: String,
-        additionalItems: [AppStoreConnectReviewItem] = []
+        additionalItems: [AppStoreConnectReviewItem] = [],
+        intent: PublishingIntent
     ) async throws {
+        guard intent.submitsForReview else {
+            throw AppStoreConnectError.reviewSubmissionNotAllowed
+        }
         let submissionResponse: [String: Any]
         do {
             submissionResponse = try await request(
@@ -2533,6 +2742,7 @@ final class AppStoreConnectService {
         productID: String,
         basePrice: String,
         baseTerritory: String,
+        territoryPrices: [String: String],
         allTerritories: Bool,
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws {
@@ -2555,12 +2765,45 @@ final class AppStoreConnectService {
             )
         }
 
-        var desiredPointIDs = [basePointID]
+        var desiredPointsByTerritory = [baseTerritory.uppercased(): basePointID]
+        var unscopedDesiredPointIDs: Set<String> = []
         if allTerritories {
-            desiredPointIDs.append(contentsOf: try await pagedData(
+            let equalizations = try await pagedData(
                 path: "/v1/subscriptionPricePoints/\(basePointID)/equalizations",
-                query: ["limit": "8000"]
-            ).compactMap { $0["id"] as? String })
+                query: [
+                    "fields[subscriptionPricePoints]": "customerPrice,territory",
+                    "include": "territory",
+                    "limit": "8000"
+                ]
+            )
+            for point in equalizations {
+                guard let pointID = point["id"] as? String else { continue }
+                let relationships = point["relationships"] as? [String: Any]
+                if let territoryID = Self.relationshipID(relationships?["territory"])?.uppercased() {
+                    desiredPointsByTerritory[territoryID] = pointID
+                } else {
+                    unscopedDesiredPointIDs.insert(pointID)
+                }
+            }
+        }
+
+        var pointIDsByOverrideTerritory: [String: Set<String>] = [:]
+        for (rawTerritory, overridePrice) in territoryPrices.sorted(by: { $0.key < $1.key }) {
+            let territory = rawTerritory.uppercased()
+            let points = try await pagedData(
+                path: "/v1/subscriptions/\(subscriptionID)/pricePoints",
+                query: ["filter[territory]": territory, "limit": "200"]
+            )
+            pointIDsByOverrideTerritory[territory] = Set(points.compactMap { $0["id"] as? String })
+            guard let point = points.first(where: {
+                Self.pricesEqual(Self.attributes($0)["customerPrice"], overridePrice)
+            }), let pointID = point["id"] as? String else {
+                throw AppStoreConnectError.requestFailed(
+                    422,
+                    L10n.format("Price %@ is not an available subscription price point in %@ for %@.", overridePrice, territory, productID)
+                )
+            }
+            desiredPointsByTerritory[territory] = pointID
         }
         let existingPrices = try await pagedData(
             path: "/v1/subscriptions/\(subscriptionID)/prices",
@@ -2576,9 +2819,18 @@ final class AppStoreConnectService {
             return data?["id"] as? String
         })
 
+        let desiredPointIDs = Set(desiredPointsByTerritory.values).union(unscopedDesiredPointIDs)
         var createdCount = 0
-        for pointID in Set(desiredPointIDs).subtracting(existingPointIDs).sorted() {
+        for pointID in desiredPointIDs.subtracting(existingPointIDs).sorted() {
             try Task.checkCancellation()
+            let territory = desiredPointsByTerritory.first(where: { $0.value == pointID })?.key
+            let hasCurrentTerritoryPrice = territory.flatMap { pointIDsByOverrideTerritory[$0] }
+                .map { !$0.isDisjoint(with: existingPointIDs) }
+                ?? false
+            var attributes: [String: Any] = ["preserveCurrentPrice": false]
+            if hasCurrentTerritoryPrice {
+                attributes["startDate"] = Self.tomorrowDateString()
+            }
             do {
                 _ = try await request(
                     method: "POST",
@@ -2586,9 +2838,7 @@ final class AppStoreConnectService {
                     body: [
                         "data": [
                             "type": "subscriptionPrices",
-                            "attributes": [
-                                "preserveCurrentPrice": false
-                            ],
+                            "attributes": attributes,
                             "relationships": [
                                 "subscription": [
                                     "data": ["type": "subscriptions", "id": subscriptionID]
@@ -2612,6 +2862,18 @@ final class AppStoreConnectService {
             baseTerritory,
             createdCount
         ))
+    }
+
+    private static func tomorrowDateString(referenceDate: Date = Date()) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: referenceDate) ?? referenceDate
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: tomorrow)
     }
 
     private func ensureSubscriptionReviewScreenshot(

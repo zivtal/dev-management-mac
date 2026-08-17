@@ -618,17 +618,6 @@ final class AppModel: ObservableObject {
             presentedError = error.localizedDescription
             return
         }
-        if intent == .testFlight {
-            beginPublishing(
-                project: project,
-                testFlightConfiguration: TestFlightUploadConfiguration(
-                    appStoreConnectIssuerID: appStoreConnectCredential.issuerID,
-                    appStoreConnectKeyID: appStoreConnectCredential.keyID,
-                    appStoreConnectPrivateKey: appStoreConnectCredential.privateKey
-                )
-            )
-            return
-        }
         let catalog: AppStoreSubscriptionCatalog
         let perAppConfiguration: AppStorePublicationConfiguration?
         do {
@@ -645,14 +634,15 @@ final class AppModel: ObservableObject {
             ?? preferences.appStoreLocale?.nilIfEmpty
             ?? "en-US"
         let existing = existingConfiguration?.publicationFallback(preferredLocale: preferredLocale)
-        let copyright = perAppConfiguration?.copyright?.nilIfEmpty
+        let copyrightOwner = perAppConfiguration?.copyright?.nilIfEmpty
             ?? preferences.appStoreCopyright?.nilIfEmpty
             ?? existing?.copyright
             ?? ""
-        guard !copyright.isEmpty else {
+        guard !copyrightOwner.isEmpty else {
             presentedError = L10n.text("Enter the copyright owner in Publishing settings.")
             return
         }
+        let copyright = AppStoreCopyrightNormalizer.normalized(copyrightOwner)
         let supportURL = perAppConfiguration?.supportURL?.nilIfEmpty
             ?? preferences.appStoreSupportURL?.nilIfEmpty
             ?? existing?.supportURL
@@ -680,11 +670,9 @@ final class AppModel: ObservableObject {
                 return
             }
         }
-        let openAIAPIKey = (try? credentialStore.string(for: .openAIAPIKey)) ?? ""
         if perAppConfiguration?.metadata == nil,
-           perAppConfiguration?.localizations?.isEmpty != false,
-           openAIAPIKey.isEmpty {
-            presentedError = L10n.text("Save an OpenAI API key in Publishing settings or enter manual metadata in the per-app configuration.")
+           perAppConfiguration?.localizations?.isEmpty != false {
+            presentedError = L10n.text("Review and save the editable App Store listing and app declarations before releasing.")
             return
         }
         let releaseAutomatically = releaseOverride
@@ -723,11 +711,25 @@ final class AppModel: ObservableObject {
             presentedError = L10n.text("Save the App Review demo account in Publishing settings.")
             return
         }
+        var testFlightConfiguration = perAppConfiguration?.testFlight
+            ?? AppStoreTestFlightConfiguration(
+                groupName: "Internal Testing",
+                feedbackEmail: reviewEmail,
+                reviewNotes: reviewOverrides?.notes ?? preferences.appStoreReviewNotes,
+                internalTesterEmails: [reviewEmail]
+            )
+        if testFlightConfiguration.groupName?.nilIfEmpty == nil {
+            testFlightConfiguration.groupName = "Internal Testing"
+        }
+        if testFlightConfiguration.feedbackEmail?.nilIfEmpty == nil {
+            testFlightConfiguration.feedbackEmail = reviewEmail
+        }
+        if testFlightConfiguration.internalTesterEmails?.isEmpty != false {
+            testFlightConfiguration.internalTesterEmails = [reviewEmail]
+        }
 
         let publishingConfiguration = PublishingConfiguration(
-            openAIAPIKey: openAIAPIKey,
-            openAIModel: preferences.openAIModel?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-                ?? "gpt-5.6-luna",
+            intent: intent,
             appStoreConnectIssuerID: appStoreConnectCredential.issuerID,
             appStoreConnectKeyID: appStoreConnectCredential.keyID,
             appStoreConnectPrivateKey: appStoreConnectCredential.privateKey,
@@ -756,25 +758,21 @@ final class AppModel: ObservableObject {
             ),
             manualMetadata: perAppConfiguration?.metadata?.normalized(),
             manualLocalizations: perAppConfiguration?.localizations?.map { $0.normalized() } ?? [],
-            detectedLocales: ProjectLocalizationDiscoveryService().discover(
-                project: project,
-                defaultLocale: preferredLocale
-            ),
             screenshotPaths: perAppConfiguration?.screenshotPaths ?? [],
             reviewAttachmentPaths: perAppConfiguration?.reviewAttachmentPaths ?? [],
             replaceScreenshots: perAppConfiguration?.replaceScreenshots ?? false,
             releaseAutomatically: releaseAutomatically,
-            replaceActiveReviewVersion: replaceActiveReviewVersion
+            replaceActiveReviewVersion: intent == .publish && replaceActiveReviewVersion,
+            testFlight: testFlightConfiguration
         )
-        beginPublishing(project: project, publishingConfiguration: publishingConfiguration)
+        beginPublishing(project: project, configuration: publishingConfiguration)
     }
 
     private func beginPublishing(
         project: ManagedProject,
-        publishingConfiguration: PublishingConfiguration? = nil,
-        testFlightConfiguration: TestFlightUploadConfiguration? = nil
+        configuration: PublishingConfiguration
     ) {
-        let intent: PublishingIntent = publishingConfiguration == nil ? .testFlight : .publish
+        let intent = configuration.intent
         var log = PublishingLogSession(projectID: project.id, projectName: project.displayName)
         let logID = log.id
         log.append(L10n.format(
@@ -811,22 +809,11 @@ final class AppModel: ObservableObject {
                         self?.handlePublishingEvent(event, logID: logID)
                     }
                 }
-                let result: PublishingResult
-                if let publishingConfiguration {
-                    result = try await publishingService.publish(
-                        project: project,
-                        configuration: publishingConfiguration,
-                        eventHandler: eventHandler
-                    )
-                } else if let testFlightConfiguration {
-                    result = try await publishingService.uploadToTestFlight(
-                        project: project,
-                        configuration: testFlightConfiguration,
-                        eventHandler: eventHandler
-                    )
-                } else {
-                    return
-                }
+                let result = try await publishingService.publish(
+                    project: project,
+                    configuration: configuration,
+                    eventHandler: eventHandler
+                )
                 guard !Task.isCancelled else { throw CancellationError() }
                 if var currentLog = publishingLog, currentLog.id == logID {
                     currentLog.state = .succeeded

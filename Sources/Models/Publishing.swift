@@ -81,6 +81,7 @@ struct AppStoreGeneratedMetadata: Codable, Equatable, Sendable {
     var primaryCategory: String
     var secondaryCategory: String
     var localizations: [AppStoreLocalizedMetadata]
+    var compliance: AppStoreComplianceDraft? = nil
 
     func normalized() -> AppStoreGeneratedMetadata {
         var seen = Set<String>()
@@ -89,9 +90,40 @@ struct AppStoreGeneratedMetadata: Codable, Equatable, Sendable {
             secondaryCategory: secondaryCategory,
             localizations: localizations
                 .map { $0.normalized() }
-                .filter { !$0.locale.isEmpty && seen.insert($0.locale.lowercased()).inserted }
+                .filter { !$0.locale.isEmpty && seen.insert($0.locale.lowercased()).inserted },
+            compliance: compliance
         )
     }
+}
+
+struct AppStorePrivacyDraft: Codable, Equatable, Sendable {
+    var collectsData: Bool
+    var dataTypes: [String]
+    var notes: [String]
+}
+
+struct AppStoreComplianceDraft: Codable, Equatable, Sendable {
+    var contentRightsDeclaration: String
+    var appIsFree: Bool
+    var demoAccountRequired: Bool
+    var copyright: String
+    var ageRating: [String: AppStoreManifestValue]
+    var privacy: AppStorePrivacyDraft
+    var evidence: [String]
+    var confidence: Double
+}
+
+struct AppStorePrivacyAttestation: Codable, Equatable, Sendable {
+    var confirmedBy: String?
+    var confirmedAt: String?
+    var projectFingerprint: String?
+}
+
+struct AppStoreComplianceConfiguration: Codable, Equatable, Sendable {
+    var privacyDraft: AppStorePrivacyDraft?
+    var privacyAttestation: AppStorePrivacyAttestation?
+    var evidence: [String]?
+    var confidence: Double?
 }
 
 struct AppStoreReviewConfiguration: Equatable, Sendable {
@@ -175,12 +207,20 @@ struct AppStoreSubscriptionDefinition: Codable, Equatable, Sendable {
     var period: String
     var basePrice: String?
     var baseTerritory: String?
+    var territoryPrices: [String: String]? = nil
     var availableInAllTerritories: Bool?
     var familySharable: Bool?
     var groupLevel: Int?
     var reviewNote: String?
     var reviewScreenshot: String?
     var localizations: [AppStoreSubscriptionLocalization]?
+}
+
+struct AppStoreTestFlightConfiguration: Codable, Equatable, Sendable {
+    var groupName: String?
+    var feedbackEmail: String?
+    var reviewNotes: String?
+    var internalTesterEmails: [String]?
 }
 
 struct AppStoreSubscriptionGroupDefinition: Codable, Equatable, Sendable {
@@ -223,6 +263,7 @@ struct AppStorePublicationConfiguration: Codable, Equatable, Sendable {
     var reviewAttachmentPaths: [String]? = nil
     var replaceScreenshots: Bool? = nil
     var review: AppStoreReviewManifestConfiguration?
+    var testFlight: AppStoreTestFlightConfiguration? = nil
 }
 
 struct AppStorePublishingManifest: Codable, Equatable, Sendable {
@@ -230,11 +271,13 @@ struct AppStorePublishingManifest: Codable, Equatable, Sendable {
     var publication: AppStorePublicationConfiguration?
     var application: AppStoreApplicationConfiguration?
     var subscriptions: AppStoreSubscriptionsConfiguration?
+    var compliance: AppStoreComplianceConfiguration? = nil
 }
 
 struct AppStoreSubscriptionCatalog: Equatable, Sendable {
     var publication: AppStorePublicationConfiguration?
     var application: AppStoreApplicationConfiguration?
+    var compliance: AppStoreComplianceConfiguration?
     var groups: [AppStoreSubscriptionGroupDefinition]
     var detectedProductIDs: Set<String>
     var sourceFiles: [String]
@@ -612,15 +655,8 @@ enum PublishingIntent: Equatable, Sendable {
     }
 }
 
-struct TestFlightUploadConfiguration: Sendable {
-    let appStoreConnectIssuerID: String
-    let appStoreConnectKeyID: String
-    let appStoreConnectPrivateKey: String
-}
-
 struct PublishingConfiguration: Sendable {
-    let openAIAPIKey: String
-    let openAIModel: String
+    let intent: PublishingIntent
     let appStoreConnectIssuerID: String
     let appStoreConnectKeyID: String
     let appStoreConnectPrivateKey: String
@@ -637,12 +673,12 @@ struct PublishingConfiguration: Sendable {
     let review: AppStoreReviewConfiguration
     let manualMetadata: AppStoreMetadata?
     let manualLocalizations: [AppStoreLocalizedMetadata]
-    let detectedLocales: [String]
     let screenshotPaths: [String]
     let reviewAttachmentPaths: [String]
     let replaceScreenshots: Bool
     let releaseAutomatically: Bool
     let replaceActiveReviewVersion: Bool
+    let testFlight: AppStoreTestFlightConfiguration?
 }
 
 struct PublishingResult: Equatable, Sendable {

@@ -14,6 +14,7 @@ enum AppStorePublishingError: LocalizedError {
     case noScreenshots
     case noSimulatorApplication
     case uploaderUnavailable
+    case missingEditablePublishingDraft
 
     var errorDescription: String? {
         switch self {
@@ -41,6 +42,8 @@ enum AppStorePublishingError: LocalizedError {
             return L10n.text("The simulator build completed, but its application product was not found.")
         case .uploaderUnavailable:
             return L10n.text("Apple's App Store upload tool was not found in the selected Xcode installation.")
+        case .missingEditablePublishingDraft:
+            return L10n.text("Review and save the editable App Store listing and app declarations before releasing.")
         }
     }
 }
@@ -51,7 +54,6 @@ final class AppStorePublishingService {
 
     private let processRunner: ProcessRunner
     private let fileManager: FileManager
-    private let openAIService: OpenAIStoreMetadataService
     private let subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService
     private let reviewAssetService: AppStoreReviewAssetService
     private let publicationURLValidator: AppStorePublicationURLValidator
@@ -60,14 +62,12 @@ final class AppStorePublishingService {
     init(
         processRunner: ProcessRunner = ProcessRunner(),
         fileManager: FileManager = .default,
-        openAIService: OpenAIStoreMetadataService = OpenAIStoreMetadataService(),
         subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService = StoreKitSubscriptionDiscoveryService(),
         reviewAssetService: AppStoreReviewAssetService = AppStoreReviewAssetService(),
         publicationURLValidator: AppStorePublicationURLValidator = AppStorePublicationURLValidator()
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
-        self.openAIService = openAIService
         self.subscriptionDiscoveryService = subscriptionDiscoveryService
         self.reviewAssetService = reviewAssetService
         self.publicationURLValidator = publicationURLValidator
@@ -82,6 +82,7 @@ final class AppStorePublishingService {
         configuration: PublishingConfiguration,
         eventHandler: @escaping EventHandler
     ) async throws -> PublishingResult {
+        let intent = configuration.intent
         guard !project.isMacOSApplication, project.installMethod == .xcodebuild else {
             throw AppStorePublishingError.unsupportedProject
         }
@@ -130,6 +131,11 @@ final class AppStorePublishingService {
             project: project,
             defaultLocale: configuration.locale
         )
+        guard let privacyAttestation = subscriptionCatalog.compliance?.privacyAttestation,
+              privacyAttestation.confirmedBy?.nilIfEmpty != nil,
+              privacyAttestation.confirmedAt?.nilIfEmpty != nil else {
+            throw AppStorePublishingError.missingEditablePublishingDraft
+        }
         if subscriptionCatalog.detectedProductIDs.isEmpty {
             eventHandler(.output(L10n.text("No subscription products were found in the app project.\n")))
         } else {
@@ -195,28 +201,7 @@ final class AppStorePublishingService {
             ]
             eventHandler(.output(L10n.text("Using manually configured per-app App Store metadata.\n")))
         } else {
-            eventHandler(.output(L10n.format(
-                "Generating structured App Store metadata with OpenAI for %d language(s)…\n",
-                configuration.detectedLocales.count
-            )))
-            let generated = try await openAIService.generateLocalized(
-                project: project,
-                locales: configuration.detectedLocales,
-                apiKey: configuration.openAIAPIKey,
-                model: configuration.openAIModel
-            )
-            localizedMetadata = generated.localizations
-            let preferred = localizedMetadata.first(where: {
-                $0.locale.caseInsensitiveCompare(configuration.locale) == .orderedSame
-            }) ?? localizedMetadata[0]
-            metadata = preferred.metadata(
-                primaryCategory: generated.primaryCategory,
-                secondaryCategory: generated.secondaryCategory
-            )
-            eventHandler(.output(L10n.format(
-                "App Store metadata generated and validated for %d language(s).\n",
-                localizedMetadata.count
-            )))
+            throw AppStorePublishingError.missingEditablePublishingDraft
         }
         var applicationConfiguration = subscriptionCatalog.application
         if applicationConfiguration == nil,
@@ -237,6 +222,12 @@ final class AppStorePublishingService {
             if applicationConfiguration?.secondaryCategory?.nilIfEmpty == nil {
                 applicationConfiguration?.secondaryCategory = metadata.secondaryCategory?.nilIfEmpty
             }
+        }
+        guard applicationConfiguration?.primaryCategory?.nilIfEmpty != nil,
+              applicationConfiguration?.contentRightsDeclaration?.nilIfEmpty != nil,
+              applicationConfiguration?.isFree != nil,
+              applicationConfiguration?.ageRating?.isEmpty == false else {
+            throw AppStorePublishingError.missingEditablePublishingDraft
         }
 
         eventHandler(.phase(.collectingScreenshots))
@@ -311,7 +302,7 @@ final class AppStorePublishingService {
         }
 
         let reusableVersionID: String?
-        if configuration.replaceActiveReviewVersion {
+        if intent == .publish, configuration.replaceActiveReviewVersion {
             eventHandler(.phase(.uploadingMetadata))
             reusableVersionID = try await appStoreConnect.cancelActiveAppVersionReview(
                 bundleIdentifier: bundleIdentifier,
@@ -345,30 +336,36 @@ final class AppStorePublishingService {
         )
         eventHandler(.output(L10n.text("App Store metadata updated.\n")))
 
+        eventHandler(.phase(.configuringTestFlight))
+        try await appStoreConnect.configureTestFlightInformation(
+            appID: publication.appID,
+            listings: localizedMetadata,
+            configuration: configuration.testFlight,
+            marketingURL: configuration.marketingURL,
+            privacyPolicyURL: configuration.privacyPolicyURL,
+            review: configuration.review,
+            onOutput: { eventHandler(.output($0)) }
+        )
+
         try await appStoreConnect.configureFirstPublication(
             appID: publication.appID,
             configuration: applicationConfiguration,
             onOutput: { eventHandler(.output($0)) }
         )
 
-        let subscriptionReviewItems: [AppStoreConnectReviewItem]
-        if publication.isVersionOnlyUpdate {
-            subscriptionReviewItems = []
-            eventHandler(.output(L10n.text("A previous version is already published; reusing app and subscription setup for this version-only update.\n")))
-        } else {
-            eventHandler(.phase(.configuringSubscriptions))
-            subscriptionReviewItems = try await appStoreConnect.reconcileSubscriptions(
-                appID: publication.appID,
-                catalog: subscriptionCatalog,
-                requiresReviewAssets: true,
-                onOutput: { eventHandler(.output($0)) }
-            )
-        }
+        eventHandler(.phase(.configuringSubscriptions))
+        let subscriptionReviewItems = try await appStoreConnect.reconcileSubscriptions(
+            appID: publication.appID,
+            catalog: subscriptionCatalog,
+            requiresReviewAssets: true,
+            onOutput: { eventHandler(.output($0)) }
+        )
 
         eventHandler(.phase(.uploadingScreenshots))
         try await appStoreConnect.uploadScreenshots(
             screenshots,
-            localizationID: publication.localizationID,
+            localizationIDsByLocale: publication.localizationIDsByLocale,
+            primaryLocale: configuration.locale,
             replaceExisting: configuration.replaceScreenshots,
             onOutput: { eventHandler(.output($0)) }
         )
@@ -404,6 +401,7 @@ final class AppStorePublishingService {
         try await appStoreConnect.assignBuildToInternalTestFlight(
             appID: publication.appID,
             buildID: buildID,
+            configuration: configuration.testFlight,
             onOutput: { eventHandler(.output($0)) }
         )
 
@@ -416,140 +414,24 @@ final class AppStorePublishingService {
             )
         }
 
-        eventHandler(.phase(.submitting))
-        try await appStoreConnect.submitForReview(
-            appID: publication.appID,
-            versionID: publication.versionID,
-            additionalItems: subscriptionReviewItems
-        )
-        eventHandler(.output(L10n.text("The App Store version was submitted for review.\n")))
+        if intent.submitsForReview {
+            eventHandler(.phase(.submitting))
+            try await appStoreConnect.submitForReview(
+                appID: publication.appID,
+                versionID: publication.versionID,
+                additionalItems: subscriptionReviewItems,
+                intent: intent
+            )
+            eventHandler(.output(L10n.text("The App Store version and configured subscriptions were submitted for review.\n")))
+        } else {
+            eventHandler(.output(L10n.text("Full App Store and TestFlight setup completed. Review submission was intentionally skipped.\n")))
+        }
 
         return PublishingResult(
             version: targetVersion,
             buildNumber: targetBuildNumber,
-            intent: .publish,
+            intent: intent,
             reusedExistingBuild: reusedExistingBuild
-        )
-    }
-
-    func uploadToTestFlight(
-        project: ManagedProject,
-        configuration: TestFlightUploadConfiguration,
-        eventHandler: @escaping EventHandler
-    ) async throws -> PublishingResult {
-        guard !project.isMacOSApplication, project.installMethod == .xcodebuild else {
-            throw AppStorePublishingError.unsupportedProject
-        }
-        guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
-            throw AppStorePublishingError.missingBundleIdentifier
-        }
-        guard let localVersion = project.marketingVersion?.nilIfEmpty else {
-            throw AppStorePublishingError.missingVersion
-        }
-        guard let localBuildNumber = project.buildNumber?.nilIfEmpty else {
-            throw AppStorePublishingError.missingBuildNumber
-        }
-        guard fileManager.fileExists(atPath: project.containerPath) else {
-            throw AppStorePublishingError.missingProjectContainer
-        }
-
-        let appStoreConnect = try AppStoreConnectService(
-            issuerID: configuration.appStoreConnectIssuerID,
-            keyID: configuration.appStoreConnectKeyID,
-            privateKeyPEM: configuration.appStoreConnectPrivateKey
-        )
-        let appID = try await appStoreConnect.applicationID(bundleIdentifier: bundleIdentifier)
-        if let existingBuild = try await appStoreConnect.build(
-            appID: appID,
-            marketingVersion: localVersion,
-            buildNumber: localBuildNumber
-        ) {
-            eventHandler(.output(L10n.format(
-                "TestFlight already contains %@ (%@); reusing the existing build.\n",
-                existingBuild.version,
-                existingBuild.buildNumber
-            )))
-            eventHandler(.phase(.waitingForBuild))
-            let buildID = try await appStoreConnect.waitForBuild(
-                appID: appID,
-                marketingVersion: localVersion,
-                buildNumber: localBuildNumber,
-                onOutput: { eventHandler(.output($0)) }
-            )
-            eventHandler(.phase(.configuringTestFlight))
-            try await appStoreConnect.assignBuildToInternalTestFlight(
-                appID: appID,
-                buildID: buildID,
-                onOutput: { eventHandler(.output($0)) }
-            )
-            return PublishingResult(
-                version: localVersion,
-                buildNumber: localBuildNumber,
-                intent: .testFlight,
-                reusedExistingBuild: true
-            )
-        }
-
-        let temporaryDirectory = fileManager.temporaryDirectory
-            .appendingPathComponent("DevManagement-TestFlight-\(UUID().uuidString)", isDirectory: true)
-        try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: temporaryDirectory) }
-
-        eventHandler(.phase(.archiving))
-        let artifact = try await archiveAndExport(
-            project: project,
-            expectedBundleIdentifier: bundleIdentifier,
-            temporaryDirectory: temporaryDirectory,
-            eventHandler: eventHandler
-        )
-        eventHandler(.output(L10n.format(
-            "Archive contains %@ %@ (%@).\n",
-            artifact.bundleIdentifier,
-            artifact.version,
-            artifact.buildNumber
-        )))
-
-        let archivedBuildAlreadyExists = try await appStoreConnect.build(
-            appID: appID,
-            marketingVersion: artifact.version,
-            buildNumber: artifact.buildNumber
-        ) != nil
-        if archivedBuildAlreadyExists {
-            eventHandler(.output(L10n.format(
-                "TestFlight already contains archived build %@ (%@); skipping the duplicate upload.\n",
-                artifact.version,
-                artifact.buildNumber
-            )))
-        } else {
-            eventHandler(.phase(.uploadingBuild))
-            try await uploadBuild(
-                ipaURL: artifact.ipaURL,
-                issuerID: configuration.appStoreConnectIssuerID,
-                keyID: configuration.appStoreConnectKeyID,
-                privateKey: configuration.appStoreConnectPrivateKey,
-                temporaryDirectory: temporaryDirectory,
-                eventHandler: eventHandler
-            )
-        }
-        eventHandler(.phase(.waitingForBuild))
-        let buildID = try await appStoreConnect.waitForBuild(
-            appID: appID,
-            marketingVersion: artifact.version,
-            buildNumber: artifact.buildNumber,
-            onOutput: { eventHandler(.output($0)) }
-        )
-        eventHandler(.phase(.configuringTestFlight))
-        try await appStoreConnect.assignBuildToInternalTestFlight(
-            appID: appID,
-            buildID: buildID,
-            onOutput: { eventHandler(.output($0)) }
-        )
-
-        return PublishingResult(
-            version: artifact.version,
-            buildNumber: artifact.buildNumber,
-            intent: .testFlight,
-            reusedExistingBuild: archivedBuildAlreadyExists
         )
     }
 
@@ -659,9 +541,10 @@ final class AppStorePublishingService {
         }
         var counts: [String: Int] = [:]
         return preview.screenshots.filter { screenshot in
-            let count = counts[screenshot.displayType, default: 0]
+            let key = "\(screenshot.locale?.lowercased() ?? "primary")|\(screenshot.displayType)"
+            let count = counts[key, default: 0]
             guard count < 10 else { return false }
-            counts[screenshot.displayType] = count + 1
+            counts[key] = count + 1
             return true
         }
     }
@@ -707,9 +590,30 @@ final class AppStorePublishingService {
             url: url,
             displayType: displayType,
             platform: platformHint,
+            locale: automaticallyCaptured ? nil : Self.screenshotLocale(from: url),
             deviceName: deviceName,
             automaticallyCaptured: automaticallyCaptured
         )
+    }
+
+    static func screenshotLocale(from url: URL) -> String? {
+        for component in url.deletingLastPathComponent().pathComponents.reversed() {
+            let candidate = component.replacingOccurrences(of: "_", with: "-")
+            let parts = candidate.split(separator: "-")
+            let isLanguage = parts.first.map {
+                (2...3).contains($0.count)
+                    && $0.allSatisfy(\.isLetter)
+                    && String($0) == $0.lowercased()
+            } == true
+            let isRegion = parts.count == 1 || (
+                parts.count == 2
+                    && (2...3).contains(parts[1].count)
+                    && parts[1].allSatisfy { $0.isLetter || $0.isNumber }
+            )
+            guard isLanguage, isRegion else { continue }
+            return ProjectLocalizationDiscoveryService.normalizedAppStoreLocale(candidate)
+        }
+        return nil
     }
 
     func prepareScreenshotPreview(

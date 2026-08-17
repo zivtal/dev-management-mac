@@ -6,7 +6,11 @@ source for subscription groups, products, periods, prices, and localizations.
 
 The optional `app-store-publishing.json` file belongs in the managed app's root
 folder. It supplies production settings that aren't represented by StoreKit.
-Financial, legal, and age-rating declarations are never guessed by AI.
+Saved manifest values are authoritative. For a new app, the publishing editor
+can ask OpenAI to prepare a conservative, evidence-backed draft from bounded
+`README.md` and project-manifest excerpts. Every generated value is placed in a
+normal editable field and must be reviewed and saved before either release
+action can start. OpenAI never changes fields during Upload or Publish.
 
 ```json
 {
@@ -25,6 +29,12 @@ Financial, legal, and age-rating declarations are never guessed by AI.
       "contactEmail": "review@example.com",
       "notes": "Open the Premium tab to find the paywall.",
       "demoAccountRequired": false
+    },
+    "testFlight": {
+      "groupName": "Internal Testing",
+      "feedbackEmail": "review@example.com",
+      "reviewNotes": "No account is required.",
+      "internalTesterEmails": ["review@example.com"]
     }
   },
   "application": {
@@ -43,6 +53,17 @@ Financial, legal, and age-rating declarations are never guessed by AI.
       "userGeneratedContent": false
     }
   },
+  "compliance": {
+    "privacyDraft": {
+      "collectsData": false,
+      "dataTypes": [],
+      "notes": ["Confirm the shipped SDK behavior in App Store Connect."]
+    },
+    "privacyAttestation": {
+      "confirmedBy": "Publisher Name",
+      "confirmedAt": "2026-08-17T10:00:00Z"
+    }
+  },
   "subscriptions": {
     "baseTerritory": "ISR",
     "availableInAllTerritories": true,
@@ -52,9 +73,13 @@ Financial, legal, and age-rating declarations are never guessed by AI.
 ```
 
 Open **Publish… → Per-App Configuration…** to create, edit, validate, and save
-this file without leaving Development Management. Account-wide defaults live in
-Publishing Settings; values in this file override them for this app. API keys,
-private keys, and demo-account passwords are never written to the file.
+this file without leaving Development Management. The standard tabs provide
+fields for the listing, app answers, age rating, privacy checklist, review,
+TestFlight, subscription groups/products/localizations, and territory prices.
+**Advanced JSON** is optional and edits the same configuration. Account-wide
+defaults live in Publishing Settings; values in this file override them for this
+app. API keys, private keys, and demo-account passwords are never written to the
+file.
 
 Publishing Settings supports multiple named App Store Connect API profiles. Each
 managed app selects either the default API or one additional profile in its
@@ -94,13 +119,30 @@ does this):
 }
 ```
 
-When `metadata` is omitted, Publish generates the listing fields with OpenAI.
-Descriptions cover verified features, audience, value, privacy-relevant behavior,
-and named third-party providers found in the supplied project documentation.
-The remaining app-specific settings are deterministic and manually editable; AI
-never chooses content-rights declarations, public URLs, legal text, pricing,
-availability, family sharing, age ratings, review credentials, release behavior,
-or offer-code terms.
+Use **Generate Settings with OpenAI** before a new app's first release to create
+localized listing fields and safe answer drafts. OpenAI receives bounded excerpts
+from `README.md`, relevant
+root/legal submission and privacy guides (including files such as
+`TripFlowSubmissionAndAutomation.md`), `project.yml`, package-resolution files,
+privacy manifests, and common app manifests. It treats this project text as
+untrusted evidence and returns structured fields only. Descriptions cover
+verified features, audience, value, privacy-relevant behavior, and named
+third-party providers found in that evidence.
+
+The same pass can draft the primary/secondary category, third-party content
+rights, whether the app is free to download, whether a demo account is needed,
+the copyright holder, age-rating answers, and an App Privacy checklist. Saved
+manifest answers always win; generated values fill only empty editor fields and
+never run inside a release action. The publisher can edit all of them before
+saving. OpenAI never invents public URLs, prices,
+credentials, provider capabilities, legal agreements, release behavior, or
+offer-code terms. Copyright input such as `Company Name` is normalized to
+`<current year> Company Name`; an existing leading year is preserved.
+
+Optional map, AI, imported-document, flight, hotel, or other provider content is
+treated as third-party content when the project documentation says the app may
+show or access it. That produces `USES_THIRD_PARTY_CONTENT` even when the feature
+is user-controlled or optional.
 
 Support, marketing, privacy-policy, privacy-choices, and Terms of Use URLs are
 manual fields. Support and privacy-policy URLs are required, and Terms of Use is
@@ -108,6 +150,13 @@ also required for apps with subscriptions. Marketing and privacy-choices URLs
 remain optional. Publish appends the manually supplied Privacy Policy and Terms
 of Use links to every localized description while preserving Apple's 4,000
 character limit; OpenAI does not create or replace those links.
+
+Apple does not expose the App Privacy questionnaire through the public App Store
+Connect API. Development Management therefore generates an editable checklist,
+but it does not scrape the website or falsely attest on the publisher's behalf.
+After the publisher confirms the answers once in App Store Connect, the per-app
+editor can record who confirmed them and when. Release readiness remains blocked
+until that attestation is saved.
 
 If an app doesn't use a local StoreKit configuration, the manifest can contain
 the complete subscription catalog:
@@ -130,6 +179,10 @@ the complete subscription catalog:
         "productID": "com.example.app.premium.monthly",
         "period": "ONE_MONTH",
         "basePrice": "9.90",
+        "territoryPrices": {
+          "ISR": "39.00",
+          "USA": "13.90"
+        },
         "familySharable": true,
         "groupLevel": 1,
         "reviewNote": "Monthly access to all premium features.",
@@ -149,17 +202,22 @@ Supported periods are `ONE_WEEK`, `ONE_MONTH`, `TWO_MONTHS`, `THREE_MONTHS`,
 also accepted. Prices are matched to Apple's price points in `baseTerritory`.
 When all-territory availability is enabled, the publisher applies Apple's
 equalized price point in every available territory.
+Explicit `territoryPrices` override Apple's equalized point for those ISO 3166-1
+alpha-3 territories. Existing matching schedules are reused; a changed active
+territory price is scheduled from the next day because Apple price schedules are
+append-only.
 
-First publication reconciles app information, availability, a free app price
-when explicitly requested, subscription groups and products, current v2
-versioned localizations, paywall review screenshots, prices, and review items.
-When an older app version is already published, those durable resources are
-preserved: Publish handles only the new App Store version metadata, screenshots,
-build upload, attachment, and review submission.
+Every run reconciles app information, availability, a free app price when
+explicitly requested, subscription groups and products, current v2 versioned
+localizations, paywall review screenshots, territory prices, App Store
+screenshots, TestFlight information, and internal testing access. Existing
+matching resources are reused. A published version remains immutable, while a
+new editable version receives the current localized version metadata.
 
-## Publish pipeline
+## Shared release pipeline
 
-**Publish** performs the complete automatable release pipeline in this order:
+**Upload to TestFlight** and **Publish** run the same setup pipeline in this
+order:
 
 1. Discover StoreKit products and deterministic per-app configuration.
 2. Validate every configured public support, marketing, privacy, and terms URL
@@ -173,32 +231,32 @@ build upload, attachment, and review submission.
    pre-action increments the source version during the build. A reused
    TestFlight build is confirmed as fully processed before the App Store version
    is changed.
-6. When an older app version is still in review and the user confirms an
-   update, cancel that review submission only after the replacement archive has
-   succeeded. The canceled editable version record is reused for the newer
-   marketing version, and all submission items are submitted again.
-7. Create or update the App Store version and reconcile its metadata,
-   availability, pricing, subscriptions, and screenshots. When an archive was
-   required, validate and upload its IPA.
-8. Wait for Apple to process the exact archived build and attach it to the exact
+6. Create or update the App Store version and reconcile localized listing text,
+   app categories and declarations, availability, app pricing, subscription
+   groups/products/localizations/prices, and localized screenshots. When an
+   archive was required, validate and upload its IPA.
+7. Wait for Apple to process the exact archived build and attach it to the exact
    archived marketing version.
-9. Add the build to every internal TestFlight group. If the app has no internal
-   group, create an `Internal Testing` group with access to all builds. App Store
-   Connect users still need to be added as testers once; Publish does not invite
-   people or change account roles. Groups with automatic distribution already
-   receive every processed build and are not manually reassigned. For manually
-   managed groups, existing access is confirmed before requesting an assignment.
-10. Upload configured demo videos and documents to App Review, wait for Apple to
-   finish processing each attachment, and submit the complete version.
+8. Reconcile localized TestFlight descriptions, URLs, beta review information,
+   the configured internal group, and internal tester email addresses. Internal
+   testers must already be App Store Connect team members; the run fails clearly
+   rather than attempting to grant account access.
+9. Upload configured App Review demo videos and documents and verify Apple has
+   processed each asset.
 
-**Upload to TestFlight** is a separate action. It archives, validates, uploads,
-waits for processing, and enables the exact build for every internal TestFlight
-group without creating an App Store version or submitting for review. It is
-idempotent: when the exact marketing version and build are already present, it
-only confirms internal-group availability. The action requires a local version
-and build plus a complete App Store Connect API configuration, but it does not
-wait for the full App Store release-readiness snapshot. The API key and existing
-TestFlight build are verified when the upload workflow starts.
+At that boundary **Upload to TestFlight** stops. A hard intent guard prevents
+that action from creating, canceling, or submitting an App Review submission.
+It is idempotent: existing builds, metadata, products, prices, screenshots,
+groups, and tester assignments are reused when they already match.
+
+**Publish** additionally cancels an explicitly confirmed older active review
+only after the replacement archive succeeds (or a matching processed build is
+already available), then continues with the
+review-only tail:
+
+10. Create one submission containing the App Store version, subscription group
+    versions, and subscription versions, then send the complete submission to
+    App Review.
 
 When the managed folder contains a root `project.yml` and the selected container
 is a root-level Xcode project, Development Management regenerates the project
@@ -295,7 +353,13 @@ same IDs.
 
 Apple still requires the initial App Store Connect app record, signed legal
 agreements, banking and tax information for paid content, App Privacy answers,
-any compliance declarations that aren't exposed through the API, and at least
-one eligible App Store Connect user in an internal TestFlight group. Publish
-does not fabricate legal answers, accept agreements, invite users, reply to App
-Review messages, or create missing public support and privacy websites.
+DSA trader status, any compliance declarations that aren't exposed through the
+API, and at least one eligible App Store Connect user for internal testing.
+Apple also requires the first subscription submission to be completed together
+with an app binary on the App Store Connect website; after that first submission,
+Development Management submits versioned subscription and group resources by
+API. Subscriptions inherit the parent app's App Store software tax category by
+default unless the publisher explicitly changes it in App Store Connect.
+Publish does not fabricate legal answers, accept agreements, grant team roles,
+reply to App Review messages, or create missing public support and privacy
+websites.

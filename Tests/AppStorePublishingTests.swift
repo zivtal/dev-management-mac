@@ -26,6 +26,79 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(schema["additionalProperties"] as? Bool, false)
     }
 
+    func testOpenAIComplianceRequestUsesStrictEnumsAndDoesNotStoreProjectData() throws {
+        let body = OpenAIStoreMetadataService.complianceRequestBody(
+            model: "gpt-5.6-luna",
+            prompt: "README excerpt"
+        )
+        XCTAssertEqual(body["store"] as? Bool, false)
+        let text = try XCTUnwrap(body["text"] as? [String: Any])
+        let format = try XCTUnwrap(text["format"] as? [String: Any])
+        XCTAssertEqual(format["strict"] as? Bool, true)
+        let schema = try XCTUnwrap(format["schema"] as? [String: Any])
+        let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+        let rights = try XCTUnwrap(properties["contentRightsDeclaration"] as? [String: Any])
+        XCTAssertEqual(
+            rights["enum"] as? [String],
+            ["DOES_NOT_USE_THIRD_PARTY_CONTENT", "USES_THIRD_PARTY_CONTENT"]
+        )
+        XCTAssertNotNil(properties["ageRating"])
+        XCTAssertNotNil(properties["privacy"])
+        XCTAssertNotNil(properties["copyright"])
+    }
+
+    func testCopyrightAutomaticallyIncludesYearExactlyOnce() {
+        let date = Date(timeIntervalSince1970: 1_767_225_600) // 2026-01-01 UTC
+        XCTAssertEqual(AppStoreCopyrightNormalizer.normalized("Ziv Tal", referenceDate: date), "2026 Ziv Tal")
+        XCTAssertEqual(AppStoreCopyrightNormalizer.normalized("2026 Ziv Tal", referenceDate: date), "2026 Ziv Tal")
+    }
+
+    func testPublishingIntentHardSeparatesTestFlightFromReviewSubmission() {
+        XCTAssertFalse(PublishingIntent.testFlight.submitsForReview)
+        XCTAssertTrue(PublishingIntent.publish.submitsForReview)
+    }
+
+    func testSubscriptionFieldEditorRoundTripsEveryPublishableValue() throws {
+        let definition = AppStoreSubscriptionDefinition(
+            referenceName: "Premium Annual",
+            productID: "com.example.premium.annual",
+            period: "ONE_YEAR",
+            basePrice: "69.90",
+            baseTerritory: "USA",
+            territoryPrices: ["ISR": "199.90"],
+            availableInAllTerritories: true,
+            familySharable: true,
+            groupLevel: 1,
+            reviewNote: "Full premium access.",
+            reviewScreenshot: "Screenshots/paywall.png",
+            localizations: [
+                AppStoreSubscriptionLocalization(
+                    locale: "en-US",
+                    name: "Premium Annual",
+                    description: "Annual premium access."
+                )
+            ]
+        )
+
+        var form = PublishingSubscriptionProductForm(definition)
+        form.territoryPrices.append(PublishingTerritoryPriceForm(territory: "isr", price: "209.90"))
+        let saved = form.definition
+
+        XCTAssertEqual(saved.referenceName, definition.referenceName)
+        XCTAssertEqual(saved.productID, definition.productID)
+        XCTAssertEqual(saved.period, "ONE_YEAR")
+        XCTAssertEqual(saved.basePrice, "69.90")
+        XCTAssertEqual(saved.baseTerritory, "USA")
+        XCTAssertEqual(saved.territoryPrices, ["ISR": "209.90"])
+        XCTAssertEqual(saved.availableInAllTerritories, true)
+        XCTAssertEqual(saved.familySharable, true)
+        XCTAssertEqual(saved.groupLevel, 1)
+        XCTAssertEqual(saved.reviewNote, "Full premium access.")
+        XCTAssertEqual(saved.reviewScreenshot, "Screenshots/paywall.png")
+        XCTAssertEqual(saved.localizations?.first?.locale, "en-US")
+        XCTAssertEqual(saved.localizations?.first?.name, "Premium Annual")
+    }
+
     func testOpenAIResponseDecodesStructuredMetadata() throws {
         let generated = AppStoreMetadata(
             description: "A useful application.",
@@ -91,6 +164,40 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertTrue(policy.contains("explicitly verified"))
         XCTAssertTrue(policy.contains("URLs are manual publishing fields"))
         XCTAssertTrue(policy.contains("Never generate, guess, replace, or return those URLs"))
+    }
+
+    func testOpenAIProjectSummaryIncludesSubmissionGuidesAndDependencyEvidence() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OpenAIProjectSummary-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "Trip README".write(
+            to: root.appendingPathComponent("README.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "Travel; Google Maps is optional; no sign-in required.".write(
+            to: root.appendingPathComponent("TripSubmissionAndAutomation.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let packageDirectory = root
+            .appendingPathComponent("Example.xcodeproj", isDirectory: true)
+            .appendingPathComponent("project.xcworkspace/xcshareddata/swiftpm", isDirectory: true)
+        try FileManager.default.createDirectory(at: packageDirectory, withIntermediateDirectories: true)
+        try #"{"pins":[{"identity":"googlemaps"}]}"#.write(
+            to: packageDirectory.appendingPathComponent("Package.resolved"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let summary = OpenAIStoreMetadataService().projectSummary(for: managedProject(at: root))
+
+        XCTAssertTrue(summary.contains("--- README.md ---"))
+        XCTAssertTrue(summary.contains("--- TripSubmissionAndAutomation.md ---"))
+        XCTAssertTrue(summary.contains("Google Maps is optional"))
+        XCTAssertTrue(summary.contains("Package.resolved"))
+        XCTAssertTrue(summary.contains("googlemaps"))
     }
 
     func testListingDescriptionAppendsManualPrivacyAndTermsLinksWithinLimit() {
@@ -196,6 +303,21 @@ final class AppStorePublishingTests: XCTestCase {
             "APP_APPLE_VISION_PRO"
         )
         XCTAssertNil(AppStorePublishingService.screenshotDisplayType(width: 800, height: 600))
+    }
+
+    func testScreenshotLocaleIsInferredFromLocalizedFolder() {
+        XCTAssertEqual(
+            AppStorePublishingService.screenshotLocale(
+                from: URL(fileURLWithPath: "/AppStore/Screenshots/en-US/APP_IPHONE_67/home.png")
+            ),
+            "en-US"
+        )
+        XCTAssertEqual(
+            AppStorePublishingService.screenshotLocale(
+                from: URL(fileURLWithPath: "/AppStore/Screenshots/he/APP_IPHONE_67/home.png")
+            ),
+            "he"
+        )
     }
 
     func testScreenshotPreparationDetectsCompanionWatchApp() throws {
@@ -341,6 +463,41 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(subscription.availableInAllTerritories, true)
         XCTAssertEqual(subscription.reviewScreenshot, "Screenshots/subscription-review.png")
         XCTAssertEqual(subscription.localizations?.first?.locale, "en-US")
+    }
+
+    func testManifestDecodesTerritoryPricesAndTestFlightAutomation() throws {
+        let data = Data(#"""
+        {
+          "schemaVersion": 1,
+          "publication": {
+            "testFlight": {
+              "groupName": "Internal Testing",
+              "feedbackEmail": "owner@example.com",
+              "internalTesterEmails": ["owner@example.com"]
+            }
+          },
+          "subscriptions": {
+            "groups": [{
+              "referenceName": "Premium",
+              "subscriptions": [{
+                "referenceName": "Monthly",
+                "productID": "com.example.monthly",
+                "period": "ONE_MONTH",
+                "basePrice": "13.90",
+                "baseTerritory": "USA",
+                "territoryPrices": {"ISR": "39.00"}
+              }]
+            }]
+          }
+        }
+        """#.utf8)
+        let manifest = try JSONDecoder().decode(AppStorePublishingManifest.self, from: data)
+        XCTAssertEqual(manifest.publication?.testFlight?.groupName, "Internal Testing")
+        XCTAssertEqual(manifest.publication?.testFlight?.internalTesterEmails, ["owner@example.com"])
+        XCTAssertEqual(
+            manifest.subscriptions?.groups?.first?.subscriptions.first?.territoryPrices?["ISR"],
+            "39.00"
+        )
     }
 
     func testSubscriptionOfferCodeBodiesUseCurrentAppStoreConnectShapes() throws {

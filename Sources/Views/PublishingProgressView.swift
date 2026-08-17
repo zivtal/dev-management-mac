@@ -242,7 +242,7 @@ struct PublishingProgressView: View {
         case .succeeded:
             log.result?.submittedForReview == true
                 ? L10n.text("The build is available in TestFlight and the release was submitted to Apple.")
-                : L10n.text("The build is available to internal TestFlight testers and was not submitted for App Review.")
+                : L10n.text("The complete App Store and TestFlight setup is synchronized, the build is available to internal testers, and nothing was submitted for App Review.")
         case .failed:
             log.failureMessage?.nilIfEmpty
                 ?? L10n.text("Review the issue below, adjust the settings, and try again.")

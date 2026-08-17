@@ -40,7 +40,7 @@ struct PublishingReadinessView: View {
 
             if !report.allowsPublication {
                 HStack {
-                    Text("Resolve the highlighted items before publishing to the App Store. TestFlight upload only requires a valid source build and account.")
+                    Text("Resolve every highlighted item before either release action. Both actions synchronize the complete App Store and TestFlight setup.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
