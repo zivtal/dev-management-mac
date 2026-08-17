@@ -307,8 +307,9 @@ Base-territory controls use Apple's complete live territory catalog. Subscriptio
 defaults also include a Family Sharing switch that updates every product while
 retaining individual product controls. On a first release, Publish shows only the
 TestFlight action until the matching build has finished processing; only then is
-Submit for Review shown. Redeem Codes and live Installation Log panels float above
-ordinary windows while they are open, and the log includes live elapsed runtime.
+Submit for Review shown. Redeem Codes, live Installation Log, and Publishing Log
+panels float above ordinary windows while they are open. Both live logs include
+runtime, copyable command output, and automatic scrolling.
 
 The full archive, metadata, screenshot, TestFlight, review-attachment, and
 submission pipeline is documented in

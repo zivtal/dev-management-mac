@@ -1,6 +1,74 @@
 import AppKit
 import SwiftUI
 
+@MainActor
+final class PublishingLogWindowPresenter {
+    static let shared = PublishingLogWindowPresenter()
+
+    private var windowController: NSWindowController?
+
+    private init() {}
+
+    func show(model: AppModel) {
+        if windowController == nil {
+            let rootView = PublishingLogWindowView()
+                .environmentObject(model)
+            let hostingController = NSHostingController(rootView: rootView)
+            let panel = NSPanel(
+                contentRect: NSRect(x: 0, y: 0, width: 980, height: 720),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .utilityWindow],
+                backing: .buffered,
+                defer: false
+            )
+            panel.title = L10n.text("Publishing Log")
+            panel.contentViewController = hostingController
+            panel.isFloatingPanel = true
+            panel.level = .floating
+            panel.hidesOnDeactivate = false
+            panel.isReleasedWhenClosed = false
+            panel.minSize = NSSize(width: 720, height: 520)
+            panel.center()
+            windowController = NSWindowController(window: panel)
+        }
+
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        windowController?.showWindow(nil)
+        windowController?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    func close() {
+        windowController?.close()
+    }
+}
+
+private struct PublishingLogWindowView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        if let log = model.publishingLog {
+            PublishingProgressView(
+                log: log,
+                progress: model.publishingProgress,
+                onCancel: model.cancelPublishing,
+                onBackToReview: {
+                    let projectID = log.projectID
+                    model.presentedError = nil
+                    PublishingLogWindowPresenter.shared.close()
+                    PublishingWindowPresenter.shared.show(model: model, projectID: projectID)
+                },
+                onDone: PublishingLogWindowPresenter.shared.close
+            )
+        } else {
+            ContentUnavailableView(
+                "No publishing log",
+                systemImage: "doc.text.magnifyingglass",
+                description: Text("Start an App Store publication or TestFlight upload to see its live output here.")
+            )
+            .frame(minWidth: 720, minHeight: 520)
+        }
+    }
+}
+
 struct PublishingProgressView: View {
     let log: PublishingLogSession
     let progress: PublishingProgress?
@@ -8,7 +76,7 @@ struct PublishingProgressView: View {
     let onBackToReview: () -> Void
     let onDone: () -> Void
 
-    @State private var showsTechnicalDetails = false
+    @State private var showsTechnicalDetails = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -160,12 +228,20 @@ struct PublishingProgressView: View {
 
     private var technicalDetails: some View {
         DisclosureGroup("Technical details", isExpanded: $showsTechnicalDetails) {
-            ScrollView {
-                Text(log.output.isEmpty ? L10n.text("Waiting for the first update…") : log.output)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .padding(12)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Text(log.output.isEmpty ? L10n.text("Waiting for the first update…") : log.output)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .padding(12)
+
+                    Color.clear
+                        .frame(height: 1)
+                        .id("publishing-log-bottom")
+                }
+                .onAppear { scrollToBottom(proxy) }
+                .onChange(of: log.output) { _, _ in scrollToBottom(proxy) }
             }
             .frame(minHeight: 110, maxHeight: 230)
             .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 9))
@@ -184,6 +260,11 @@ struct PublishingProgressView: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
+            Button("Copy Log") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(log.output, forType: .string)
+            }
+            .disabled(log.output.isEmpty)
             switch log.state {
             case .inProgress:
                 Button("Cancel Publication", role: .destructive, action: onCancel)
@@ -296,7 +377,13 @@ struct PublishingProgressView: View {
         formatter.allowedUnits = [.hour, .minute, .second]
         formatter.unitsStyle = .abbreviated
         formatter.zeroFormattingBehavior = [.pad]
-        return L10n.format("Elapsed %@", formatter.string(from: log.startedAt, to: end) ?? "—")
+        return L10n.format("Runtime %@", formatter.string(from: log.startedAt, to: end) ?? "—")
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        DispatchQueue.main.async {
+            proxy.scrollTo("publishing-log-bottom", anchor: .bottom)
+        }
     }
 
     private func visualState(for stage: PublishingJourneyStage) -> StageVisualState {

@@ -311,6 +311,9 @@ struct PublishingSettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
+                        Button("View Log") {
+                            PublishingLogWindowPresenter.shared.show(model: model)
+                        }
                         if log.state == .inProgress {
                             Button("Cancel Publication", role: .destructive) {
                                 model.cancelPublishing()

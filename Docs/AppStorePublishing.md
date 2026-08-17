@@ -324,13 +324,14 @@ a duplicate submission. A matching build that is only in TestFlight is not
 blocked: Publish attaches it to the App Store version and submits it without
 another archive or upload.
 
-Publish stays open after confirmation and presents five understandable stages:
-Prepare, Build, App Store setup, TestFlight, and Review. The current task,
-overall completion, elapsed time, and friendly explanation remain visible.
-Technical command output is available on demand. The same determinate progress
-appears in the menu bar, where **View** reopens the full release window. A failed
-run keeps its exact failure step and offers a direct return to the readiness
-screen; a successful run shows the archived version, build, and destination.
+After confirmation, Publish closes and a dedicated always-on-top Publishing Log
+opens with five understandable stages: Prepare, Build, App Store setup,
+TestFlight, and Review. The current task, overall completion, runtime, friendly
+explanation, and automatically scrolling command output remain visible. The same
+determinate progress appears in the menu bar, where **View** reopens the log. A
+failed run keeps its exact failure step and offers a direct return to the
+readiness screen; a successful run shows the archived version, build, and
+destination.
 
 Review attachments can be entered in **Per-App Configuration → App Review** or
 placed under `AppStore/ReviewAttachments` in the managed project. Supported

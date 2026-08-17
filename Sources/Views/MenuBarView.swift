@@ -134,10 +134,7 @@ struct MenuBarView: View {
                     menuWindow?.orderOut(nil)
                     Task { @MainActor in
                         await Task.yield()
-                        PublishingWindowPresenter.shared.show(
-                            model: model,
-                            projectID: progress.projectID
-                        )
+                        PublishingLogWindowPresenter.shared.show(model: model)
                     }
                 }
                 .controlSize(.small)

@@ -153,6 +153,7 @@ private struct PublishingWindowView: View {
     @State private var configurationEditorStartsWithAI = false
     @State private var configurationEditorInitialTab = PublishingConfigurationTab.listing
     @State private var configurationEditorHighlightsMissingFields = false
+    @State private var configurationSaveConfirmation: String?
     @State private var subscriptionPriceDrafts: [String: String] = [:]
     @State private var savedSubscriptionPrices: [String: String] = [:]
     @State private var subscriptionPriceSaveStatus: SubscriptionPriceSaveStatus?
@@ -226,6 +227,14 @@ private struct PublishingWindowView: View {
                     .frame(maxWidth: .infinity)
 
                     if selectedWorkspace == .overview {
+                        if let configurationSaveConfirmation {
+                            Label(configurationSaveConfirmation, systemImage: "checkmark.circle.fill")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.green)
+                                .padding(10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                        }
                         PublishingReadinessView(
                             report: releaseReadinessReport(for: project),
                             target: L10n.format(
@@ -234,6 +243,7 @@ private struct PublishingWindowView: View {
                                 project.buildNumber ?? "—"
                             ),
                             onEditApp: {
+                                configurationSaveConfirmation = nil
                                 configurationEditorStartsWithAI = false
                                 configurationEditorInitialTab = firstConfigurationTabNeedingAttention
                                 configurationEditorHighlightsMissingFields = true
@@ -261,6 +271,9 @@ private struct PublishingWindowView: View {
                                 configurationRevision += 1
                                 configurationEditorStartsWithAI = false
                                 configurationEditorHighlightsMissingFields = false
+                                configurationSaveConfirmation = L10n.text(
+                                    "Publishing configuration saved. Release readiness was refreshed."
+                                )
                                 selectedWorkspace = .overview
                             }
                         )
@@ -275,7 +288,11 @@ private struct PublishingWindowView: View {
         .onAppear {
             if let log = model.publishingLog, log.state == .inProgress {
                 selectedProjectID = log.projectID
-                showsPublicationStatus = true
+                Task { @MainActor in
+                    await Task.yield()
+                    PublishingLogWindowPresenter.shared.show(model: model)
+                    PublishingWindowPresenter.shared.close()
+                }
             }
             if selectedProject == nil {
                 selectedProjectID = eligibleProjects.first?.id
@@ -312,7 +329,8 @@ private struct PublishingWindowView: View {
                     existingConfiguration: currentAppStoreSnapshot
                 )
                 if model.publishingProgress != nil {
-                    showsPublicationStatus = true
+                    PublishingLogWindowPresenter.shared.show(model: model)
+                    PublishingWindowPresenter.shared.close()
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -418,6 +436,7 @@ private struct PublishingWindowView: View {
             LabeledContent("Version", value: project.marketingVersion ?? L10n.text("Unknown"))
             LabeledContent("Build", value: project.buildNumber ?? L10n.text("Unknown"))
             Button {
+                configurationSaveConfirmation = nil
                 configurationEditorStartsWithAI = false
                 configurationEditorInitialTab = .listing
                 configurationEditorHighlightsMissingFields = false
@@ -426,6 +445,7 @@ private struct PublishingWindowView: View {
                 Label("Edit Full Publishing Configuration…", systemImage: "doc.badge.gearshape")
             }
             Button {
+                configurationSaveConfirmation = nil
                 configurationEditorStartsWithAI = true
                 configurationEditorInitialTab = .listing
                 configurationEditorHighlightsMissingFields = false
@@ -1966,7 +1986,10 @@ private struct PublishingWindowView: View {
                 state: .blocked
             )
         }
-        guard let privacyDraft = preview.catalog.compliance?.privacyDraft else {
+        let privacyState = AppStorePrivacyConfigurationPolicy.state(
+            for: preview.catalog.compliance
+        )
+        guard privacyState != .missingDraft else {
             return PublishingReadinessItem(
                 id: "compliance",
                 title: L10n.text("App declarations are incomplete"),
@@ -1974,12 +1997,7 @@ private struct PublishingWindowView: View {
                 state: .blocked
             )
         }
-        let privacyAttestation = preview.catalog.compliance?.privacyAttestation
-        let wasPublishedAutomatically = privacyAttestation?.publishedAt?.nilIfEmpty != nil
-        let wasConfirmedManually = privacyAttestation?.automaticPublishingAuthorizedAt == nil
-            && privacyAttestation?.confirmedBy?.nilIfEmpty != nil
-            && privacyAttestation?.confirmedAt?.nilIfEmpty != nil
-        if wasPublishedAutomatically || wasConfirmedManually {
+        if privacyState == .confirmed {
             return PublishingReadinessItem(
                 id: "compliance",
                 title: L10n.text("App declarations are ready"),
@@ -1987,7 +2005,7 @@ private struct PublishingWindowView: View {
                 state: .ready
             )
         }
-        guard privacyAttestation?.automaticPublishingAuthorizedAt?.nilIfEmpty != nil else {
+        guard privacyState != .needsAutomaticAuthorization else {
             return PublishingReadinessItem(
                 id: "compliance",
                 title: L10n.text("App declarations need attention"),
@@ -1995,7 +2013,7 @@ private struct PublishingWindowView: View {
                 state: .blocked
             )
         }
-        guard !privacyDraft.collectsData else {
+        guard privacyState != .needsManualConfirmation else {
             return PublishingReadinessItem(
                 id: "compliance",
                 title: L10n.text("App Privacy needs attention"),
@@ -2112,6 +2130,11 @@ private struct PublishingWindowView: View {
             || application.contentRightsDeclaration?.nilIfEmpty == nil
             || application.isFree == nil
             || application.ageRating?.isEmpty != false {
+            return .appSetup
+        }
+        if !AppStorePrivacyConfigurationPolicy.state(
+            for: localPublishingPreview?.catalog.compliance
+        ).allowsSaving {
             return .appSetup
         }
         if let selectedProject,
@@ -2618,7 +2641,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button("Cancel") { onCancel() }
-                Button("Validate and Save") { save() }
+                Button("Validate, Save, and Return") { save() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(isLoading)
@@ -2841,6 +2864,11 @@ private struct PerAppPublishingConfigurationEditor: View {
                     }
                     TextField("Authorized by", text: $privacyConfirmedBy)
                         .disabled(!privacyConfirmedInAppStoreConnect && !privacyConfirmedManually)
+                    if showsRequiredFieldErrors, let privacyEditorValidationMessage {
+                        Label(privacyEditorValidationMessage, systemImage: "exclamationmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                     if privacyConfirmedInAppStoreConnect || privacyConfirmedManually,
                        !privacyConfirmedAt.isEmpty {
                         LabeledContent("Authorized at") {
@@ -3028,6 +3056,21 @@ private struct PerAppPublishingConfigurationEditor: View {
         value.nilIfEmpty == nil
             ? L10n.text("This field is required for App Review.")
             : nil
+    }
+
+    private var privacyEditorValidationMessage: String? {
+        let isConfirmed = privacyCollectsData
+            ? privacyConfirmedManually
+            : privacyConfirmedInAppStoreConnect || privacyConfirmedManually
+        guard isConfirmed else {
+            return privacyCollectsData
+                ? L10n.text("Confirm that the collected-data App Privacy details were published in App Store Connect.")
+                : L10n.text("Review the App Privacy draft and authorize automatic publishing.")
+        }
+        guard privacyConfirmedBy.nilIfEmpty != nil else {
+            return L10n.text("Enter who reviewed and authorized the App Privacy answers.")
+        }
+        return nil
     }
 
     private var configurationURL: URL {
@@ -3585,14 +3628,24 @@ private struct PerAppPublishingConfigurationEditor: View {
             selectedTab = .listing
             throw ConfigurationEditorError.invalid(L10n.text("Copyright owner is required."))
         }
-        if let attestation = manifest.compliance?.privacyAttestation {
-            guard attestation.confirmedBy?.nilIfEmpty != nil,
-                  attestation.confirmedAt?.nilIfEmpty != nil else {
-                selectedTab = .appSetup
-                throw ConfigurationEditorError.invalid(
-                    L10n.text("Enter who confirmed the App Privacy answers before saving the attestation.")
-                )
-            }
+        switch AppStorePrivacyConfigurationPolicy.state(for: manifest.compliance) {
+        case .missingDraft:
+            selectedTab = .appSetup
+            throw ConfigurationEditorError.invalid(
+                L10n.text("Review the App Privacy draft before saving the publishing configuration.")
+            )
+        case .needsAutomaticAuthorization:
+            selectedTab = .appSetup
+            throw ConfigurationEditorError.invalid(
+                L10n.text("Review the App Privacy draft, authorize automatic publishing, and enter who authorized it.")
+            )
+        case .needsManualConfirmation:
+            selectedTab = .appSetup
+            throw ConfigurationEditorError.invalid(
+                L10n.text("Confirm that the collected-data App Privacy details were published in App Store Connect and enter who confirmed them.")
+            )
+        case .automaticallyAuthorized, .confirmed:
+            break
         }
         let review = manifest.publication?.review
         let contact = [

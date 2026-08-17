@@ -135,6 +135,45 @@ enum AppStoreReleaseActionPolicy {
     }
 }
 
+enum AppStorePrivacyConfigurationState: Equatable {
+    case missingDraft
+    case needsAutomaticAuthorization
+    case needsManualConfirmation
+    case automaticallyAuthorized
+    case confirmed
+
+    var allowsSaving: Bool {
+        self == .automaticallyAuthorized || self == .confirmed
+    }
+}
+
+enum AppStorePrivacyConfigurationPolicy {
+    static func state(
+        for compliance: AppStoreComplianceConfiguration?
+    ) -> AppStorePrivacyConfigurationState {
+        guard let draft = compliance?.privacyDraft else { return .missingDraft }
+        guard let attestation = compliance?.privacyAttestation else {
+            return draft.collectsData
+                ? .needsManualConfirmation
+                : .needsAutomaticAuthorization
+        }
+        if attestation.publishedAt?.nilIfEmpty != nil {
+            return .confirmed
+        }
+        let hasConfirmation = attestation.confirmedBy?.nilIfEmpty != nil
+            && attestation.confirmedAt?.nilIfEmpty != nil
+        if draft.collectsData {
+            return hasConfirmation && attestation.automaticPublishingAuthorizedAt?.nilIfEmpty == nil
+                ? .confirmed
+                : .needsManualConfirmation
+        }
+        guard hasConfirmation else { return .needsAutomaticAuthorization }
+        return attestation.automaticPublishingAuthorizedAt?.nilIfEmpty == nil
+            ? .confirmed
+            : .automaticallyAuthorized
+    }
+}
+
 struct AppStoreConnectPublicationFallback: Equatable {
     let copyright: String?
     let supportURL: String?

@@ -109,6 +109,72 @@ final class PublishingExperienceTests: XCTestCase {
         ))
     }
 
+    func testPrivacyConfigurationRequiresTheAppropriateReviewBeforeSaving() {
+        XCTAssertEqual(
+            AppStorePrivacyConfigurationPolicy.state(for: nil),
+            .missingDraft
+        )
+        XCTAssertEqual(
+            AppStorePrivacyConfigurationPolicy.state(for: AppStoreComplianceConfiguration(
+                privacyDraft: AppStorePrivacyDraft(collectsData: false, dataTypes: [], notes: []),
+                privacyAttestation: nil,
+                evidence: nil,
+                confidence: nil
+            )),
+            .needsAutomaticAuthorization
+        )
+        XCTAssertEqual(
+            AppStorePrivacyConfigurationPolicy.state(for: AppStoreComplianceConfiguration(
+                privacyDraft: AppStorePrivacyDraft(
+                    collectsData: true,
+                    dataTypes: ["Identifiers"],
+                    notes: []
+                ),
+                privacyAttestation: nil,
+                evidence: nil,
+                confidence: nil
+            )),
+            .needsManualConfirmation
+        )
+    }
+
+    func testPrivacyConfigurationAcceptsAutomaticOrManualConfirmation() {
+        let automatic = AppStorePrivacyAttestation(
+            confirmedBy: "Publisher",
+            confirmedAt: "2026-08-17T13:00:00Z",
+            projectFingerprint: nil,
+            automaticPublishingAuthorizedAt: "2026-08-17T13:00:00Z"
+        )
+        XCTAssertEqual(
+            AppStorePrivacyConfigurationPolicy.state(for: AppStoreComplianceConfiguration(
+                privacyDraft: AppStorePrivacyDraft(collectsData: false, dataTypes: [], notes: []),
+                privacyAttestation: automatic,
+                evidence: nil,
+                confidence: nil
+            )),
+            .automaticallyAuthorized
+        )
+
+        let manual = AppStorePrivacyAttestation(
+            confirmedBy: "Publisher",
+            confirmedAt: "2026-08-17T13:00:00Z",
+            projectFingerprint: nil
+        )
+        XCTAssertEqual(
+            AppStorePrivacyConfigurationPolicy.state(for: AppStoreComplianceConfiguration(
+                privacyDraft: AppStorePrivacyDraft(
+                    collectsData: true,
+                    dataTypes: ["Identifiers"],
+                    notes: []
+                ),
+                privacyAttestation: manual,
+                evidence: nil,
+                confidence: nil
+            )),
+            .confirmed
+        )
+    }
+
     func testCustomOfferCodeBuildsAppleRedemptionURL() throws {
         let url = try XCTUnwrap(SubscriptionOfferCodeRedemption.url(
             appID: "1234567890",
