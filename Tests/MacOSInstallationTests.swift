@@ -34,6 +34,10 @@ final class MacOSInstallationTests: XCTestCase {
         XCTAssertFalse(arguments.contains(where: { $0.contains("platform=iOS") }))
         XCTAssertTrue(arguments.contains("DEVELOPMENT_TEAM=TEAM123"))
         XCTAssertTrue(arguments.contains("/tmp/MacDerivedData"))
+        XCTAssertTrue(arguments.contains(
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) "
+                + InstallationService.managedInstallCompilationCondition
+        ))
     }
 
     func testMacOSPlatformAndDMGPathSurvivePersistence() throws {

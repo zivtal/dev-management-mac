@@ -58,6 +58,19 @@ final class DirectXcodeInstallationTests: XCTestCase {
         XCTAssertFalse(arguments.contains(where: { $0.hasPrefix("PROVISIONING_PROFILE") }))
     }
 
+    func testDirectIOSBuildIdentifiesManagedInstallToSwiftTargets() {
+        let arguments = InstallationService.xcodeArguments(
+            project: makeProject(),
+            device: makeDevice(),
+            derivedDataURL: URL(fileURLWithPath: "/tmp/DerivedData")
+        )
+
+        XCTAssertTrue(arguments.contains(
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) "
+                + InstallationService.managedInstallCompilationCondition
+        ))
+    }
+
     func testSigningTeamPersistsWithManagedProject() throws {
         var project = makeProject()
         project.signingTeamID = "52HV33827A"

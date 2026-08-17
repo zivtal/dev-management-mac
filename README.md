@@ -369,9 +369,12 @@ selected project/workspace, scheme, configuration, and device, Development Manag
    an explicit per-application selection before the build starts.
 6. Resolves the built application with `xcodebuild -showBuildSettings -json`,
    with a Derived Data scan as fallback.
-7. Runs `xcrun devicectl device install app --device <device-udid>
+7. Defines the `DEVELOPMENT_MANAGEMENT_MANAGED_INSTALL` Swift compilation
+   condition so an application can recognize this local managed build without
+   affecting its ordinary Xcode, archive, or App Store builds.
+8. Runs `xcrun devicectl device install app --device <device-udid>
    --timeout 180 <built-app>`.
-8. Removes the temporary build directory.
+9. Removes the temporary build directory.
 
 The build uses the source tree's current contents and the developer account and
 signing configuration available to Xcode.
@@ -404,6 +407,10 @@ Script contract:
 - Working directory: the selected project folder.
 - Environment variable: `IOS_DEVICE_UDID`, containing the target device UDID.
 - For a macOS target, `MACOS_INSTALL_TARGET=local` is supplied instead.
+- `DEVELOPMENT_MANAGEMENT_MANAGED_INSTALL=1` identifies both iOS and macOS
+  script executions as local managed installs. A project may translate it into
+  a build setting or compilation condition when it needs build-specific local
+  behavior.
 - Standard output and standard error are merged into the activity log and live
   progress display.
 - Exit status `0` means the complete build-and-install operation succeeded.

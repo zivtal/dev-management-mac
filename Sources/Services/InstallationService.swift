@@ -134,6 +134,11 @@ enum InstallationServiceError: LocalizedError {
 final class InstallationService {
     typealias EventHandler = @Sendable (InstallationEvent) -> Void
 
+    static let managedInstallCompilationCondition =
+        "DEVELOPMENT_MANAGEMENT_MANAGED_INSTALL"
+    static let managedInstallEnvironmentVariable =
+        "DEVELOPMENT_MANAGEMENT_MANAGED_INSTALL"
+
     private let processRunner: ProcessRunner
     private let fileManager: FileManager
     private let developerTeamService: DeveloperTeamService
@@ -201,7 +206,10 @@ final class InstallationService {
             executable: URL(fileURLWithPath: "/bin/bash"),
             arguments: [scriptPath],
             workingDirectory: project.folderURL,
-            additionalEnvironment: ["IOS_DEVICE_UDID": device.udid],
+            additionalEnvironment: [
+                "IOS_DEVICE_UDID": device.udid,
+                Self.managedInstallEnvironmentVariable: "1"
+            ],
             onOutput: { text in
                 if text.localizedCaseInsensitiveContains("installing") {
                     eventHandler(.phase(.installing))
@@ -227,7 +235,10 @@ final class InstallationService {
             executable: URL(fileURLWithPath: "/bin/bash"),
             arguments: [scriptPath],
             workingDirectory: project.folderURL,
-            additionalEnvironment: ["MACOS_INSTALL_TARGET": "local"],
+            additionalEnvironment: [
+                "MACOS_INSTALL_TARGET": "local",
+                Self.managedInstallEnvironmentVariable: "1"
+            ],
             onOutput: { text in
                 if text.localizedCaseInsensitiveContains("installing") {
                     eventHandler(.phase(.installing))
@@ -602,7 +613,8 @@ final class InstallationService {
             "-configuration", project.configuration,
             "-destination", "platform=iOS,id=\(device.udid)",
             "-destination-timeout", "45",
-            "-derivedDataPath", derivedDataURL.path
+            "-derivedDataPath", derivedDataURL.path,
+            managedInstallSwiftConditionArgument
         ]
         if let teamID = project.signingTeamID?.trimmingCharacters(in: .whitespacesAndNewlines),
            !teamID.isEmpty {
@@ -625,7 +637,8 @@ final class InstallationService {
             "-scheme", project.scheme,
             "-configuration", project.configuration,
             "-destination", "generic/platform=macOS",
-            "-derivedDataPath", derivedDataURL.path
+            "-derivedDataPath", derivedDataURL.path,
+            managedInstallSwiftConditionArgument
         ]
         if let teamID = project.signingTeamID?.trimmingCharacters(in: .whitespacesAndNewlines),
            !teamID.isEmpty {
@@ -637,6 +650,11 @@ final class InstallationService {
             ])
         }
         return arguments
+    }
+
+    private static var managedInstallSwiftConditionArgument: String {
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) "
+            + managedInstallCompilationCondition
     }
 
     private func locateBuiltApplication(
