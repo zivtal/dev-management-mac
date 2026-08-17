@@ -220,7 +220,9 @@ explicitly requested, subscription groups and products, current v2 versioned
 localizations, paywall review screenshots, territory prices, App Store
 screenshots, TestFlight information, and internal testing access. Existing
 matching resources are reused. A published version remains immutable, while a
-new editable version receives the current localized version metadata.
+new editable version receives the current localized version metadata. Listing,
+subscription-group, and subscription-product locales are normalized to App Store
+Connect's supported identifiers, including `he-IL` to `he`, before reconciliation.
 
 ## Shared release pipeline
 

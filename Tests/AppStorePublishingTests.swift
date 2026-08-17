@@ -680,6 +680,35 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertFalse(localizations.contains { $0.locale == "English" })
     }
 
+    func testSubscriptionLocalizationsUseSupportedAppStoreLocaleCodes() {
+        let localizations = AppStoreConnectService.normalizedSubscriptionLocalizations([
+            AppStoreSubscriptionLocalization(
+                locale: "he-IL",
+                name: "פרימיום",
+                description: "גישה לכל התכונות."
+            ),
+            AppStoreSubscriptionLocalization(
+                locale: "Hebrew",
+                name: "Duplicate Hebrew",
+                description: nil
+            ),
+            AppStoreSubscriptionLocalization(
+                locale: "en_US",
+                name: "Premium",
+                description: "Access to every feature."
+            ),
+            AppStoreSubscriptionLocalization(
+                locale: "NotALocale",
+                name: "Unsupported",
+                description: nil
+            )
+        ])
+
+        XCTAssertEqual(localizations.map(\.locale), ["he", "en-US"])
+        XCTAssertEqual(localizations.first?.name, "פרימיום")
+        XCTAssertFalse(localizations.contains { $0.name == "Unsupported" })
+    }
+
     func testScreenshotDimensionsMapToAppStoreDisplayTypes() {
         XCTAssertEqual(
             AppStorePublishingService.screenshotDisplayType(width: 1_320, height: 2_868),

@@ -2721,10 +2721,11 @@ final class AppStoreConnectService {
             path: "/v1/subscriptionGroupVersions/\(versionID)/localizations",
             query: ["limit": "50"]
         )
-        for localization in localizations {
+        for localization in Self.normalizedSubscriptionLocalizations(localizations) {
             let match = existing.first(where: {
                 let attributes = $0["attributes"] as? [String: Any]
-                return attributes?["locale"] as? String == localization.locale
+                guard let locale = attributes?["locale"] as? String else { return false }
+                return AppStoreLocale.canonicalIdentifier(locale) == localization.locale
             })
             var attributes: [String: Any] = [
                 "locale": localization.locale,
@@ -2776,10 +2777,11 @@ final class AppStoreConnectService {
             path: "/v1/subscriptionVersions/\(versionID)/localizations",
             query: ["limit": "50"]
         )
-        for localization in localizations {
+        for localization in Self.normalizedSubscriptionLocalizations(localizations) {
             let match = existing.first(where: {
                 let attributes = $0["attributes"] as? [String: Any]
-                return attributes?["locale"] as? String == localization.locale
+                guard let locale = attributes?["locale"] as? String else { return false }
+                return AppStoreLocale.canonicalIdentifier(locale) == localization.locale
             })
             var attributes: [String: Any] = [
                 "locale": localization.locale,
@@ -2817,6 +2819,21 @@ final class AppStoreConnectService {
                     ]
                 )
             }
+        }
+    }
+
+    static func normalizedSubscriptionLocalizations(
+        _ localizations: [AppStoreSubscriptionLocalization]
+    ) -> [AppStoreSubscriptionLocalization] {
+        var seenLocales: Set<String> = []
+        return localizations.compactMap { localization in
+            guard let locale = AppStoreLocale.canonicalIdentifier(localization.locale),
+                  seenLocales.insert(locale.lowercased()).inserted else {
+                return nil
+            }
+            var normalized = localization
+            normalized.locale = locale
+            return normalized
         }
     }
 
