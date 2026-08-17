@@ -101,6 +101,7 @@ struct AppStoreConnectPublication: Sendable {
     let localizationID: String
     let localizationIDsByLocale: [String: String]
     let isVersionOnlyUpdate: Bool
+    let preservedLockedAppInformation: Bool
 }
 
 enum AppStoreConnectError: LocalizedError {
@@ -737,6 +738,7 @@ final class AppStoreConnectService {
     func preparePublication(
         bundleIdentifier: String,
         version: String,
+        intent: PublishingIntent,
         locale: String,
         metadata: AppStoreMetadata,
         localizedMetadata: [AppStoreLocalizedMetadata],
@@ -751,7 +753,8 @@ final class AppStoreConnectService {
         licenseAgreementText: String?,
         review: AppStoreReviewConfiguration,
         releaseAutomatically: Bool,
-        reusableVersionID: String? = nil
+        reusableVersionID: String? = nil,
+        onOutput: @escaping @Sendable (String) -> Void
     ) async throws -> AppStoreConnectPublication {
         let appID = try await findApplication(bundleIdentifier: bundleIdentifier)
         let isVersionOnlyUpdate = try await hasPublishedVersion(appID: appID, otherThan: version)
@@ -779,6 +782,7 @@ final class AppStoreConnectService {
         }
         var primaryLocalizationID: String?
         var localizationIDsByLocale: [String: String] = [:]
+        var preservedLockedAppInformation = false
         for listing in orderedListings {
             let localizationID = try await findOrCreateLocalization(
                 versionID: versionID,
@@ -817,20 +821,35 @@ final class AppStoreConnectService {
                     includesReleaseNotes: false
                 )
             }
-            try await configureLocalizedAppInformation(
-                appID: appID,
-                locale: listing.locale,
-                appName: listing.appName.nilIfEmpty ?? appName,
-                subtitle: listing.subtitle.nilIfEmpty ?? subtitle ?? metadata.subtitle,
-                privacyPolicyURL: privacyPolicyURL,
-                privacyChoicesURL: privacyChoicesURL
-            )
+            if !preservedLockedAppInformation {
+                do {
+                    try await configureLocalizedAppInformation(
+                        appID: appID,
+                        locale: listing.locale,
+                        appName: listing.appName.nilIfEmpty ?? appName,
+                        subtitle: listing.subtitle.nilIfEmpty ?? subtitle ?? metadata.subtitle,
+                        privacyPolicyURL: privacyPolicyURL,
+                        privacyChoicesURL: privacyChoicesURL
+                    )
+                } catch AppStoreConnectError.requestFailed(let status, _)
+                    where intent.preservesLockedAppInformation(forHTTPStatus: status) {
+                    preservedLockedAppInformation = true
+                    onOutput(L10n.text("App Store Connect has locked app-level information in its current state; keeping the existing name, subtitle, privacy URLs, and license agreement for this TestFlight upload.\n"))
+                }
+            }
         }
         guard let localizationID = primaryLocalizationID else {
             throw AppStoreConnectError.missingIdentifier("App Store version localization")
         }
-        if let licenseAgreementText = licenseAgreementText?.nilIfEmpty {
-            try await configureLicenseAgreement(appID: appID, agreementText: licenseAgreementText)
+        if let licenseAgreementText = licenseAgreementText?.nilIfEmpty,
+           !preservedLockedAppInformation {
+            do {
+                try await configureLicenseAgreement(appID: appID, agreementText: licenseAgreementText)
+            } catch AppStoreConnectError.requestFailed(let status, _)
+                where intent.preservesLockedAppInformation(forHTTPStatus: status) {
+                preservedLockedAppInformation = true
+                onOutput(L10n.text("App Store Connect has locked app-level information in its current state; keeping the existing name, subtitle, privacy URLs, and license agreement for this TestFlight upload.\n"))
+            }
         }
         try await configureReviewDetails(versionID: versionID, review: review)
         return AppStoreConnectPublication(
@@ -838,7 +857,8 @@ final class AppStoreConnectService {
             versionID: versionID,
             localizationID: localizationID,
             localizationIDsByLocale: localizationIDsByLocale,
-            isVersionOnlyUpdate: isVersionOnlyUpdate
+            isVersionOnlyUpdate: isVersionOnlyUpdate,
+            preservedLockedAppInformation: preservedLockedAppInformation
         )
     }
 

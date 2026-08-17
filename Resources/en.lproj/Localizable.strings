@@ -293,6 +293,9 @@
 "Prepared %d App Store screenshot(s).\n" = "Prepared %d App Store screenshot(s).\n";
 "Finding the application and editable version in App Store Connect…\n" = "Finding the application and editable version in App Store Connect…\n";
 "App Store metadata updated.\n" = "App Store metadata updated.\n";
+"Editable App Store version metadata updated; locked app-level information was preserved.\n" = "Editable App Store version metadata updated; locked app-level information was preserved.\n";
+"App Store Connect has locked app-level information in its current state; keeping the existing name, subtitle, privacy URLs, and license agreement for this TestFlight upload.\n" = "App Store Connect has locked app-level information in its current state; keeping the existing name, subtitle, privacy URLs, and license agreement for this TestFlight upload.\n";
+"App Store Connect has locked app-level declarations in its current state; keeping the existing categories, rights, age rating, price, and availability for this TestFlight upload.\n" = "App Store Connect has locked app-level declarations in its current state; keeping the existing categories, rights, age rating, price, and availability for this TestFlight upload.\n";
 "The processed build is attached to the App Store version.\n" = "The processed build is attached to the App Store version.\n";
 "The App Store version was submitted for review.\n" = "The App Store version was submitted for review.\n";
 "Found %d valid screenshot(s) in the project.\n" = "Found %d valid screenshot(s) in the project.\n";

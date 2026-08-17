@@ -235,6 +235,12 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertTrue(PublishingIntent.publish.submitsForReview)
     }
 
+    func testOnlyTestFlightPreservesAppInformationLockedByCurrentState() {
+        XCTAssertTrue(PublishingIntent.testFlight.preservesLockedAppInformation(forHTTPStatus: 409))
+        XCTAssertFalse(PublishingIntent.testFlight.preservesLockedAppInformation(forHTTPStatus: 422))
+        XCTAssertFalse(PublishingIntent.publish.preservesLockedAppInformation(forHTTPStatus: 409))
+    }
+
     func testSubscriptionFieldEditorRoundTripsEveryPublishableValue() throws {
         let definition = AppStoreSubscriptionDefinition(
             referenceName: "Premium Annual",

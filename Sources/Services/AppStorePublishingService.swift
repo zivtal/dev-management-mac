@@ -354,6 +354,7 @@ final class AppStorePublishingService {
         let publication = try await appStoreConnect.preparePublication(
             bundleIdentifier: bundleIdentifier,
             version: targetVersion,
+            intent: intent,
             locale: configuration.locale,
             metadata: metadata,
             localizedMetadata: localizedMetadata,
@@ -368,9 +369,12 @@ final class AppStorePublishingService {
             licenseAgreementText: configuration.licenseAgreementText,
             review: configuration.review,
             releaseAutomatically: configuration.releaseAutomatically,
-            reusableVersionID: reusableVersionID
+            reusableVersionID: reusableVersionID,
+            onOutput: { eventHandler(.output($0)) }
         )
-        eventHandler(.output(L10n.text("App Store metadata updated.\n")))
+        eventHandler(.output(L10n.text(publication.preservedLockedAppInformation
+            ? "Editable App Store version metadata updated; locked app-level information was preserved.\n"
+            : "App Store metadata updated.\n")))
 
         eventHandler(.phase(.configuringTestFlight))
         try await appStoreConnect.configureTestFlightInformation(
@@ -383,11 +387,20 @@ final class AppStorePublishingService {
             onOutput: { eventHandler(.output($0)) }
         )
 
-        try await appStoreConnect.configureFirstPublication(
-            appID: publication.appID,
-            configuration: applicationConfiguration,
-            onOutput: { eventHandler(.output($0)) }
-        )
+        if publication.preservedLockedAppInformation {
+            eventHandler(.output(L10n.text("App Store Connect has locked app-level declarations in its current state; keeping the existing categories, rights, age rating, price, and availability for this TestFlight upload.\n")))
+        } else {
+            do {
+                try await appStoreConnect.configureFirstPublication(
+                    appID: publication.appID,
+                    configuration: applicationConfiguration,
+                    onOutput: { eventHandler(.output($0)) }
+                )
+            } catch AppStoreConnectError.requestFailed(let status, _)
+                where intent.preservesLockedAppInformation(forHTTPStatus: status) {
+                eventHandler(.output(L10n.text("App Store Connect has locked app-level declarations in its current state; keeping the existing categories, rights, age rating, price, and availability for this TestFlight upload.\n")))
+            }
+        }
 
         eventHandler(.phase(.configuringSubscriptions))
         let subscriptionReviewItems = try await appStoreConnect.reconcileSubscriptions(

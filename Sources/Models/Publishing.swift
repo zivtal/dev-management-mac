@@ -744,6 +744,10 @@ enum PublishingIntent: Equatable, Sendable {
     var submitsForReview: Bool {
         self == .publish
     }
+
+    func preservesLockedAppInformation(forHTTPStatus status: Int) -> Bool {
+        self == .testFlight && status == 409
+    }
 }
 
 struct PublishingConfiguration: Sendable {
