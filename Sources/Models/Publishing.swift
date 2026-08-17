@@ -482,6 +482,14 @@ enum SubscriptionOfferCodeKind: String, CaseIterable, Codable, Sendable {
     }
 }
 
+enum SubscriptionOfferCodeBatchSize {
+    static let productionRange = 500...25_000
+
+    static func isValid(_ numberOfCodes: Int) -> Bool {
+        productionRange.contains(numberOfCodes)
+    }
+}
+
 struct SubscriptionOfferConfiguration: Equatable, Sendable {
     let referenceName: String
     let duration: SubscriptionOfferDuration
@@ -520,7 +528,7 @@ enum SubscriptionOfferCodeValidationError: LocalizedError {
         case .missingEligibility:
             L10n.text("Select at least one eligible subscriber type.")
         case .invalidBatchSize:
-            L10n.text("One-time batches require 500–25,000 codes; custom-code batches require 1–25,000 redemptions.")
+            L10n.text("Production batches require 500–25,000 codes or redemptions.")
         case .invalidCustomCode:
             L10n.text("Custom codes must contain 1–64 letters or numbers without spaces or symbols.")
         case .invalidExpirationDate:
@@ -530,20 +538,35 @@ enum SubscriptionOfferCodeValidationError: LocalizedError {
 }
 
 enum SubscriptionOfferCodeExpiration {
+    private static var appStoreCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")
+            ?? TimeZone(secondsFromGMT: -8)!
+        return calendar
+    }
+
     static func earliestDate(
         from referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> Date {
-        let today = calendar.startOfDay(for: referenceDate)
-        return calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        boundaryDate(
+            byAdding: .day,
+            value: 1,
+            to: referenceDate,
+            displayCalendar: calendar
+        )
     }
 
     static func latestDate(
         from referenceDate: Date = Date(),
         calendar: Calendar = .current
     ) -> Date {
-        let today = calendar.startOfDay(for: referenceDate)
-        return calendar.date(byAdding: .month, value: 6, to: today) ?? today
+        boundaryDate(
+            byAdding: .month,
+            value: 6,
+            to: referenceDate,
+            displayCalendar: calendar
+        )
     }
 
     static func isValid(
@@ -557,6 +580,26 @@ enum SubscriptionOfferCodeExpiration {
             from: referenceDate,
             calendar: calendar
         ) ~= expirationDay
+    }
+
+    private static func boundaryDate(
+        byAdding component: Calendar.Component,
+        value: Int,
+        to referenceDate: Date,
+        displayCalendar: Calendar
+    ) -> Date {
+        let appStoreToday = appStoreCalendar.startOfDay(for: referenceDate)
+        let appStoreBoundary = appStoreCalendar.date(
+            byAdding: component,
+            value: value,
+            to: appStoreToday
+        ) ?? appStoreToday
+        let components = appStoreCalendar.dateComponents(
+            [.year, .month, .day],
+            from: appStoreBoundary
+        )
+        return displayCalendar.date(from: components)
+            ?? displayCalendar.startOfDay(for: appStoreBoundary)
     }
 }
 

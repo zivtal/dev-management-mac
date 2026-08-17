@@ -928,10 +928,7 @@ final class AppModel: ObservableObject {
         guard !request.offer.customerEligibilities.isEmpty else {
             throw SubscriptionOfferCodeValidationError.missingEligibility
         }
-        let validCount = request.kind == .oneTime
-            ? (500...25_000).contains(request.numberOfCodes)
-            : (1...25_000).contains(request.numberOfCodes)
-        guard validCount else {
+        guard SubscriptionOfferCodeBatchSize.isValid(request.numberOfCodes) else {
             throw SubscriptionOfferCodeValidationError.invalidBatchSize
         }
         if request.kind == .custom {

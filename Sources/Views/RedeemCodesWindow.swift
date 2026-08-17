@@ -84,12 +84,10 @@ private struct RedeemCodesWindowView: View {
         .onChange(of: selectedProductID) { _, _ in
             clearGeneratedCodes()
         }
-        .onChange(of: codeKind) { _, kind in
+        .onChange(of: codeKind) { _, _ in
             clearGeneratedCodes()
-            if kind == .oneTime, numberOfCodes < 500 {
+            if !SubscriptionOfferCodeBatchSize.isValid(numberOfCodes) {
                 numberOfCodes = 500
-            } else if kind == .custom, numberOfCodes == 500 {
-                numberOfCodes = 100
             }
         }
         .confirmationDialog(
@@ -275,6 +273,7 @@ private struct RedeemCodesWindowView: View {
             LabeledContent(codeKind == .oneTime ? "Number of unique codes" : "Redemption cap") {
                 TextField("Quantity", value: $numberOfCodes, format: .number)
                     .multilineTextAlignment(.trailing)
+                    .labelsHidden()
                     .frame(width: 100)
             }
             if codeKind == .custom {
@@ -295,7 +294,7 @@ private struct RedeemCodesWindowView: View {
             }
             Text(codeKind == .oneTime
                 ? "Apple permits 500–25,000 unique production codes per batch. The downloaded CSV includes the redeemable values."
-                : "Custom codes use letters and numbers only, up to 64 characters, with 1–25,000 redemptions per batch.")
+                : "Custom codes use letters and numbers only, up to 64 characters, with 500–25,000 redemptions per batch.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let status {
@@ -412,12 +411,7 @@ private struct RedeemCodesWindowView: View {
            !SubscriptionOfferCodeExpiration.isValid(expirationDate) {
             return SubscriptionOfferCodeValidationError.invalidExpirationDate.localizedDescription
         }
-        if codeKind == .oneTime {
-            return (500...25_000).contains(numberOfCodes)
-                ? nil
-                : SubscriptionOfferCodeValidationError.invalidBatchSize.localizedDescription
-        }
-        guard (1...25_000).contains(numberOfCodes) else {
+        guard SubscriptionOfferCodeBatchSize.isValid(numberOfCodes) else {
             return SubscriptionOfferCodeValidationError.invalidBatchSize.localizedDescription
         }
         guard (1...64).contains(customCode.count),

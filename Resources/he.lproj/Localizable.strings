@@ -414,7 +414,7 @@
 "Set an expiration date" = "הגדר תאריך תפוגה";
 "Expiration date" = "תאריך תפוגה";
 "Apple permits 500–25,000 unique production codes per batch. The downloaded CSV includes the redeemable values." = "Apple מאפשרת 500–25,000 קודי ייצור ייחודיים בכל אצווה. קובץ ה־CSV שיורד כולל את הקודים למימוש.";
-"Custom codes use letters and numbers only, up to 64 characters, with 1–25,000 redemptions per batch." = "קודים מותאמים משתמשים באותיות ובספרות בלבד, עד 64 תווים, עם 1–25,000 מימושים בכל אצווה.";
+"Custom codes use letters and numbers only, up to 64 characters, with 500–25,000 redemptions per batch." = "קודים מותאמים משתמשים באותיות ובספרות בלבד, עד 64 תווים, עם 500–25,000 מימושים בכל אצווה.";
 "Generate Codes" = "צור קודים";
 "Generate production offer codes?" = "ליצור קודי הטבה לייצור?";
 "Generate one-time codes" = "צור קודים חד־פעמיים";
@@ -435,7 +435,7 @@
 "1 year" = "שנה אחת";
 "Enter an internal offer reference name." = "יש להזין שם פנימי להטבה.";
 "Select at least one eligible subscriber type." = "יש לבחור לפחות סוג מנוי זכאי אחד.";
-"One-time batches require 500–25,000 codes; custom-code batches require 1–25,000 redemptions." = "אצווה חד־פעמית דורשת 500–25,000 קודים; אצוות קוד מותאם דורשות 1–25,000 מימושים.";
+"Production batches require 500–25,000 codes or redemptions." = "אצוות ייצור דורשות 500–25,000 קודים או מימושים.";
 "Custom codes must contain 1–64 letters or numbers without spaces or symbols." = "קוד מותאם חייב להכיל 1–64 אותיות או ספרות ללא רווחים או סימנים.";
 "The expiration date must be after today and no more than six months away." = "תאריך התפוגה חייב להיות אחרי היום ולא יותר משישה חודשים קדימה.";
 "Another build, installation, publication, or offer-code request is already in progress." = "כבר מתבצעת בנייה, התקנה, פרסום או בקשה לקודי הטבה.";

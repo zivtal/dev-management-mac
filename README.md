@@ -258,7 +258,7 @@ localized description within Apple's 4,000-character limit.
 For subscription projects, the orange ticket action opens a dedicated Redeem
 Codes window without loading the release workspace. It shows existing production
 offers and creates either one-time batches of 500–25,000 codes or reusable custom
-codes with 1–25,000 redemptions. Production code creation remains disabled until
+codes with 500–25,000 redemptions. Production code creation remains disabled until
 App Store Connect reports a released app version and an approved subscription.
 For one-time batches, choose a destination before generation. Development
 Management saves Apple's returned CSV directly so large batches and their

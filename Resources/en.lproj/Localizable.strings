@@ -414,7 +414,7 @@
 "Set an expiration date" = "Set an expiration date";
 "Expiration date" = "Expiration date";
 "Apple permits 500–25,000 unique production codes per batch. The downloaded CSV includes the redeemable values." = "Apple permits 500–25,000 unique production codes per batch. The downloaded CSV includes the redeemable values.";
-"Custom codes use letters and numbers only, up to 64 characters, with 1–25,000 redemptions per batch." = "Custom codes use letters and numbers only, up to 64 characters, with 1–25,000 redemptions per batch.";
+"Custom codes use letters and numbers only, up to 64 characters, with 500–25,000 redemptions per batch." = "Custom codes use letters and numbers only, up to 64 characters, with 500–25,000 redemptions per batch.";
 "Generate Codes" = "Generate Codes";
 "Generate production offer codes?" = "Generate production offer codes?";
 "Generate one-time codes" = "Generate one-time codes";
@@ -435,7 +435,7 @@
 "1 year" = "1 year";
 "Enter an internal offer reference name." = "Enter an internal offer reference name.";
 "Select at least one eligible subscriber type." = "Select at least one eligible subscriber type.";
-"One-time batches require 500–25,000 codes; custom-code batches require 1–25,000 redemptions." = "One-time batches require 500–25,000 codes; custom-code batches require 1–25,000 redemptions.";
+"Production batches require 500–25,000 codes or redemptions." = "Production batches require 500–25,000 codes or redemptions.";
 "Custom codes must contain 1–64 letters or numbers without spaces or symbols." = "Custom codes must contain 1–64 letters or numbers without spaces or symbols.";
 "The expiration date must be after today and no more than six months away." = "The expiration date must be after today and no more than six months away.";
 "Another build, installation, publication, or offer-code request is already in progress." = "Another build, installation, publication, or offer-code request is already in progress.";

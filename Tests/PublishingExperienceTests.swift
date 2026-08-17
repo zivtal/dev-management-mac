@@ -175,6 +175,13 @@ final class PublishingExperienceTests: XCTestCase {
         XCTAssertEqual(SubscriptionOfferCodeCSV.values(from: csv), ["COPYME"])
     }
 
+    func testProductionOfferCodeBatchSizeUsesAppStoreConnectLimits() {
+        XCTAssertFalse(SubscriptionOfferCodeBatchSize.isValid(499))
+        XCTAssertTrue(SubscriptionOfferCodeBatchSize.isValid(500))
+        XCTAssertTrue(SubscriptionOfferCodeBatchSize.isValid(25_000))
+        XCTAssertFalse(SubscriptionOfferCodeBatchSize.isValid(25_001))
+    }
+
     func testOfferCodeExpirationTreatsDisplayedSixMonthDateAsValid() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Jerusalem"))
@@ -209,6 +216,38 @@ final class PublishingExperienceTests: XCTestCase {
         ))
         XCTAssertFalse(SubscriptionOfferCodeExpiration.isValid(
             afterLimit,
+            relativeTo: referenceDate,
+            calendar: calendar
+        ))
+    }
+
+    func testOfferCodeExpirationUsesPacificDateBoundary() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Jerusalem"))
+        let referenceDate = try XCTUnwrap(calendar.date(
+            from: DateComponents(year: 2026, month: 8, day: 17, hour: 7, minute: 8)
+        ))
+        let pacificSixMonthLimit = try XCTUnwrap(calendar.date(
+            from: DateComponents(year: 2027, month: 2, day: 16)
+        ))
+        let localSixMonthLimit = try XCTUnwrap(calendar.date(
+            from: DateComponents(year: 2027, month: 2, day: 17)
+        ))
+
+        XCTAssertEqual(
+            SubscriptionOfferCodeExpiration.latestDate(
+                from: referenceDate,
+                calendar: calendar
+            ),
+            pacificSixMonthLimit
+        )
+        XCTAssertTrue(SubscriptionOfferCodeExpiration.isValid(
+            pacificSixMonthLimit,
+            relativeTo: referenceDate,
+            calendar: calendar
+        ))
+        XCTAssertFalse(SubscriptionOfferCodeExpiration.isValid(
+            localSixMonthLimit,
             relativeTo: referenceDate,
             calendar: calendar
         ))

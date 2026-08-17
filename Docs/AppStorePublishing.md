@@ -267,7 +267,7 @@ offer and then create either:
 
 - a production one-time-use batch of 500–25,000 unique codes, with a required
   expiration date no more than six months away; or
-- a named custom code containing 1–64 letters or digits, with 1–25,000
+- a named custom code containing 1–64 letters or digits, with 500–25,000
   redemptions per batch and an optional expiration date.
 
 Offer duration, new/existing/expired subscriber eligibility, introductory-offer
