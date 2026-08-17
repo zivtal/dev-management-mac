@@ -271,12 +271,15 @@ TestFlight, either action reuses it without another archive or upload.
 For a new app, the publishing editor can generate `app-store-publishing.json`
 with OpenAI or accept fully manual input. All normal configuration—including
 subscriptions, territory prices, age rating, and the privacy checklist—is
-presented as editable fields; Advanced JSON is optional. OpenAI reads bounded
-`README.md` and project-manifest excerpts and can draft localized listing text,
-categories, content-rights, free-download and demo-account status, copyright,
-age-rating answers, and an App Privacy checklist. The user must review and save
-the draft before Upload or Publish; neither release action silently generates or
-changes it. Because Apple does not expose App Privacy through its public API,
+presented as editable fields; Advanced JSON is optional. OpenAI reads up to 2 MB
+of first-party repository text—including implementation source, tests, manifests,
+entitlements, dependency declarations, privacy manifests, localizations, and
+documentation—and can draft localized listing text, categories, content-rights,
+free-download and demo-account status, copyright, age-rating answers, and an App
+Privacy checklist. Unsupported age-rating answers default to No or None; positive
+answers require repository evidence. The user must review and save the draft
+before Upload or Publish; neither release action silently generates or changes
+it. Because Apple does not expose App Privacy through its public API,
 an authorized no-data declaration is published through the Fastlane session in
 Publishing Settings. Collected-data declarations retain a manual App Store
 Connect confirmation path. Support and
@@ -572,8 +575,10 @@ New user-visible text must be added to both:
 - Build and installation output may contain local paths or tool diagnostics and
   is stored in the local Activity history.
 - Publishing metadata generation sends the managed app's name, version,
-  identifiers, and excerpts from its README or supported publishing manifest to
-  the configured OpenAI model. Source code and credentials are not uploaded.
+  identifiers, and up to 2 MB of readable first-party repository text to the
+  configured OpenAI model. Generated builds, vendor dependency source, binaries,
+  symlinks, and known credential files are excluded. Because first-party source
+  is uploaded for analysis, secrets must not be hard-coded in tracked source.
 - Keychain status checks read item attributes without requesting secret data.
   Private keys are read only when needed and cached in memory for the rest of
   the app session.

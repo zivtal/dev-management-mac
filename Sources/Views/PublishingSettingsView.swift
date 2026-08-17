@@ -36,10 +36,10 @@ struct PublishingSettingsView: View {
                         .labelsHidden()
                         .frame(width: 220)
                 }
-                Text("Save the key here, then use Generate Settings with OpenAI in the Publish window. OpenAI reads bounded README and project-manifest excerpts, creates localized listing copy, and drafts categories, third-party content rights, free-download status, sign-in requirements, age ratings, and an App Privacy checklist. Saved manifest values always win. Public URLs, subscription prices, and credentials are never invented.")
+                Text("Save the key here, then use Generate Settings with OpenAI in the Publish window. OpenAI analyzes the managed app’s first-party source, tests, manifests, dependencies, localizations, and documentation to draft listing and App Store answers. Saved manifest values always win. Public URLs, subscription prices, and credentials are never invented.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("The app sends the application name, version, identifiers, and excerpts from its README or supported project manifest to the OpenAI Responses API. Swift and Objective-C source code and credentials are not uploaded.")
+                Text("The app sends up to 2 MB of readable first-party repository text to the OpenAI Responses API. Generated builds, vendor dependency source, binaries, symlinks, and known credential files are excluded.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

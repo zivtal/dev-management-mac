@@ -114,8 +114,8 @@ struct AppStoreComplianceDraft: Codable, Equatable, Sendable {
     var evidence: [String]
     var confidence: Double
 
-    var evidenceBackedAgeRating: [String: AppStoreManifestValue]? {
-        ageRatingEvidenceSufficient ? ageRating : nil
+    var ageRatingDefaultingUnknownToNo: [String: AppStoreManifestValue] {
+        AppStoreAgeRatingAnswerPolicy.answersDefaultingUnknownToNo(ageRating)
     }
 
     var evidenceBackedPrivacy: AppStorePrivacyDraft? {
@@ -212,6 +212,28 @@ enum AppStoreAgeRatingAnswerPolicy {
             }
             return false
         }
+    }
+
+    static func answersDefaultingUnknownToNo(
+        _ answers: [String: AppStoreManifestValue]
+    ) -> [String: AppStoreManifestValue] {
+        var completed: [String: AppStoreManifestValue] = [:]
+        for key in booleanKeys {
+            if case .bool(let value) = answers[key] {
+                completed[key] = .bool(value)
+            } else {
+                completed[key] = .bool(false)
+            }
+        }
+        for key in frequencyKeys {
+            if case .string(let value) = answers[key],
+               ["NONE", "INFREQUENT", "FREQUENT"].contains(value) {
+                completed[key] = .string(value)
+            } else {
+                completed[key] = .string("NONE")
+            }
+        }
+        return completed
     }
 }
 

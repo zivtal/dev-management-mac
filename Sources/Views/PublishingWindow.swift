@@ -1985,7 +1985,7 @@ private struct PublishingWindowView: View {
                 id: "compliance",
                 title: L10n.text("App declarations are incomplete"),
                 detail: model.hasOpenAIAPIKey
-                    ? L10n.format("Generate and review README-backed answers for: %@.", missing.joined(separator: ", "))
+                    ? L10n.format("Generate and review repository-backed answers for: %@.", missing.joined(separator: ", "))
                     : L10n.format("Missing: %@. Generate settings with OpenAI or edit App Setup.", missing.joined(separator: ", ")),
                 state: .blocked
             )
@@ -2618,7 +2618,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 }
             }
 
-            Text("Current App Store Connect values are loaded as the starting point. OpenAI reads bounded README and project-manifest excerpts to generate an editable listing, categories, rights, price/download, sign-in, age-rating, and App Privacy checklist. Nothing is uploaded until a release action is confirmed.")
+            Text("Current App Store Connect values are loaded as the starting point. OpenAI analyzes the managed app’s first-party source repository to generate an editable listing, categories, rights, price/download, sign-in, age-rating, and App Privacy checklist. Nothing is uploaded until a release action is confirmed.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -2796,7 +2796,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                     } else {
                         TextField("Terms of Use URL", text: $termsURL)
                     }
-                    Text("OpenAI drafts listing copy and App Store answers from README and project manifests. Support, marketing, privacy, and Terms of Use URLs are entered manually and are never replaced.")
+                    Text("OpenAI drafts listing copy and App Store answers from the managed app’s source repository. Support, marketing, privacy, and Terms of Use URLs are entered manually and are never replaced.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     requiredTextField(
@@ -2864,7 +2864,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                         if isGeneratingAgeRating {
                             HStack(spacing: 8) {
                                 ProgressView().controlSize(.small)
-                                Text("Analyzing README for Age Ratings…")
+                                Text("Analyzing project source for Age Ratings…")
                             }
                         } else {
                             Label("Fill Age Ratings with OpenAI", systemImage: "sparkles")
@@ -2872,7 +2872,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                     }
                     .disabled(isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
                     PublishingAgeRatingFields(ageRating: $ageRating)
-                    Text("OpenAI applies a conservative draft only when the project documentation explicitly supports the complete checklist. Unsupported answers remain Unspecified.")
+                    Text("OpenAI scans the source repository and defaults unsupported age-rating answers to No or None. Positive answers require repository evidence; review every field before publishing.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -2883,7 +2883,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                         if isGeneratingPrivacy {
                             HStack(spacing: 8) {
                                 ProgressView().controlSize(.small)
-                                Text("Analyzing README for App Privacy…")
+                                Text("Analyzing project source for App Privacy…")
                             }
                         } else {
                             Label("Fill App Privacy with OpenAI", systemImage: "sparkles")
@@ -2931,7 +2931,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                         TextField("Authorized by", text: $privacyConfirmedBy)
                             .disabled(!privacyConfirmedInAppStoreConnect && !privacyConfirmedManually)
                     } else {
-                        Text("Unspecified means the documentation does not establish the answer; it is never treated as No.")
+                        Text("Unspecified means the repository does not establish the App Privacy answer; it is never treated as No.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -3635,8 +3635,8 @@ private struct PerAppPublishingConfigurationEditor: View {
                 if baseManifest?.publication?.review?.demoAccountRequired == nil {
                     demoAccountRequired = compliance.demoAccountRequired
                 }
-                if ageRating.isEmpty, let generatedAgeRating = compliance.evidenceBackedAgeRating {
-                    ageRating = generatedAgeRating
+                if ageRating.isEmpty {
+                    ageRating = compliance.ageRatingDefaultingUnknownToNo
                 }
                 if baseManifest?.compliance?.privacyDraft == nil,
                    let generatedPrivacy = compliance.evidenceBackedPrivacy {
@@ -3660,17 +3660,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         aiGenerationNotice = nil
         do {
             let compliance = try await model.generateAppStoreComplianceDraft(projectID: project.id)
-            guard let generatedAgeRating = compliance.evidenceBackedAgeRating else {
-                ageRating = [:]
-                complianceEvidence = compliance.evidence
-                complianceConfidence = compliance.confidence
-                aiGenerationNotice = L10n.text(
-                    "OpenAI did not find enough explicit age-rating information in the project documentation. The answers are now Unspecified for manual review."
-                )
-                validationMessage = nil
-                return
-            }
-            ageRating = generatedAgeRating
+            ageRating = compliance.ageRatingDefaultingUnknownToNo
             complianceEvidence = compliance.evidence
             complianceConfidence = compliance.confidence
             validationMessage = nil
@@ -3697,7 +3687,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 complianceEvidence = compliance.evidence
                 complianceConfidence = compliance.confidence
                 aiGenerationNotice = L10n.text(
-                    "OpenAI did not find enough explicit App Privacy information in the project documentation. The answer is now Unspecified for manual review."
+                    "OpenAI could not establish the complete App Privacy answer from the source repository. The answer is now Unspecified for manual review."
                 )
                 validationMessage = nil
                 return

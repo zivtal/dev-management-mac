@@ -74,7 +74,7 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertTrue(required.contains("privacyEvidenceSufficient"))
     }
 
-    func testOpenAIComplianceAnswersAreAppliedOnlyWithExplicitEvidence() {
+    func testOpenAIComplianceDefaultsUnknownAgeRatingsToNoButKeepsPrivacyEvidenceBased() {
         let unsupported = AppStoreComplianceDraft(
             contentRightsDeclaration: "DOES_NOT_USE_THIRD_PARTY_CONTENT",
             appIsFree: true,
@@ -87,13 +87,16 @@ final class AppStorePublishingTests: XCTestCase {
             evidence: [],
             confidence: 0.2
         )
-        XCTAssertNil(unsupported.evidenceBackedAgeRating)
+        let completedAgeRating = unsupported.ageRatingDefaultingUnknownToNo
+        XCTAssertTrue(AppStoreAgeRatingAnswerPolicy.hasCompleteAnswers(completedAgeRating))
+        XCTAssertEqual(completedAgeRating["advertising"], .bool(false))
+        XCTAssertEqual(completedAgeRating["violenceRealistic"], .string("NONE"))
         XCTAssertNil(unsupported.evidenceBackedPrivacy)
 
         var supported = unsupported
         supported.ageRatingEvidenceSufficient = true
         supported.privacyEvidenceSufficient = true
-        XCTAssertEqual(supported.evidenceBackedAgeRating, unsupported.ageRating)
+        XCTAssertEqual(supported.ageRatingDefaultingUnknownToNo, completedAgeRating)
         XCTAssertEqual(supported.evidenceBackedPrivacy, unsupported.privacy)
     }
 
@@ -216,7 +219,7 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertTrue(policy.contains("Never generate, guess, replace, or return those URLs"))
     }
 
-    func testOpenAIProjectSummaryIncludesSubmissionGuidesAndDependencyEvidence() throws {
+    func testOpenAIProjectSummaryIncludesCompleteFirstPartySourceAndDependencyEvidence() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenAIProjectSummary-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -240,14 +243,53 @@ final class AppStorePublishingTests: XCTestCase {
             atomically: true,
             encoding: .utf8
         )
+        let sourceDirectory = root.appendingPathComponent("Sources/Features", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+        let source = """
+        import CoreLocation
+        final class TripLocationService {
+            let manager = CLLocationManager()
+            func uploadLocation() async { /* network implementation */ }
+        }
+        """
+        try source.write(
+            to: sourceDirectory.appendingPathComponent("TripLocationService.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let longSource = String(repeating: "// implementation\n", count: 900)
+            + "let marker = \"SOURCE_END_MARKER\"\n"
+        try longSource.write(
+            to: sourceDirectory.appendingPathComponent("CompleteFeature.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let vendorDirectory = root.appendingPathComponent("node_modules/vendor", isDirectory: true)
+        try FileManager.default.createDirectory(at: vendorDirectory, withIntermediateDirectories: true)
+        try "SHOULD_NOT_UPLOAD_VENDOR".write(
+            to: vendorDirectory.appendingPathComponent("vendor.js"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "API_TOKEN=SHOULD_NOT_UPLOAD_SECRET".write(
+            to: root.appendingPathComponent(".env"),
+            atomically: true,
+            encoding: .utf8
+        )
 
         let summary = OpenAIStoreMetadataService().projectSummary(for: managedProject(at: root))
 
+        XCTAssertTrue(summary.contains("Complete supported-text snapshot: yes"))
         XCTAssertTrue(summary.contains("--- README.md ---"))
         XCTAssertTrue(summary.contains("--- TripSubmissionAndAutomation.md ---"))
         XCTAssertTrue(summary.contains("Google Maps is optional"))
         XCTAssertTrue(summary.contains("Package.resolved"))
         XCTAssertTrue(summary.contains("googlemaps"))
+        XCTAssertTrue(summary.contains("--- Sources/Features/TripLocationService.swift ---"))
+        XCTAssertTrue(summary.contains("CLLocationManager"))
+        XCTAssertTrue(summary.contains("SOURCE_END_MARKER"))
+        XCTAssertFalse(summary.contains("SHOULD_NOT_UPLOAD_VENDOR"))
+        XCTAssertFalse(summary.contains("SHOULD_NOT_UPLOAD_SECRET"))
     }
 
     func testListingDescriptionAppendsManualPrivacyAndTermsLinksWithinLimit() {
