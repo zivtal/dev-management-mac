@@ -17,6 +17,28 @@ enum PublishingWindowLayout: Equatable {
     }
 }
 
+enum PublishingLocalizationAccordionPolicy {
+    static let automaticExpansionLimit = 5
+
+    static func initialExpandedIndex(itemCount: Int) -> Int? {
+        (1...automaticExpansionLimit).contains(itemCount) ? 0 : nil
+    }
+
+    static func expandedIndex(
+        afterRemoving removedIndex: Int,
+        currentExpandedIndex: Int?,
+        remainingItemCount: Int
+    ) -> Int? {
+        guard remainingItemCount > 0, let currentExpandedIndex else { return nil }
+        if currentExpandedIndex == removedIndex {
+            return min(removedIndex, remainingItemCount - 1)
+        }
+        return currentExpandedIndex > removedIndex
+            ? currentExpandedIndex - 1
+            : currentExpandedIndex
+    }
+}
+
 private enum PublishingWorkspace: String, CaseIterable {
     case overview
     case configuration
@@ -2550,6 +2572,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var promotionalText = ""
     @State private var whatsNew = ""
     @State private var additionalLocalizations: [AppStoreLocalizedMetadata] = []
+    @State private var expandedAdditionalLocalizationIndex: Int?
     @State private var detectedLocales: [String] = []
     @State private var copyright = ""
     @State private var supportURL = ""
@@ -2903,7 +2926,10 @@ private struct PerAppPublishingConfigurationEditor: View {
                     .foregroundStyle(.secondary)
             }
             ForEach(additionalLocalizations.indices, id: \.self) { index in
-                DisclosureGroup(additionalLocalizations[index].locale) {
+                DisclosureGroup(
+                    additionalLocalizations[index].locale,
+                    isExpanded: additionalLocalizationExpansionBinding(for: index)
+                ) {
                     VStack(alignment: .leading, spacing: 10) {
                         TextField("Locale", text: $additionalLocalizations[index].locale)
                         TextField("App name", text: $additionalLocalizations[index].appName)
@@ -2924,29 +2950,56 @@ private struct PerAppPublishingConfigurationEditor: View {
                             height: 70
                         )
                         Button("Remove Localization", role: .destructive) {
-                            guard additionalLocalizations.indices.contains(index) else { return }
-                            additionalLocalizations.remove(at: index)
+                            removeAdditionalLocalization(at: index)
                         }
                     }
                     .padding(.vertical, 6)
                 }
             }
             Button {
-                additionalLocalizations.append(
-                    AppStoreLocalizedMetadata(
-                        locale: "en-US",
-                        appName: appName,
-                        subtitle: "",
-                        description: "",
-                        keywords: "",
-                        promotionalText: "",
-                        whatsNew: ""
-                    )
-                )
+                addAdditionalLocalization()
             } label: {
                 Label("Add Localization", systemImage: "plus")
             }
         }
+    }
+
+    private func additionalLocalizationExpansionBinding(for index: Int) -> Binding<Bool> {
+        Binding(
+            get: { expandedAdditionalLocalizationIndex == index },
+            set: { isExpanded in
+                if isExpanded {
+                    expandedAdditionalLocalizationIndex = index
+                } else if expandedAdditionalLocalizationIndex == index {
+                    expandedAdditionalLocalizationIndex = nil
+                }
+            }
+        )
+    }
+
+    private func addAdditionalLocalization() {
+        additionalLocalizations.append(
+            AppStoreLocalizedMetadata(
+                locale: "en-US",
+                appName: appName,
+                subtitle: "",
+                description: "",
+                keywords: "",
+                promotionalText: "",
+                whatsNew: ""
+            )
+        )
+        expandedAdditionalLocalizationIndex = additionalLocalizations.indices.last
+    }
+
+    private func removeAdditionalLocalization(at index: Int) {
+        guard additionalLocalizations.indices.contains(index) else { return }
+        additionalLocalizations.remove(at: index)
+        expandedAdditionalLocalizationIndex = PublishingLocalizationAccordionPolicy.expandedIndex(
+            afterRemoving: index,
+            currentExpandedIndex: expandedAdditionalLocalizationIndex,
+            remainingItemCount: additionalLocalizations.count
+        )
     }
 
     private var urlsAndRightsSection: some View {
@@ -3552,6 +3605,9 @@ private struct PerAppPublishingConfigurationEditor: View {
         } else {
             additionalLocalizations = []
         }
+        expandedAdditionalLocalizationIndex = PublishingLocalizationAccordionPolicy.initialExpandedIndex(
+            itemCount: additionalLocalizations.count
+        )
         copyright = AppStoreCopyrightNormalizer.normalized(publication.copyright ?? "")
         supportURL = publication.supportURL ?? ""
         marketingURL = publication.marketingURL ?? ""
@@ -3794,6 +3850,11 @@ private struct PerAppPublishingConfigurationEditor: View {
                       !savedLocales.contains(localization.locale.lowercased()) else { return nil }
                 return localization
             })
+            if expandedAdditionalLocalizationIndex == nil {
+                expandedAdditionalLocalizationIndex = PublishingLocalizationAccordionPolicy.initialExpandedIndex(
+                    itemCount: additionalLocalizations.count
+                )
+            }
             detectedLocales = generated.localizations.map(\.locale)
             if primaryCategory.isEmpty { primaryCategory = generated.primaryCategory }
             if secondaryCategory.isEmpty { secondaryCategory = generated.secondaryCategory }

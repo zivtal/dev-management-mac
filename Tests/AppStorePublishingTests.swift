@@ -85,6 +85,39 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(PublishingWindowLayout(width: 1_500), .threeColumns)
     }
 
+    func testAdditionalLocalizationAccordionStartsOpenOnlyForCompactLists() {
+        XCTAssertNil(PublishingLocalizationAccordionPolicy.initialExpandedIndex(itemCount: 0))
+        XCTAssertEqual(PublishingLocalizationAccordionPolicy.initialExpandedIndex(itemCount: 1), 0)
+        XCTAssertEqual(PublishingLocalizationAccordionPolicy.initialExpandedIndex(itemCount: 5), 0)
+        XCTAssertNil(PublishingLocalizationAccordionPolicy.initialExpandedIndex(itemCount: 6))
+    }
+
+    func testAdditionalLocalizationAccordionKeepsOneValidExpansionAfterRemoval() {
+        XCTAssertEqual(
+            PublishingLocalizationAccordionPolicy.expandedIndex(
+                afterRemoving: 1,
+                currentExpandedIndex: 3,
+                remainingItemCount: 4
+            ),
+            2
+        )
+        XCTAssertEqual(
+            PublishingLocalizationAccordionPolicy.expandedIndex(
+                afterRemoving: 2,
+                currentExpandedIndex: 2,
+                remainingItemCount: 2
+            ),
+            1
+        )
+        XCTAssertNil(
+            PublishingLocalizationAccordionPolicy.expandedIndex(
+                afterRemoving: 0,
+                currentExpandedIndex: 0,
+                remainingItemCount: 0
+            )
+        )
+    }
+
     func testOpenAIRequestUsesStrictStructuredOutputAndDisablesStorage() throws {
         let body = OpenAIStoreMetadataService.requestBody(
             model: "gpt-5.6-luna",
