@@ -3580,14 +3580,19 @@ private struct PerAppPublishingConfigurationEditor: View {
 
     private func loadFields(from manifest: AppStorePublishingManifest) {
         let publication = manifest.publication ?? defaultPublicationConfiguration()
-        locale = publication.locale ?? "en-US"
+        let configuredLocale = publication.locale ?? "en-US"
+        locale = AppStoreLocale.canonicalIdentifier(configuredLocale) ?? configuredLocale
         appName = publication.appName ?? ""
         subtitle = publication.subtitle ?? publication.metadata?.subtitle ?? ""
         description = publication.metadata?.description ?? ""
         keywords = publication.metadata?.keywords ?? ""
         promotionalText = publication.metadata?.promotionalText ?? ""
         whatsNew = publication.metadata?.whatsNew ?? ""
-        if let localizations = publication.localizations, !localizations.isEmpty {
+        let normalizedLocalizations = AppStorePublishingService.normalizedLocalizedMetadata(
+            publication.localizations ?? []
+        )
+        if !normalizedLocalizations.isEmpty {
+            let localizations = normalizedLocalizations
             let primaryIndex = localizations.firstIndex(where: {
                 $0.locale.caseInsensitiveCompare(locale) == .orderedSame
             }) ?? 0
@@ -3681,9 +3686,16 @@ private struct PerAppPublishingConfigurationEditor: View {
             primaryCategory: primaryCategory.nilIfEmpty,
             secondaryCategory: secondaryCategory.nilIfEmpty
         )
+        let normalizedLocale = AppStoreLocale.canonicalIdentifier(locale) ?? locale
+        let normalizedAdditionalLocalizations = additionalLocalizations.map { localization in
+            var normalized = localization
+            normalized.locale = AppStoreLocale.canonicalIdentifier(localization.locale)
+                ?? localization.locale
+            return normalized
+        }
         let localizations: [AppStoreLocalizedMetadata]? = [
             AppStoreLocalizedMetadata(
-                locale: locale,
+                locale: normalizedLocale,
                 appName: appName,
                 subtitle: subtitle,
                 description: description,
@@ -3691,9 +3703,9 @@ private struct PerAppPublishingConfigurationEditor: View {
                 promotionalText: promotionalText,
                 whatsNew: whatsNew
             )
-        ] + additionalLocalizations
+        ] + normalizedAdditionalLocalizations
         manifest.publication = AppStorePublicationConfiguration(
-            locale: locale.nilIfEmpty,
+            locale: normalizedLocale.nilIfEmpty,
             copyright: copyright.nilIfEmpty.map { AppStoreCopyrightNormalizer.normalized($0) },
             supportURL: supportURL.nilIfEmpty,
             marketingURL: marketingURL.nilIfEmpty,
@@ -4061,13 +4073,10 @@ private struct PerAppPublishingConfigurationEditor: View {
         }
         var locales: Set<String> = []
         for localization in manifest.publication?.localizations ?? [] {
-            let normalizedLocale = localization.locale
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-            guard !normalizedLocale.isEmpty,
-                  locales.insert(normalizedLocale).inserted else {
+            guard let normalizedLocale = AppStoreLocale.canonicalIdentifier(localization.locale),
+                  locales.insert(normalizedLocale.lowercased()).inserted else {
                 throw ConfigurationEditorError.invalid(
-                    L10n.text("Localized listings require non-empty, unique locale identifiers.")
+                    L10n.text("Localized listings require supported, unique App Store locale identifiers such as en-US or he.")
                 )
             }
             guard localization.description.nilIfEmpty != nil else {

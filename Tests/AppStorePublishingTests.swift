@@ -523,7 +523,7 @@ final class AppStorePublishingTests: XCTestCase {
 
         try """
         developmentRegion = en;
-        knownRegions = (Base, en, de);
+        knownRegions = (Base, en, English, de, NotALocale);
         """.write(
             to: projectDirectory.appendingPathComponent("project.pbxproj"),
             atomically: true,
@@ -542,6 +542,31 @@ final class AppStorePublishingTests: XCTestCase {
         )
         XCTAssertEqual(Set(locales), Set(["de-DE", "en-US", "es-ES", "fr-FR", "he"]))
         XCTAssertEqual(locales.first, "es-ES")
+    }
+
+    func testPublishingCanonicalizesLocaleNamesAndDropsDuplicatesBeforeAppStoreRequests() {
+        func localization(locale: String, description: String) -> AppStoreLocalizedMetadata {
+            AppStoreLocalizedMetadata(
+                locale: locale,
+                appName: "Example",
+                subtitle: "Example subtitle",
+                description: description,
+                keywords: "example",
+                promotionalText: "Try it.",
+                whatsNew: "Improvements."
+            )
+        }
+
+        let localizations = AppStorePublishingService.normalizedLocalizedMetadata([
+            localization(locale: "en-US", description: "Primary English listing"),
+            localization(locale: "English", description: "Duplicate English listing"),
+            localization(locale: "he_IL", description: "Hebrew listing"),
+            localization(locale: "NotALocale", description: "Unsupported listing")
+        ])
+
+        XCTAssertEqual(localizations.map(\.locale), ["en-US", "he"])
+        XCTAssertEqual(localizations.first?.description, "Primary English listing")
+        XCTAssertFalse(localizations.contains { $0.locale == "English" })
     }
 
     func testScreenshotDimensionsMapToAppStoreDisplayTypes() {

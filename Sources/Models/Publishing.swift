@@ -1,5 +1,85 @@
 import Foundation
 
+enum AppStoreLocale {
+    static let supportedIdentifiers: Set<String> = [
+        "ar-SA", "bn-BD", "ca", "cs", "da", "de-DE", "el", "en-AU", "en-CA", "en-GB",
+        "en-US", "es-ES", "es-MX", "fi", "fr-CA", "fr-FR", "gu-IN", "he", "hi", "hr",
+        "hu", "id", "it", "ja", "kn-IN", "ko", "ml-IN", "mr-IN", "ms", "nl-NL", "no",
+        "or-IN", "pa-IN", "pl", "pt-BR", "pt-PT", "ro", "ru", "sk", "sl-SI", "sv",
+        "ta-IN", "te-IN", "th", "tr", "uk", "ur-PK", "vi", "zh-Hans", "zh-Hant"
+    ]
+
+    private static let aliases: [String: String] = [
+        "ar": "ar-SA", "arabic": "ar-SA",
+        "bn": "bn-BD", "bangla": "bn-BD", "bengali": "bn-BD",
+        "ca": "ca", "catalan": "ca",
+        "cs": "cs", "czech": "cs",
+        "da": "da", "danish": "da",
+        "de": "de-DE", "german": "de-DE",
+        "el": "el", "greek": "el",
+        "en": "en-US", "english": "en-US", "english (australia)": "en-AU",
+        "english (canada)": "en-CA", "english (u.k.)": "en-GB", "english (uk)": "en-GB",
+        "english (u.s.)": "en-US", "english (us)": "en-US",
+        "es": "es-ES", "spanish": "es-ES", "spanish (mexico)": "es-MX",
+        "spanish (spain)": "es-ES",
+        "fi": "fi", "finnish": "fi",
+        "fr": "fr-FR", "french": "fr-FR", "french (canada)": "fr-CA",
+        "gu": "gu-IN", "gujarati": "gu-IN",
+        "he": "he", "hebrew": "he", "iw": "he",
+        "hi": "hi", "hindi": "hi",
+        "hr": "hr", "croatian": "hr",
+        "hu": "hu", "hungarian": "hu",
+        "id": "id", "indonesian": "id",
+        "it": "it", "italian": "it",
+        "ja": "ja", "japanese": "ja",
+        "kn": "kn-IN", "kannada": "kn-IN",
+        "ko": "ko", "korean": "ko",
+        "ml": "ml-IN", "malayalam": "ml-IN",
+        "mr": "mr-IN", "marathi": "mr-IN",
+        "ms": "ms", "malay": "ms",
+        "nl": "nl-NL", "dutch": "nl-NL",
+        "no": "no", "nb": "no", "norwegian": "no",
+        "or": "or-IN", "odia": "or-IN", "oriya": "or-IN",
+        "pa": "pa-IN", "punjabi": "pa-IN",
+        "pl": "pl", "polish": "pl",
+        "pt": "pt-PT", "portuguese": "pt-PT", "portuguese (brazil)": "pt-BR",
+        "portuguese (portugal)": "pt-PT",
+        "ro": "ro", "romanian": "ro",
+        "ru": "ru", "russian": "ru",
+        "sk": "sk", "slovak": "sk",
+        "sl": "sl-SI", "slovenian": "sl-SI",
+        "sv": "sv", "swedish": "sv",
+        "ta": "ta-IN", "tamil": "ta-IN",
+        "te": "te-IN", "telugu": "te-IN",
+        "th": "th", "thai": "th",
+        "tr": "tr", "turkish": "tr",
+        "uk": "uk", "ukrainian": "uk",
+        "ur": "ur-PK", "urdu": "ur-PK",
+        "vi": "vi", "vietnamese": "vi",
+        "zh": "zh-Hans", "zh-cn": "zh-Hans", "chinese": "zh-Hans",
+        "chinese (simplified)": "zh-Hans", "zh-tw": "zh-Hant",
+        "chinese (traditional)": "zh-Hant"
+    ]
+
+    static func canonicalIdentifier(_ rawValue: String) -> String? {
+        let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: "-")
+        guard !normalized.isEmpty else { return nil }
+
+        if let supported = supportedIdentifiers.first(where: {
+            $0.caseInsensitiveCompare(normalized) == .orderedSame
+        }) {
+            return supported
+        }
+        let lowercased = normalized.lowercased()
+        if let alias = aliases[lowercased] {
+            return alias
+        }
+        guard let baseLanguage = lowercased.split(separator: "-").first else { return nil }
+        return aliases[String(baseLanguage)]
+    }
+}
+
 struct AppStoreMetadata: Codable, Equatable, Sendable {
     let description: String
     let keywords: String
@@ -89,8 +169,15 @@ struct AppStoreGeneratedMetadata: Codable, Equatable, Sendable {
             primaryCategory: primaryCategory,
             secondaryCategory: secondaryCategory,
             localizations: localizations
-                .map { $0.normalized() }
-                .filter { !$0.locale.isEmpty && seen.insert($0.locale.lowercased()).inserted },
+                .compactMap { localization -> AppStoreLocalizedMetadata? in
+                    guard let locale = AppStoreLocale.canonicalIdentifier(localization.locale),
+                          seen.insert(locale.lowercased()).inserted else {
+                        return nil
+                    }
+                    var normalized = localization.normalized()
+                    normalized.locale = locale
+                    return normalized
+                },
             compliance: compliance
         )
     }

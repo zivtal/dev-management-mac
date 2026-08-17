@@ -66,7 +66,7 @@ final class OpenAIStoreMetadataService {
         apiKey: String,
         model: String
     ) async throws -> AppStoreGeneratedMetadata {
-        let requestedLocales = Array(Set(locales.map {
+        let requestedLocales = Array(Set(locales.compactMap {
             ProjectLocalizationDiscoveryService.normalizedAppStoreLocale($0)
         })).sorted()
         guard !requestedLocales.isEmpty else {

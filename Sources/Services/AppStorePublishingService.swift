@@ -208,9 +208,21 @@ final class AppStorePublishingService {
         let metadata: AppStoreMetadata
         let localizedMetadata: [AppStoreLocalizedMetadata]
         if !configuration.manualLocalizations.isEmpty {
-            localizedMetadata = configuration.manualLocalizations.map { $0.normalized() }
+            localizedMetadata = Self.normalizedLocalizedMetadata(configuration.manualLocalizations)
+            let ignoredLocalizationCount = configuration.manualLocalizations.count - localizedMetadata.count
+            if ignoredLocalizationCount > 0 {
+                eventHandler(.output(L10n.format(
+                    "Ignored %lld duplicate or unsupported localized listing(s) after App Store locale normalization.\n",
+                    Int64(ignoredLocalizationCount)
+                )))
+            }
+            guard !localizedMetadata.isEmpty else {
+                throw AppStorePublishingError.missingEditablePublishingDraft
+            }
+            let preferredLocale = AppStoreLocale.canonicalIdentifier(configuration.locale)
+                ?? configuration.locale
             let preferred = localizedMetadata.first(where: {
-                $0.locale.caseInsensitiveCompare(configuration.locale) == .orderedSame
+                $0.locale.caseInsensitiveCompare(preferredLocale) == .orderedSame
             }) ?? localizedMetadata[0]
             metadata = preferred.metadata(
                 primaryCategory: configuration.manualMetadata?.primaryCategory,
@@ -696,6 +708,21 @@ final class AppStorePublishingService {
             return ProjectLocalizationDiscoveryService.normalizedAppStoreLocale(candidate)
         }
         return nil
+    }
+
+    static func normalizedLocalizedMetadata(
+        _ localizations: [AppStoreLocalizedMetadata]
+    ) -> [AppStoreLocalizedMetadata] {
+        var seenLocales: Set<String> = []
+        return localizations.compactMap { localization in
+            guard let locale = AppStoreLocale.canonicalIdentifier(localization.locale),
+                  seenLocales.insert(locale.lowercased()).inserted else {
+                return nil
+            }
+            var normalized = localization.normalized()
+            normalized.locale = locale
+            return normalized
+        }
     }
 
     func prepareScreenshotPreview(

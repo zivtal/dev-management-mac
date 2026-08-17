@@ -9,7 +9,8 @@ struct ProjectLocalizationDiscoveryService {
 
     func discover(project: ManagedProject, defaultLocale: String) -> [String] {
         var locales = Set<String>()
-        locales.insert(Self.normalizedAppStoreLocale(defaultLocale))
+        let normalizedDefault = Self.normalizedAppStoreLocale(defaultLocale) ?? "en-US"
+        locales.insert(normalizedDefault)
 
         guard let enumerator = fileManager.enumerator(
             at: project.folderURL,
@@ -43,8 +44,8 @@ struct ProjectLocalizationDiscoveryService {
         }
         return locales.sorted { lhs, rhs in
             if lhs == rhs { return false }
-            if lhs == Self.normalizedAppStoreLocale(defaultLocale) { return true }
-            if rhs == Self.normalizedAppStoreLocale(defaultLocale) { return false }
+            if lhs == normalizedDefault { return true }
+            if rhs == normalizedDefault { return false }
             return lhs < rhs
         }
     }
@@ -111,21 +112,12 @@ struct ProjectLocalizationDiscoveryService {
     private static func insert(_ rawLocale: String, into locales: inout Set<String>) {
         let value = rawLocale.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, value.caseInsensitiveCompare("Base") != .orderedSame else { return }
-        locales.insert(normalizedAppStoreLocale(value))
+        guard let locale = normalizedAppStoreLocale(value) else { return }
+        locales.insert(locale)
     }
 
-    static func normalizedAppStoreLocale(_ rawLocale: String) -> String {
-        let normalized = rawLocale.replacingOccurrences(of: "_", with: "-")
-        guard !normalized.contains("-") else { return normalized }
-        return [
-            "en": "en-US", "ar": "ar-SA", "ca": "ca", "cs": "cs", "da": "da",
-            "de": "de-DE", "el": "el", "es": "es-ES", "fi": "fi", "fr": "fr-FR",
-            "he": "he", "hi": "hi", "hr": "hr", "hu": "hu", "id": "id",
-            "it": "it", "ja": "ja", "ko": "ko", "ms": "ms", "nl": "nl-NL",
-            "no": "no", "pl": "pl", "pt": "pt-PT", "ro": "ro", "ru": "ru",
-            "sk": "sk", "sv": "sv", "th": "th", "tr": "tr", "uk": "uk",
-            "vi": "vi", "zh": "zh-Hans"
-        ][normalized.lowercased()] ?? normalized
+    static func normalizedAppStoreLocale(_ rawLocale: String) -> String? {
+        AppStoreLocale.canonicalIdentifier(rawLocale)
     }
 
     private static func isIgnored(_ url: URL) -> Bool {
