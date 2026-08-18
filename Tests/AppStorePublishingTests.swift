@@ -1135,15 +1135,36 @@ final class AppStorePublishingTests: XCTestCase {
             atomically: true,
             encoding: .utf8
         )
+        try #"try await purchase("com.example.app.premium.yearly")"#.write(
+            to: root.appendingPathComponent("PurchaseCall.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try #"""
+        switch notice {
+        case .purchaseFailed:
+            title = "subscription.error.title"
+        default:
+            break
+        }
+        """#.write(
+            to: root.appendingPathComponent("SubscriptionNotice.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
 
         let catalog = try StoreKitSubscriptionDiscoveryService().discover(
             project: managedProject(at: root),
             defaultLocale: "en-US"
         )
         XCTAssertTrue(catalog.detectedProductIDs.contains("com.example.app.premium.monthly"))
+        XCTAssertTrue(catalog.detectedProductIDs.contains("com.example.app.premium.yearly"))
         XCTAssertFalse(catalog.detectedProductIDs.contains("com.example.premium.application"))
-        XCTAssertEqual(catalog.subscriptionCount, 1)
+        XCTAssertFalse(catalog.detectedProductIDs.contains("subscription.error.title"))
+        XCTAssertEqual(catalog.subscriptionCount, 2)
         XCTAssertTrue(catalog.sourceFiles.contains("Purchases.swift"))
+        XCTAssertTrue(catalog.sourceFiles.contains("PurchaseCall.swift"))
+        XCTAssertFalse(catalog.sourceFiles.contains("SubscriptionNotice.swift"))
     }
 
     func testDiscoversNestedPublishingManifestFromTheAppFolder() throws {

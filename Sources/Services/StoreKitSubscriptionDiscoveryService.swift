@@ -268,15 +268,18 @@ final class StoreKitSubscriptionDiscoveryService {
                     ?? contents.startIndex
                 let contextEnd = contents.index(productRange.upperBound, offsetBy: 160, limitedBy: contents.endIndex)
                     ?? contents.endIndex
-                let context = (
-                    String(contents[contextStart..<productRange.lowerBound])
-                        + String(contents[productRange.upperBound..<contextEnd])
-                ).lowercased()
+                let leadingContext = String(contents[contextStart..<productRange.lowerBound]).lowercased()
+                let trailingContext = String(contents[productRange.upperBound..<contextEnd]).lowercased()
+                let context = leadingContext + trailingContext
                 let looksLikeSubscription = ["subscription", "premium", "monthly", "annual", "yearly", "weekly"]
                     .contains(where: lower.contains)
-                let hasProductContext = ["productid", "product_ids", "products(for", "product.products", "purchase"]
+                let hasProductContext = ["productid", "product_ids", "products(for", "product.products"]
                     .contains(where: context.contains)
-                if looksLikeSubscription && hasProductContext {
+                let isPurchaseArgument = leadingContext.range(
+                    of: #"\bpurchase\s*\([^)]*$"#,
+                    options: .regularExpression
+                ) != nil
+                if looksLikeSubscription && (hasProductContext || isPurchaseArgument) {
                     results.identifiers.insert(productID)
                     results.sourceFiles.insert(Self.relativePath(url, from: root))
                 }
