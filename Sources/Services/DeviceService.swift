@@ -51,6 +51,7 @@ struct DeviceAppListEnvelope: Decodable {
 final class DeviceService {
     private let processRunner: ProcessRunner
     private let fileManager: FileManager
+    private var didAttemptCoreDeviceRecovery = false
 
     init(processRunner: ProcessRunner = ProcessRunner(), fileManager: FileManager = .default) {
         self.processRunner = processRunner
@@ -85,6 +86,13 @@ final class DeviceService {
     }
 
     func installedApplications(on device: ConnectedDevice) async throws -> [String: InstalledApplication] {
+        try await installedApplications(on: device, allowCoreDeviceRecovery: true)
+    }
+
+    private func installedApplications(
+        on device: ConnectedDevice,
+        allowCoreDeviceRecovery: Bool
+    ) async throws -> [String: InstalledApplication] {
         let temporaryDirectory = fileManager.temporaryDirectory
             .appendingPathComponent("DevManagement-Apps-\(UUID().uuidString)", isDirectory: true)
         let jsonURL = temporaryDirectory.appendingPathComponent("apps.json")
@@ -92,15 +100,34 @@ final class DeviceService {
         try fileManager.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: temporaryDirectory) }
 
-        _ = try await processRunner.runAndRequireSuccess(
-            executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
-            arguments: [
-                "devicectl", "device", "info", "apps",
-                "--device", device.udid,
-                "--timeout", "20",
-                "--json-output", jsonURL.path
-            ]
-        )
+        do {
+            _ = try await processRunner.runAndRequireSuccess(
+                executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                arguments: [
+                    "devicectl", "device", "info", "apps",
+                    "--device", device.udid,
+                    "--timeout", "20",
+                    "--json-output", jsonURL.path
+                ]
+            )
+        } catch {
+            guard allowCoreDeviceRecovery,
+                  !didAttemptCoreDeviceRecovery,
+                  Self.isCoreDeviceConnectionTimeout(error)
+            else {
+                throw error
+            }
+            didAttemptCoreDeviceRecovery = true
+            _ = try? await processRunner.run(
+                executable: URL(fileURLWithPath: "/usr/bin/killall"),
+                arguments: ["CoreDeviceService"]
+            )
+            try await Task.sleep(for: .milliseconds(500))
+            return try await installedApplications(
+                on: device,
+                allowCoreDeviceRecovery: false
+            )
+        }
 
         guard fileManager.fileExists(atPath: jsonURL.path) else {
             throw DeviceServiceError.invalidResponse
@@ -109,5 +136,16 @@ final class DeviceService {
         let data = try Data(contentsOf: jsonURL)
         let envelope = try JSONDecoder().decode(DeviceAppListEnvelope.self, from: data)
         return envelope.applicationsByBundleIdentifier
+    }
+
+    static func isCoreDeviceConnectionTimeout(_ error: Error) -> Bool {
+        guard case let ProcessRunnerError.commandFailed(executable, _, output) = error,
+              executable == "xcrun"
+        else {
+            return false
+        }
+        let normalizedOutput = output.lowercased()
+        return normalizedOutput.contains("command timeout")
+            || normalizedOutput.contains("operation timed out")
     }
 }

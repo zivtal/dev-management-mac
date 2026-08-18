@@ -32,6 +32,9 @@
 "Every %d days" = "כל %d ימים";
 "No applications have been added yet." = "עדיין לא נוספו אפליקציות.";
 "Install now" = "התקן עכשיו";
+"Waiting for device connection" = "ממתין לחיבור המכשיר";
+"Installation of %@ requested" = "התבקשה התקנה של %@";
+"Waiting for Xcode to connect to the selected device. Installation will start automatically." = "ממתין ש־Xcode יתחבר למכשיר שנבחר. ההתקנה תתחיל אוטומטית.";
 "Check now" = "בדוק עכשיו";
 "Settings…" = "הגדרות…";
 "Quit" = "יציאה";

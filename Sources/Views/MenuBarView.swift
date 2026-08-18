@@ -419,13 +419,23 @@ struct MenuBarView: View {
                                 Button {
                                     model.installNow(projectID: project.id)
                                 } label: {
-                                    Image(systemName: "arrow.clockwise")
+                                    Image(systemName: model.isInstallationQueued(for: project.id)
+                                        ? "clock.arrow.circlepath"
+                                        : "arrow.clockwise")
                                 }
                                 .buttonStyle(.borderless)
-                                .help("Install now")
+                                .foregroundStyle(
+                                    model.isInstallationQueued(for: project.id)
+                                        ? Color.orange
+                                        : Color.primary
+                                )
+                                .help(model.isInstallationQueued(for: project.id)
+                                    ? L10n.text("Waiting for device connection")
+                                    : L10n.text("Install now"))
                                 .disabled(
                                     !project.isEnabled
                                         || !model.hasAvailableInstallationTarget(for: project)
+                                        || model.isInstallationQueued(for: project.id)
                                         || model.hasActiveWork
                                 )
                             }

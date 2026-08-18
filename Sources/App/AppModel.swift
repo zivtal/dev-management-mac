@@ -47,7 +47,7 @@ final class AppModel: ObservableObject {
     @Published var presentedError: String?
 
     var installableDevices: [ConnectedDevice] {
-        connectedDevices.filter(\.isAvailableInstallationTarget)
+        connectedDevices.filter(\.supportsIOSAppInstallation)
     }
 
     var hasMacOSProjects: Bool {
@@ -239,11 +239,12 @@ final class AppModel: ObservableObject {
             lastDeviceError = nil
             let appInstallableDevices = installableDevices
             await refreshInstalledApplications(on: appInstallableDevices)
+            let readyInstallableDevices = appInstallableDevices.filter(isDeviceReadyForInstallation)
             if !installAllTargets.isEmpty {
                 preparePendingInstallAllTargets()
-                await installAllRequestedProjects(on: appInstallableDevices)
+                await installAllRequestedProjects(on: readyInstallableDevices)
             } else if installWhenDue, preferences.automationEnabled, !isSettingsWindowOpen {
-                await installDueProjects(on: appInstallableDevices)
+                await installDueProjects(on: readyInstallableDevices)
             }
         } catch {
             connectedDevices = []
@@ -337,7 +338,7 @@ final class AppModel: ObservableObject {
     }
 
     func selectedInstallableDevices(for project: ManagedProject) -> [ConnectedDevice] {
-        selectedCompatibleConnectedDevices(for: project).filter(\.isInstallReady)
+        selectedCompatibleConnectedDevices(for: project).filter(isDeviceReadyForInstallation)
     }
 
     func selectedDeviceCount(for project: ManagedProject) -> Int {
@@ -346,7 +347,11 @@ final class AppModel: ObservableObject {
     }
 
     func hasAvailableInstallationTarget(for project: ManagedProject) -> Bool {
-        project.isMacOSApplication || !selectedInstallableDevices(for: project).isEmpty
+        project.isMacOSApplication || !selectedCompatibleConnectedDevices(for: project).isEmpty
+    }
+
+    func isInstallationQueued(for projectID: UUID) -> Bool {
+        installAllTargets[projectID] != nil
     }
 
     func isDeviceInstallationEnabled(_ deviceUDID: String, for projectID: UUID) -> Bool {
@@ -1198,30 +1203,34 @@ final class AppModel: ObservableObject {
 
         let targetDevices: [ConnectedDevice]
         if let deviceUDID {
-            targetDevices = selectedInstallableDevices(for: project).filter { $0.udid == deviceUDID }
+            targetDevices = selectedCompatibleConnectedDevices(for: project).filter {
+                $0.udid == deviceUDID
+            }
         } else {
-            targetDevices = selectedInstallableDevices(for: project)
+            targetDevices = selectedCompatibleConnectedDevices(for: project)
         }
         guard !targetDevices.isEmpty else {
             presentedError = L10n.text("No selected compatible device is available for this application. Choose a connected device in Applications settings.")
             return
         }
 
-        let cancellationGeneration = installationCancellationGeneration
-        Task {
-            for device in targetDevices {
-                guard cancellationGeneration == installationCancellationGeneration else { return }
-                _ = await install(
-                    project: project,
-                    target: ProjectInstallationTarget(
-                        identifier: device.udid,
-                        name: device.name,
-                        device: device
-                    ),
-                    ignoreSchedule: true
-                )
-            }
+        let targetDeviceUDIDs = Set(targetDevices.map(\.udid))
+        installAllTargets[project.id, default: []].formUnion(targetDeviceUDIDs)
+        for deviceUDID in targetDeviceUDIDs {
+            completedInstallAllTargets.remove(
+                recordKey(projectID: project.id, deviceUDID: deviceUDID)
+            )
         }
+        addActivity(
+            level: .info,
+            title: L10n.format("Installation of %@ requested", project.displayName),
+            details: targetDevices.contains(where: { !isDeviceReadyForInstallation($0) })
+                ? L10n.text("Waiting for Xcode to connect to the selected device. Installation will start automatically.")
+                : nil,
+            projectID: project.id
+        )
+        restartMonitoring()
+        Task { await refreshDevices(installWhenDue: false) }
     }
 
     func cancelActiveInstallation() {
@@ -1251,12 +1260,20 @@ final class AppModel: ObservableObject {
             return (project.id, Set(targetIdentifiers))
         })
         completedInstallAllTargets = []
+        let hasConnectingTarget = enabledProjects.contains { project in
+            !project.isMacOSApplication
+                && selectedCompatibleConnectedDevices(for: project).contains {
+                    !isDeviceReadyForInstallation($0)
+                }
+        }
         addActivity(
             level: .info,
             title: L10n.format("Install All requested for %d application(s)", enabledProjects.count),
             details: installAllTargets.values.contains(where: \.isEmpty)
                 ? L10n.text("Some applications are waiting for a selected compatible iPhone or iPad. Choose devices per application in Settings; the search will continue in the background.")
-                : nil
+                : hasConnectingTarget
+                    ? L10n.text("Waiting for Xcode to connect to the selected device. Installation will start automatically.")
+                    : nil
         )
         restartMonitoring()
         Task { await refreshDevices(installWhenDue: false) }
@@ -1731,6 +1748,10 @@ final class AppModel: ObservableObject {
                 failedVersionCheckDeviceUDIDs.insert(device.udid)
             }
         }
+    }
+
+    private func isDeviceReadyForInstallation(_ device: ConnectedDevice) -> Bool {
+        device.isInstallReady || checkedInstalledApplicationDeviceUDIDs.contains(device.udid)
     }
 
     func refreshProjectVersions() {

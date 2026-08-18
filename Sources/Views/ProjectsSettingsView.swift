@@ -210,11 +210,19 @@ struct ProjectsSettingsView: View {
                 Button {
                     model.installNow(projectID: project.id)
                 } label: {
-                    Label("Install now", systemImage: "arrow.clockwise")
+                    Label(
+                        model.isInstallationQueued(for: project.id)
+                            ? "Waiting for device connection"
+                            : "Install now",
+                        systemImage: model.isInstallationQueued(for: project.id)
+                            ? "clock.arrow.circlepath"
+                            : "arrow.clockwise"
+                    )
                 }
                 .disabled(
                     !project.isEnabled
                         || !model.hasAvailableInstallationTarget(for: project)
+                        || model.isInstallationQueued(for: project.id)
                         || model.hasActiveWork
                 )
 

@@ -32,6 +32,9 @@
 "Every %d days" = "Every %d days";
 "No applications have been added yet." = "No applications have been added yet.";
 "Install now" = "Install now";
+"Waiting for device connection" = "Waiting for device connection";
+"Installation of %@ requested" = "Installation of %@ requested";
+"Waiting for Xcode to connect to the selected device. Installation will start automatically." = "Waiting for Xcode to connect to the selected device. Installation will start automatically.";
 "Check now" = "Check now";
 "Settings…" = "Settings…";
 "Quit" = "Quit";

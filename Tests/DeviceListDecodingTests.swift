@@ -78,6 +78,10 @@ final class DeviceListDecodingTests: XCTestCase {
             try XCTUnwrap(envelope.availableAppleDevices.first { $0.udid == "WATCH-1" })
                 .supportsIOSAppInstallation
         )
+        XCTAssertEqual(
+            envelope.availableAppleDevices.first { $0.udid == "WATCH-1" }?.connectionDescription,
+            "Wi‑Fi"
+        )
     }
 
     func testDecodesInstalledApplicationVersionsByBundleIdentifier() throws {
@@ -132,5 +136,29 @@ final class DeviceListDecodingTests: XCTestCase {
             ).versionDisplay,
             "99"
         )
+    }
+
+    func testCoreDeviceRecoveryOnlyRecognizesXcrunConnectionTimeouts() {
+        XCTAssertTrue(DeviceService.isCoreDeviceConnectionTimeout(
+            ProcessRunnerError.commandFailed(
+                executable: "xcrun",
+                status: 1,
+                output: "ERROR: Command timeout of 20.0 seconds exceeded."
+            )
+        ))
+        XCTAssertTrue(DeviceService.isCoreDeviceConnectionTimeout(
+            ProcessRunnerError.commandFailed(
+                executable: "xcrun",
+                status: 1,
+                output: "Transport error: Operation timed out"
+            )
+        ))
+        XCTAssertFalse(DeviceService.isCoreDeviceConnectionTimeout(
+            ProcessRunnerError.commandFailed(
+                executable: "xcodebuild",
+                status: 70,
+                output: "Timed out waiting for destinations"
+            )
+        ))
     }
 }

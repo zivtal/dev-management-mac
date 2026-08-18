@@ -21,7 +21,7 @@ struct ConnectedDevice: Identifiable, Codable, Equatable {
         case "wired", "usb": L10n.text("USB")
         default: L10n.text("Connected")
         }
-        guard !isInstallReady else { return transportDescription }
+        guard supportsIOSAppInstallation, !isInstallReady else { return transportDescription }
         return L10n.format("%@ · %@", transportDescription, L10n.text("Connecting…"))
     }
 

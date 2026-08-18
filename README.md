@@ -401,9 +401,13 @@ selected project/workspace, scheme, configuration, and device, Development Manag
 9. Removes the temporary build directory.
 
 Paired devices reported by CoreDevice remain visible and keep their per-application
-selection while their developer tunnel is connecting. Automatic work and Install All
-remain queued until the tunnel is ready, with discovery retried at the regular
-five-minute interval, instead of starting a build against an ineligible destination.
+selection while their developer tunnel is connecting. Development Management actively
+probes the device to establish the tunnel, but starts `xcodebuild` only after the probe
+succeeds. Automatic work, per-application manual requests, and Install All remain queued
+until then, with discovery retried at the regular five-minute interval instead of
+starting a build against an ineligible destination. If that probe specifically times
+out, Development Management restarts the user-owned CoreDevice service and retries once
+per app session so a stale service does not leave every device stuck at Connecting.
 
 The build uses the source tree's current contents and the developer account and
 signing configuration available to Xcode.
