@@ -47,7 +47,7 @@ final class AppModel: ObservableObject {
     @Published var presentedError: String?
 
     var installableDevices: [ConnectedDevice] {
-        connectedDevices.filter(\.supportsIOSAppInstallation)
+        connectedDevices.filter(\.isAvailableInstallationTarget)
     }
 
     var hasMacOSProjects: Bool {
@@ -325,11 +325,19 @@ final class AppModel: ObservableObject {
     }
 
     func compatibleConnectedDevices(for project: ManagedProject) -> [ConnectedDevice] {
-        project.devicesInInstallationOrder(installableDevices.filter(project.supports))
+        project.devicesInInstallationOrder(
+            connectedDevices.filter {
+                $0.supportsIOSAppInstallation && project.supports($0)
+            }
+        )
+    }
+
+    func selectedCompatibleConnectedDevices(for project: ManagedProject) -> [ConnectedDevice] {
+        compatibleConnectedDevices(for: project).filter(project.installationEnabled)
     }
 
     func selectedInstallableDevices(for project: ManagedProject) -> [ConnectedDevice] {
-        compatibleConnectedDevices(for: project).filter(project.installationEnabled)
+        selectedCompatibleConnectedDevices(for: project).filter(\.isInstallReady)
     }
 
     func selectedDeviceCount(for project: ManagedProject) -> Int {
@@ -1239,7 +1247,7 @@ final class AppModel: ObservableObject {
         installAllTargets = Dictionary(uniqueKeysWithValues: enabledProjects.map { project in
             let targetIdentifiers = project.isMacOSApplication
                 ? [ManagedProject.localMacInstallationTargetID]
-                : selectedInstallableDevices(for: project).map(\.udid)
+                : selectedCompatibleConnectedDevices(for: project).map(\.udid)
             return (project.id, Set(targetIdentifiers))
         })
         completedInstallAllTargets = []
@@ -1473,7 +1481,7 @@ final class AppModel: ObservableObject {
             }
             let targetIdentifiers = project.isMacOSApplication
                 ? Set([ManagedProject.localMacInstallationTargetID])
-                : Set(selectedInstallableDevices(for: project).map(\.udid))
+                : Set(selectedCompatibleConnectedDevices(for: project).map(\.udid))
             if !targetIdentifiers.isEmpty {
                 installAllTargets[projectID] = targetIdentifiers
             }

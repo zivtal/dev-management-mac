@@ -19,6 +19,7 @@
 "No connected iPhone" = "אין iPhone מחובר";
 "Connect by USB or enable Connect via network in Xcode." = "יש לחבר ב־USB או להפעיל Connect via network ב־Xcode.";
 "Connected" = "מחובר";
+"Connecting…" = "מתחבר…";
 "Wi‑Fi" = "Wi‑Fi";
 "USB" = "USB";
 "%@ · %@" = "%@ · %@";

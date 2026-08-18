@@ -19,6 +19,7 @@
 "No connected iPhone" = "No connected iPhone";
 "Connect by USB or enable Connect via network in Xcode." = "Connect by USB or enable Connect via network in Xcode.";
 "Connected" = "Connected";
+"Connecting…" = "Connecting…";
 "Wi‑Fi" = "Wi‑Fi";
 "USB" = "USB";
 "%@ · %@" = "%@ · %@";

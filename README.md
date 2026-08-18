@@ -400,6 +400,11 @@ selected project/workspace, scheme, configuration, and device, Development Manag
    --timeout 180 <built-app>`.
 9. Removes the temporary build directory.
 
+Paired devices reported by CoreDevice remain visible and keep their per-application
+selection while their developer tunnel is connecting. Automatic work and Install All
+remain queued until the tunnel is ready, with discovery retried at the regular
+five-minute interval, instead of starting a build against an ineligible destination.
+
 The build uses the source tree's current contents and the developer account and
 signing configuration available to Xcode.
 

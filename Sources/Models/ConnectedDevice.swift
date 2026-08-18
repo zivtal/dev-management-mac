@@ -16,15 +16,21 @@ struct ConnectedDevice: Identifiable, Codable, Equatable {
     var id: String { udid }
 
     var connectionDescription: String {
-        switch transportType?.lowercased() {
+        let transportDescription = switch transportType?.lowercased() {
         case "localnetwork": L10n.text("Wi‑Fi")
         case "wired", "usb": L10n.text("USB")
         default: L10n.text("Connected")
         }
+        guard !isInstallReady else { return transportDescription }
+        return L10n.format("%@ · %@", transportDescription, L10n.text("Connecting…"))
     }
 
     var supportsIOSAppInstallation: Bool {
         mobileDeviceFamily != nil
+    }
+
+    var isAvailableInstallationTarget: Bool {
+        supportsIOSAppInstallation && isInstallReady
     }
 
     var mobileDeviceFamily: MobileDeviceFamily? {

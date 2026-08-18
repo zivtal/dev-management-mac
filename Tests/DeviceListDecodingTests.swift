@@ -66,6 +66,14 @@ final class DeviceListDecodingTests: XCTestCase {
             envelope.availableAppleDevices.filter(\.supportsIOSAppInstallation).map(\.udid),
             ["PHONE-1", "PHONE-2"]
         )
+        XCTAssertEqual(
+            envelope.availableAppleDevices.filter(\.isAvailableInstallationTarget).map(\.udid),
+            ["PHONE-1"]
+        )
+        XCTAssertEqual(
+            envelope.availableAppleDevices.first { $0.udid == "PHONE-2" }?.connectionDescription,
+            "Wi‑Fi · Connecting…"
+        )
         XCTAssertFalse(
             try XCTUnwrap(envelope.availableAppleDevices.first { $0.udid == "WATCH-1" })
                 .supportsIOSAppInstallation
