@@ -946,7 +946,16 @@ final class AppStorePublishingTests: XCTestCase {
             "baseTerritory": "ISR",
             "availableInAllTerritories": true,
             "familySharable": true,
-            "reviewScreenshot": "Screenshots/subscription-review.png"
+            "reviewScreenshot": "Screenshots/subscription-review.png",
+            "groups": [{
+              "referenceName": "Premium",
+              "subscriptions": [{
+                "referenceName": "Premium Monthly",
+                "productID": "com.example.app.premium.monthly",
+                "period": "ONE_MONTH",
+                "reviewNote": "Keep the discovered StoreKit price."
+              }]
+            }]
           }
         }
         """#
@@ -977,7 +986,81 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(subscription.availableInAllTerritories, true)
         XCTAssertEqual(subscription.familySharable, true)
         XCTAssertEqual(subscription.reviewScreenshot, "Screenshots/subscription-review.png")
+        XCTAssertEqual(subscription.reviewNote, "Keep the discovered StoreKit price.")
         XCTAssertEqual(subscription.localizations?.first?.locale, "en-US")
+    }
+
+    func testCurrentSubscriptionPriceUsesTheActiveBaseTerritorySchedule() throws {
+        let snapshot = AppStoreConnectSubscriptionSnapshot(
+            id: "subscription-id",
+            referenceName: "Premium Monthly",
+            productID: "com.example.monthly",
+            state: "READY_FOR_REVIEW",
+            period: "ONE_MONTH",
+            familySharable: false,
+            groupLevel: 1,
+            reviewNote: nil,
+            localizations: [],
+            availableTerritoryIDs: ["USA"],
+            availableInNewTerritories: true,
+            prices: [
+                AppStoreConnectSubscriptionPriceSnapshot(
+                    territory: "USA",
+                    price: "7.99",
+                    currency: "USD",
+                    startDate: "2025-01-01",
+                    endDate: "2025-12-31",
+                    preserved: false
+                ),
+                AppStoreConnectSubscriptionPriceSnapshot(
+                    territory: "USA",
+                    price: "9.99",
+                    currency: "USD",
+                    startDate: "2026-01-01",
+                    endDate: nil,
+                    preserved: false
+                ),
+                AppStoreConnectSubscriptionPriceSnapshot(
+                    territory: "USA",
+                    price: "12.99",
+                    currency: "USD",
+                    startDate: "2027-01-01",
+                    endDate: nil,
+                    preserved: false
+                )
+            ],
+            offers: []
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(calendar.date(from: DateComponents(
+            year: 2026,
+            month: 8,
+            day: 18
+        )))
+
+        XCTAssertEqual(
+            snapshot.currentPrice(in: "usa", referenceDate: referenceDate),
+            "9.99"
+        )
+    }
+
+    func testReadyForReviewSubscriptionVersionIsReused() {
+        let versions: [[String: Any]] = [
+            [
+                "id": "approved-version",
+                "attributes": ["state": "APPROVED", "version": 1]
+            ],
+            [
+                "id": "inflight-version",
+                "attributes": ["state": "READY_FOR_REVIEW", "version": 2]
+            ]
+        ]
+
+        XCTAssertEqual(
+            AppStoreConnectService.reusableSubscriptionVersionID(in: versions),
+            "inflight-version"
+        )
     }
 
     func testManifestDecodesTerritoryPricesAndTestFlightAutomation() throws {

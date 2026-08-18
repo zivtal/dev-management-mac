@@ -625,6 +625,43 @@ struct AppStoreConnectSubscriptionSnapshot: Equatable, Sendable, Identifiable {
     let availableInNewTerritories: Bool?
     let prices: [AppStoreConnectSubscriptionPriceSnapshot]
     let offers: [AppStoreConnectOfferSnapshot]
+
+    func currentPrice(
+        in territory: String,
+        referenceDate: Date = Date()
+    ) -> String? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = calendar.dateComponents([.year, .month, .day], from: referenceDate)
+        let currentDay = String(
+            format: "%04d-%02d-%02d",
+            components.year ?? 0,
+            components.month ?? 0,
+            components.day ?? 0
+        )
+        let matching = prices.filter {
+            $0.territory.caseInsensitiveCompare(territory) == .orderedSame
+        }
+        let active = matching.filter {
+            ($0.startDate.map { $0 <= currentDay } ?? true)
+                && ($0.endDate.map { $0 >= currentDay } ?? true)
+        }
+        if let price = active.max(by: {
+            ($0.startDate ?? "") < ($1.startDate ?? "")
+        })?.price {
+            return price
+        }
+        if let price = matching.filter({
+            $0.startDate.map { $0 > currentDay } ?? false
+        }).min(by: {
+            ($0.startDate ?? "") < ($1.startDate ?? "")
+        })?.price {
+            return price
+        }
+        return matching.max {
+            ($0.startDate ?? "") < ($1.startDate ?? "")
+        }?.price
+    }
 }
 
 struct AppStoreConnectSubscriptionPriceSnapshot: Equatable, Sendable, Identifiable {

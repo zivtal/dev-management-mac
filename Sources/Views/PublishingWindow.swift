@@ -1529,6 +1529,7 @@ private struct PublishingWindowView: View {
             )
             subscriptionPriceDrafts = configuredPrices
             savedSubscriptionPrices = configuredPrices
+            fillMissingSubscriptionPricesFromAppStore()
             releaseAutomaticallySelection = catalog.publication?.releaseAutomatically
                 ?? model.preferences.appStoreReleaseAutomatically
                 ?? true
@@ -1603,14 +1604,37 @@ private struct PublishingWindowView: View {
         }
         appStoreConfiguration = .loading
         do {
-            appStoreConfiguration = .loaded(
-                try await model.loadAppStoreConnectConfiguration(projectID: projectID)
-            )
+            let snapshot = try await model.loadAppStoreConnectConfiguration(projectID: projectID)
+            appStoreConfiguration = .loaded(snapshot)
+            fillMissingSubscriptionPricesFromAppStore()
         } catch is CancellationError {
             return
         } catch {
             appStoreConfiguration = .error(error.localizedDescription)
         }
+    }
+
+    private func fillMissingSubscriptionPricesFromAppStore() {
+        guard let catalog = localPublishingPreview?.catalog,
+              let snapshot = currentAppStoreSnapshot else { return }
+        var drafts = subscriptionPriceDrafts
+        var saved = savedSubscriptionPrices
+        let liveSubscriptions = snapshot.subscriptionGroups.flatMap(\.subscriptions)
+        for definition in catalog.groups.flatMap(\.subscriptions) {
+            guard drafts[definition.productID]?.nilIfEmpty == nil,
+                  let live = liveSubscriptions.first(where: {
+                      $0.productID == definition.productID
+                  }),
+                  let price = live.currentPrice(
+                      in: definition.baseTerritory?.nilIfEmpty ?? "USA"
+                  ) else { continue }
+            drafts[definition.productID] = price
+            if saved[definition.productID]?.nilIfEmpty == nil {
+                saved[definition.productID] = price
+            }
+        }
+        subscriptionPriceDrafts = drafts
+        savedSubscriptionPrices = saved
     }
 
     private enum SubscriptionSummary: Equatable {
@@ -3541,6 +3565,7 @@ private struct PerAppPublishingConfigurationEditor: View {
 
         if manifest.subscriptions?.groups?.isEmpty != false,
            !currentConfiguration.subscriptionGroups.isEmpty {
+            let baseTerritory = manifest.subscriptions?.baseTerritory?.nilIfEmpty ?? "USA"
             let groups = currentConfiguration.subscriptionGroups.map { group in
                 AppStoreSubscriptionGroupDefinition(
                     referenceName: group.referenceName,
@@ -3550,8 +3575,8 @@ private struct PerAppPublishingConfigurationEditor: View {
                             referenceName: subscription.referenceName,
                             productID: subscription.productID,
                             period: subscription.period ?? "",
-                            basePrice: nil,
-                            baseTerritory: nil,
+                            basePrice: subscription.currentPrice(in: baseTerritory),
+                            baseTerritory: baseTerritory,
                             availableInAllTerritories: subscription.availableInNewTerritories,
                             familySharable: subscription.familySharable,
                             groupLevel: subscription.groupLevel,

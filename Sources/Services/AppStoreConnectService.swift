@@ -2669,54 +2669,91 @@ final class AppStoreConnectService {
     }
 
     private func findOrCreateSubscriptionGroupVersion(groupID: String) async throws -> String {
-        let drafts = try await pagedData(
+        let versions = try await pagedData(
             path: "/v1/subscriptionGroups/\(groupID)/versions",
-            query: ["filter[state]": "PREPARE_FOR_SUBMISSION", "limit": "200"]
+            query: ["limit": "200"]
         )
-        if let id = drafts.first?["id"] as? String { return id }
-        let created = try await request(
-            method: "POST",
-            path: "/v1/subscriptionGroupVersions",
-            body: [
-                "data": [
-                    "type": "subscriptionGroupVersions",
-                    "relationships": [
-                        "subscriptionGroup": [
-                            "data": ["type": "subscriptionGroups", "id": groupID]
+        if let id = Self.reusableSubscriptionVersionID(in: versions) { return id }
+        do {
+            let created = try await request(
+                method: "POST",
+                path: "/v1/subscriptionGroupVersions",
+                body: [
+                    "data": [
+                        "type": "subscriptionGroupVersions",
+                        "relationships": [
+                            "subscriptionGroup": [
+                                "data": ["type": "subscriptionGroups", "id": groupID]
+                            ]
                         ]
                     ]
                 ]
-            ]
-        )
-        return try Self.identifier(in: created, named: "subscription group version")
+            )
+            return try Self.identifier(in: created, named: "subscription group version")
+        } catch let error as AppStoreConnectError {
+            guard case .requestFailed(let status, _) = error, status == 409 else { throw error }
+            let refreshed = try await pagedData(
+                path: "/v1/subscriptionGroups/\(groupID)/versions",
+                query: ["limit": "200"]
+            )
+            guard let id = Self.reusableSubscriptionVersionID(in: refreshed) else { throw error }
+            return id
+        }
     }
 
     private func editableSubscriptionVersion(subscriptionID: String) async throws -> String? {
-        try await pagedData(
+        let versions = try await pagedData(
             path: "/v1/subscriptions/\(subscriptionID)/versions",
-            query: ["filter[state]": "PREPARE_FOR_SUBMISSION", "limit": "200"]
-        ).first?["id"] as? String
+            query: ["limit": "200"]
+        )
+        return Self.reusableSubscriptionVersionID(in: versions)
     }
 
     private func findOrCreateSubscriptionVersion(subscriptionID: String) async throws -> String {
         if let existing = try await editableSubscriptionVersion(subscriptionID: subscriptionID) {
             return existing
         }
-        let created = try await request(
-            method: "POST",
-            path: "/v1/subscriptionVersions",
-            body: [
-                "data": [
-                    "type": "subscriptionVersions",
-                    "relationships": [
-                        "subscription": [
-                            "data": ["type": "subscriptions", "id": subscriptionID]
+        do {
+            let created = try await request(
+                method: "POST",
+                path: "/v1/subscriptionVersions",
+                body: [
+                    "data": [
+                        "type": "subscriptionVersions",
+                        "relationships": [
+                            "subscription": [
+                                "data": ["type": "subscriptions", "id": subscriptionID]
+                            ]
                         ]
                     ]
                 ]
-            ]
-        )
-        return try Self.identifier(in: created, named: "subscription version")
+            )
+            return try Self.identifier(in: created, named: "subscription version")
+        } catch let error as AppStoreConnectError {
+            guard case .requestFailed(let status, _) = error, status == 409 else { throw error }
+            guard let existing = try await editableSubscriptionVersion(subscriptionID: subscriptionID) else {
+                throw error
+            }
+            return existing
+        }
+    }
+
+    static func reusableSubscriptionVersionID(in versions: [[String: Any]]) -> String? {
+        let reusableStates: Set<String> = [
+            "PREPARE_FOR_SUBMISSION",
+            "READY_FOR_REVIEW",
+            "WAITING_FOR_REVIEW",
+            "IN_REVIEW",
+            "REJECTED"
+        ]
+        return versions.filter {
+            guard let state = Self.attributes($0)["state"] as? String else { return false }
+            return reusableStates.contains(state)
+        }.max {
+            let left = Self.attributes($0)["version"] as? Int ?? 0
+            let right = Self.attributes($1)["version"] as? Int ?? 0
+            return left < right
+        }?["id"] as? String
     }
 
     private func upsertGroupLocalizations(
@@ -2739,6 +2776,12 @@ final class AppStoreConnectService {
                 includesLocale: localizationID == nil
             )
             if let localizationID {
+                if Self.hasMatchingStringAttributes(
+                    Self.attributes(match ?? [:]),
+                    expected: attributes
+                ) {
+                    continue
+                }
                 _ = try await request(
                     method: "PATCH",
                     path: "/v2/subscriptionGroupLocalizations/\(localizationID)",
@@ -2793,6 +2836,12 @@ final class AppStoreConnectService {
                 includesLocale: localizationID == nil
             )
             if let localizationID {
+                if Self.hasMatchingStringAttributes(
+                    Self.attributes(match ?? [:]),
+                    expected: attributes
+                ) {
+                    continue
+                }
                 _ = try await request(
                     method: "PATCH",
                     path: "/v2/subscriptionLocalizations/\(localizationID)",
@@ -2864,6 +2913,16 @@ final class AppStoreConnectService {
             var normalized = localization
             normalized.locale = locale
             return normalized
+        }
+    }
+
+    private static func hasMatchingStringAttributes(
+        _ existing: [String: Any],
+        expected: [String: Any]
+    ) -> Bool {
+        expected.allSatisfy { key, value in
+            guard let value = value as? String else { return false }
+            return existing[key] as? String == value
         }
     }
 

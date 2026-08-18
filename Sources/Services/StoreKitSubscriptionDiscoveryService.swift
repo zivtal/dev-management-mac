@@ -201,7 +201,10 @@ final class StoreKitSubscriptionDiscoveryService {
                 group.localizations = override.localizations ?? group.localizations
                 for subscription in override.subscriptions {
                     if let index = group.subscriptions.firstIndex(where: { $0.productID == subscription.productID }) {
-                        group.subscriptions[index] = subscription
+                        group.subscriptions[index] = merge(
+                            subscription,
+                            preserving: group.subscriptions[index]
+                        )
                     } else {
                         group.subscriptions.append(subscription)
                     }
@@ -211,6 +214,24 @@ final class StoreKitSubscriptionDiscoveryService {
                 result.append(override)
             }
         }
+        return result
+    }
+
+    private func merge(
+        _ override: AppStoreSubscriptionDefinition,
+        preserving discovered: AppStoreSubscriptionDefinition
+    ) -> AppStoreSubscriptionDefinition {
+        var result = override
+        result.basePrice = override.basePrice ?? discovered.basePrice
+        result.baseTerritory = override.baseTerritory ?? discovered.baseTerritory
+        result.territoryPrices = override.territoryPrices ?? discovered.territoryPrices
+        result.availableInAllTerritories = override.availableInAllTerritories
+            ?? discovered.availableInAllTerritories
+        result.familySharable = override.familySharable ?? discovered.familySharable
+        result.groupLevel = override.groupLevel ?? discovered.groupLevel
+        result.reviewNote = override.reviewNote ?? discovered.reviewNote
+        result.reviewScreenshot = override.reviewScreenshot ?? discovered.reviewScreenshot
+        result.localizations = override.localizations ?? discovered.localizations
         return result
     }
 
