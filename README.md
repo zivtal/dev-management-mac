@@ -459,12 +459,13 @@ Device discovery runs:
 
 ```sh
 xcrun devicectl list devices \
-  --filter "State == 'available (paired)'" \
+  --filter "State == 'available (paired)' OR State == 'connected'" \
   --timeout 20 \
   --json-output <temporary-file>
 ```
 
-The result is filtered to paired iOS and watchOS devices with a nonempty UDID.
+The result is filtered to available paired or actively connected iOS and watchOS
+devices with a nonempty UDID.
 No transport allowlist is applied. Known CoreDevice values are presented as:
 
 - `wired` or `usb` → USB
@@ -782,7 +783,8 @@ launch around this script.
 
 - Open Xcode and confirm the device is paired and available.
 - Unlock the device and accept trust or Developer Mode prompts.
-- Confirm `xcrun devicectl list devices` reports it as `available (paired)`.
+- Confirm `xcrun devicectl list devices` reports it as `available (paired)` or
+  `connected`.
 - For Wi-Fi, enable **Connect via network** for the device in Xcode.
 - Select **Check now** or **Settings → Devices → Refresh devices**.
 

@@ -70,7 +70,7 @@ final class DeviceService {
             executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
             arguments: [
                 "devicectl", "list", "devices",
-                "--filter", "State == 'available (paired)'",
+                "--filter", "State == 'available (paired)' OR State == 'connected'",
                 "--timeout", "20",
                 "--json-output", jsonURL.path
             ]
