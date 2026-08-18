@@ -401,7 +401,8 @@ final class AppStorePublishingService {
             onOutput: { eventHandler(.output($0)) }
         )
 
-        if publication.preservedLockedAppInformation {
+        var storefrontConfigurationIsLocked = publication.preservedLockedAppInformation
+        if storefrontConfigurationIsLocked {
             eventHandler(.output(L10n.text("App Store Connect has locked app-level declarations in its current state; keeping the existing categories, rights, age rating, price, and availability for this TestFlight upload.\n")))
         } else {
             do {
@@ -412,17 +413,27 @@ final class AppStorePublishingService {
                 )
             } catch AppStoreConnectError.requestFailed(let status, _)
                 where intent.preservesLockedAppInformation(forHTTPStatus: status) {
+                storefrontConfigurationIsLocked = true
                 eventHandler(.output(L10n.text("App Store Connect has locked app-level declarations in its current state; keeping the existing categories, rights, age rating, price, and availability for this TestFlight upload.\n")))
             }
         }
 
         eventHandler(.phase(.configuringSubscriptions))
-        let subscriptionReviewItems = try await appStoreConnect.reconcileSubscriptions(
-            appID: publication.appID,
-            catalog: subscriptionCatalog,
-            requiresReviewAssets: true,
-            onOutput: { eventHandler(.output($0)) }
-        )
+        let subscriptionReviewItems: [AppStoreConnectReviewItem]
+        if Self.preservesExistingSubscriptionConfiguration(
+            intent: intent,
+            appInformationIsLocked: storefrontConfigurationIsLocked
+        ) {
+            subscriptionReviewItems = []
+            eventHandler(.output(L10n.text("App Store Connect has locked subscription information in its current state; keeping the existing products, prices, availability, and localizations for this TestFlight upload.\n")))
+        } else {
+            subscriptionReviewItems = try await appStoreConnect.reconcileSubscriptions(
+                appID: publication.appID,
+                catalog: subscriptionCatalog,
+                requiresReviewAssets: true,
+                onOutput: { eventHandler(.output($0)) }
+            )
+        }
 
         if !publication.deferredStorefrontSetup {
             eventHandler(.phase(.uploadingScreenshots))
@@ -508,6 +519,13 @@ final class AppStorePublishingService {
             reusedExistingBuild: reusedExistingBuild,
             deferredStorefrontSetup: publication.deferredStorefrontSetup
         )
+    }
+
+    static func preservesExistingSubscriptionConfiguration(
+        intent: PublishingIntent,
+        appInformationIsLocked: Bool
+    ) -> Bool {
+        intent == .testFlight && appInformationIsLocked
     }
 
     static func publicationURLs(configuration: PublishingConfiguration) -> [AppStorePublicationURL] {

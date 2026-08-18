@@ -3490,7 +3490,11 @@ final class AppStoreConnectService {
         guard let http = response as? HTTPURLResponse else {
             throw AppStoreConnectError.invalidResponse
         }
-        if http.statusCode == 429, retryCount < 5 {
+        if Self.shouldRetryRequest(
+            method: method,
+            statusCode: http.statusCode,
+            retryCount: retryCount
+        ) {
             let retryAfter = http.value(forHTTPHeaderField: "Retry-After")
                 .flatMap(Double.init) ?? pow(2, Double(retryCount + 1))
             try await Task.sleep(for: .seconds(min(retryAfter, 30)))
@@ -3503,13 +3507,33 @@ final class AppStoreConnectService {
             )
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw AppStoreConnectError.requestFailed(http.statusCode, Self.errorMessage(from: data))
+            let message = Self.errorMessage(from: data)
+            if Self.transientServerStatusCodes.contains(http.statusCode) {
+                throw AppStoreConnectError.requestFailed(
+                    http.statusCode,
+                    "\(message) (\(method.uppercased()) \(path))"
+                )
+            }
+            throw AppStoreConnectError.requestFailed(http.statusCode, message)
         }
         if data.isEmpty { return [:] }
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw AppStoreConnectError.invalidResponse
         }
         return root
+    }
+
+    private static let transientServerStatusCodes: Set<Int> = [500, 502, 503, 504]
+
+    static func shouldRetryRequest(
+        method: String,
+        statusCode: Int,
+        retryCount: Int
+    ) -> Bool {
+        guard retryCount < 5 else { return false }
+        if statusCode == 429 { return true }
+        guard transientServerStatusCodes.contains(statusCode) else { return false }
+        return ["GET", "HEAD", "PUT", "PATCH", "DELETE"].contains(method.uppercased())
     }
 
     private func requestCSV(

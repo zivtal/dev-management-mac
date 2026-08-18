@@ -245,6 +245,55 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertFalse(PublishingIntent.publish.preservesLockedAppInformation(forHTTPStatus: 409))
     }
 
+    func testLockedTestFlightUploadPreservesSubmittedSubscriptionConfiguration() {
+        XCTAssertTrue(AppStorePublishingService.preservesExistingSubscriptionConfiguration(
+            intent: .testFlight,
+            appInformationIsLocked: true
+        ))
+        XCTAssertFalse(AppStorePublishingService.preservesExistingSubscriptionConfiguration(
+            intent: .testFlight,
+            appInformationIsLocked: false
+        ))
+        XCTAssertFalse(AppStorePublishingService.preservesExistingSubscriptionConfiguration(
+            intent: .publish,
+            appInformationIsLocked: true
+        ))
+    }
+
+    func testAppStoreConnectRetriesSafeRequestsAfterTransientServerFailure() async throws {
+        let service = try appStoreConnectTestService { request in
+            if AppStoreConnectURLProtocolStub.requests.count == 1 {
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 500,
+                    json: ["errors": [["detail": "Temporary server failure"]]],
+                    headers: ["Retry-After": "0"]
+                )
+            }
+            return try Self.appStoreConnectResponse(
+                for: request,
+                status: 200,
+                json: ["data": [["type": "apps", "id": "app-id"]]]
+            )
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+
+        let response = try await service.request(method: "GET", path: "/v1/apps")
+
+        XCTAssertEqual((response["data"] as? [[String: Any]])?.first?["id"] as? String, "app-id")
+        XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.count, 2)
+        XCTAssertTrue(AppStoreConnectService.shouldRetryRequest(
+            method: "PATCH",
+            statusCode: 503,
+            retryCount: 0
+        ))
+        XCTAssertFalse(AppStoreConnectService.shouldRetryRequest(
+            method: "POST",
+            statusCode: 500,
+            retryCount: 0
+        ))
+    }
+
     func testTestFlightDefersStorefrontSetupWhenAnotherVersionIsInReview() async throws {
         let service = try appStoreConnectTestService { request in
             switch (request.httpMethod, request.url?.path) {
@@ -1550,13 +1599,16 @@ private extension AppStorePublishingTests {
     static func appStoreConnectResponse(
         for request: URLRequest,
         status: Int,
-        json: [String: Any]
+        json: [String: Any],
+        headers: [String: String] = [:]
     ) throws -> (HTTPURLResponse, Data) {
+        var responseHeaders = headers
+        responseHeaders["Content-Type"] = "application/json"
         let response = try XCTUnwrap(HTTPURLResponse(
             url: try XCTUnwrap(request.url),
             statusCode: status,
             httpVersion: nil,
-            headerFields: ["Content-Type": "application/json"]
+            headerFields: responseHeaders
         ))
         return (response, try JSONSerialization.data(withJSONObject: json))
     }

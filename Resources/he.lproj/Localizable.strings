@@ -300,6 +300,7 @@
 "Editable App Store version metadata updated; locked app-level information was preserved.\n" = "המטא־נתונים הניתנים לעריכה של גרסת ה־App Store עודכנו; הפרטים הנעולים ברמת האפליקציה נשמרו.\n";
 "App Store Connect has locked app-level information in its current state; keeping the existing name, subtitle, privacy URLs, and license agreement for this TestFlight upload.\n" = "App Store Connect נעל את פרטי האפליקציה במצבו הנוכחי; השם, כותרת המשנה, כתובות הפרטיות והסכם הרישיון הקיימים יישמרו עבור העלאה זו ל־TestFlight.\n";
 "App Store Connect has locked app-level declarations in its current state; keeping the existing categories, rights, age rating, price, and availability for this TestFlight upload.\n" = "App Store Connect נעל את הצהרות האפליקציה במצבו הנוכחי; הקטגוריות, הזכויות, דירוג הגיל, המחיר והזמינות הקיימים יישמרו עבור העלאה זו ל־TestFlight.\n";
+"App Store Connect has locked subscription information in its current state; keeping the existing products, prices, availability, and localizations for this TestFlight upload.\n" = "App Store Connect נעל את פרטי המינויים במצבו הנוכחי; המוצרים, המחירים, הזמינות והתרגומים הקיימים יישמרו עבור העלאה זו ל־TestFlight.\n";
 "The processed build is attached to the App Store version.\n" = "הבנייה שעובדה שויכה לגרסת ה־App Store.\n";
 "The App Store version was submitted for review.\n" = "גרסת ה־App Store נשלחה לבדיקה.\n";
 "Found %d valid screenshot(s) in the project.\n" = "נמצאו בפרויקט %d צילומי מסך תקינים.\n";
