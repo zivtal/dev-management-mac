@@ -1146,3 +1146,11 @@
 "Apple's upload tool repeatedly lost or corrupted the transfer. The upload was stopped after %d attempts. Check the network connection and try again; the validated IPA is not the cause of this failure." = "כלי ההעלאה של Apple איבד או שיבש את ההעברה שוב ושוב. ההעלאה הופסקה לאחר %d ניסיונות. יש לבדוק את חיבור הרשת ולנסות שוב; קובץ ה־IPA שאומת אינו הגורם לכשל.";
 "Apple's upload transfer became unreliable. Restarting it (attempt %d of %d)…\n" = "העברת ההעלאה של Apple נעשתה בלתי יציבה. ההעלאה מופעלת מחדש (ניסיון %d מתוך %d)…\n";
 "The requested App Store name %@ is unavailable for %@. Keeping the existing name %@ and continuing.\n" = "השם המבוקש ב־App Store, ‏%@, אינו זמין עבור %@. השם הקיים %@ נשמר והתהליך ממשיך.\n";
+"No README release section or Git changes could be found after approved version %@." = "לא נמצא ב־README מקטע הפצה או שינויי Git לאחר הגרסה המאושרת %@.";
+"Git changes after approved version %@ (%@)" = "שינויי Git לאחר הגרסה המאושרת %@ ‏(%@)";
+"the 20 latest Git commits because approved version %@ has no matching tag or version commit" = "20 הקומיטים האחרונים ב־Git, מכיוון שלגרסה המאושרת %@ אין תג או קומיט גרסה תואם";
+"Generating localized What’s New text with OpenAI for changes after approved version %@…\n" = "יצירת טקסט מקומי של מה חדש באמצעות OpenAI עבור שינויים לאחר הגרסה המאושרת %@…\n";
+"Generated What’s New text for %d language(s) using %@.\n" = "נוצר טקסט מה חדש עבור %d שפות באמצעות %@.\n";
+"Approved version %@ exists, but no OpenAI API key is saved; keeping the configured What’s New text.\n" = "קיימת גרסה מאושרת %@, אך לא נשמר מפתח API של OpenAI; טקסט מה חדש שהוגדר נשמר.\n";
+"Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n" = "Apple אינה מציעה מחיר מינוי %@ ב־%@ עבור %@; נעשה שימוש במחיר הזמין הקרוב ביותר %@.\n";
+"Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment." = "יש להזין את המחיר הרצוי באזור הבסיס. בעת הפרסום נעשה שימוש בנקודת המחיר הקרובה ביותר של Apple כאשר אין התאמה מדויקת, והשינוי מדווח.";

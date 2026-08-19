@@ -183,6 +183,33 @@ struct AppStoreGeneratedMetadata: Codable, Equatable, Sendable {
     }
 }
 
+struct AppStoreGeneratedReleaseNotesLocalization: Codable, Equatable, Sendable, Identifiable {
+    var id: String { locale }
+
+    var locale: String
+    var whatsNew: String
+
+    func normalized() -> AppStoreGeneratedReleaseNotesLocalization {
+        AppStoreGeneratedReleaseNotesLocalization(
+            locale: AppStoreLocale.canonicalIdentifier(locale) ?? locale,
+            whatsNew: String(whatsNew.trimmingCharacters(in: .whitespacesAndNewlines).prefix(4_000))
+        )
+    }
+}
+
+struct AppStoreGeneratedReleaseNotes: Codable, Equatable, Sendable {
+    var localizations: [AppStoreGeneratedReleaseNotesLocalization]
+
+    func normalized() -> AppStoreGeneratedReleaseNotes {
+        var seen = Set<String>()
+        return AppStoreGeneratedReleaseNotes(localizations: localizations.compactMap { localization in
+            let normalized = localization.normalized()
+            guard seen.insert(normalized.locale.lowercased()).inserted else { return nil }
+            return normalized
+        })
+    }
+}
+
 struct AppStorePrivacyDraft: Codable, Equatable, Sendable {
     var collectsData: Bool
     var dataTypes: [String]
@@ -924,6 +951,8 @@ struct PublishingConfiguration: Sendable {
     let releaseAutomatically: Bool
     let replaceActiveReviewVersion: Bool
     let testFlight: AppStoreTestFlightConfiguration?
+    var openAIAPIKey: String? = nil
+    var openAIModel: String = "gpt-5.6-luna"
 }
 
 struct PublishingResult: Equatable, Sendable {

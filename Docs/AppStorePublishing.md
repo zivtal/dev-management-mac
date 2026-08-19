@@ -10,7 +10,13 @@ Saved manifest values are authoritative. For a new app, the publishing editor
 can ask OpenAI to prepare a conservative, evidence-backed draft from bounded
 `README.md` and project-manifest excerpts. Every generated value is placed in a
 normal editable field and must be reviewed and saved before either release
-action can start. OpenAI never changes fields during Upload or Publish.
+action can start. Upload never changes saved metadata. When Publish finds an
+earlier Apple-approved version and an OpenAI key is saved, it automatically
+refreshes only the localized **What’s New** text before submission. It prefers a
+current-version or release-notes section in the managed app's `README.md`; when
+none exists, it uses Git changes after the approved version's tag or version
+commit, falling back transparently to the 20 latest commits when no matching
+baseline exists. The draft is constrained by the current bounded source scan.
 
 ```json
 {
@@ -208,6 +214,9 @@ the complete subscription catalog:
 Supported periods are `ONE_WEEK`, `ONE_MONTH`, `TWO_MONTHS`, `THREE_MONTHS`,
 `SIX_MONTHS`, and `ONE_YEAR`; ISO StoreKit periods such as `P1M` and `P1Y` are
 also accepted. Prices are matched to Apple's price points in `baseTerritory`.
+If an exact point does not exist, Publish selects the numerically nearest
+available point, chooses the lower point on an exact tie, and reports the
+requested and selected prices before changing the schedule.
 When all-territory availability is enabled, the publisher applies Apple's
 equalized price point in every available territory.
 Explicit `territoryPrices` override Apple's equalized point for those ISO 3166-1

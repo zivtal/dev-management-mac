@@ -54,7 +54,7 @@ struct SubscriptionPricingCardsView: View {
                 }
             }
 
-            Text("Enter an exact Apple price point for the base territory. Prices for other territories are generated from that selection during Publish.")
+            Text("Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

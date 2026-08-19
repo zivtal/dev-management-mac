@@ -805,7 +805,11 @@ final class AppModel: ObservableObject {
             replaceScreenshots: perAppConfiguration?.replaceScreenshots ?? false,
             releaseAutomatically: releaseAutomatically,
             replaceActiveReviewVersion: intent == .publish && replaceActiveReviewVersion,
-            testFlight: testFlightConfiguration
+            testFlight: testFlightConfiguration,
+            openAIAPIKey: intent.submitsForReview
+                ? (try? credentialStore.string(for: .openAIAPIKey))?.nilIfEmpty
+                : nil,
+            openAIModel: preferences.openAIModel?.nilIfEmpty ?? "gpt-5.6-luna"
         )
         beginPublishing(project: project, configuration: publishingConfiguration)
     }

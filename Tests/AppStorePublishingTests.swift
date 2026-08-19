@@ -175,6 +175,112 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(schema["additionalProperties"] as? Bool, false)
     }
 
+    func testOpenAIReleaseNotesRequestUsesStrictLocalizedStructuredOutput() throws {
+        let body = OpenAIStoreMetadataService.releaseNotesRequestBody(
+            model: "gpt-5.6-luna",
+            prompt: "Changes after 1.0",
+            locales: ["en-US", "he"]
+        )
+
+        XCTAssertEqual(body["model"] as? String, "gpt-5.6-luna")
+        XCTAssertEqual(body["store"] as? Bool, false)
+        let text = try XCTUnwrap(body["text"] as? [String: Any])
+        let format = try XCTUnwrap(text["format"] as? [String: Any])
+        XCTAssertEqual(format["type"] as? String, "json_schema")
+        XCTAssertEqual(format["strict"] as? Bool, true)
+        let schema = try XCTUnwrap(format["schema"] as? [String: Any])
+        let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+        let localizations = try XCTUnwrap(properties["localizations"] as? [String: Any])
+        XCTAssertEqual(localizations["minItems"] as? Int, 2)
+        XCTAssertEqual(localizations["maxItems"] as? Int, 2)
+        let items = try XCTUnwrap(localizations["items"] as? [String: Any])
+        let itemProperties = try XCTUnwrap(items["properties"] as? [String: Any])
+        let locale = try XCTUnwrap(itemProperties["locale"] as? [String: Any])
+        XCTAssertEqual(locale["enum"] as? [String], ["en-US", "he"])
+        XCTAssertNotNil(itemProperties["whatsNew"])
+        XCTAssertEqual(schema["additionalProperties"] as? Bool, false)
+    }
+
+    func testREADMEReleaseEvidencePrefersCurrentVersionSection() {
+        let readme = """
+        # Example
+
+        ## 2.0.0
+        - Adds offline route viewing.
+        - Makes shared trips easier to update.
+
+        ## 1.9.0
+        - Older change.
+        """
+
+        let section = AppStoreReleaseNotesEvidenceService.releaseSection(
+            in: readme,
+            currentVersion: "2.0.0"
+        )
+
+        XCTAssertTrue(section?.contains("offline route viewing") == true)
+        XCTAssertFalse(section?.contains("Older change") == true)
+    }
+
+    func testReleaseEvidenceFallsBackToGitChangesAfterApprovedTag() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ReleaseEvidence-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runner = ProcessRunner()
+        let git = URL(fileURLWithPath: "/usr/bin/git")
+        try await runner.runAndRequireSuccess(executable: git, arguments: ["init"], workingDirectory: root)
+        try "# Example\n\nA travel app.\n".write(
+            to: root.appendingPathComponent("README.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try "MARKETING_VERSION = 1.0.0\n".write(
+            to: root.appendingPathComponent("Version.xcconfig"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try await runner.runAndRequireSuccess(executable: git, arguments: ["add", "."], workingDirectory: root)
+        try await runner.runAndRequireSuccess(
+            executable: git,
+            arguments: [
+                "-c", "user.name=Tests", "-c", "user.email=tests@example.com",
+                "commit", "-m", "Release 1.0.0"
+            ],
+            workingDirectory: root
+        )
+        try await runner.runAndRequireSuccess(
+            executable: git,
+            arguments: ["tag", "v1.0.0"],
+            workingDirectory: root
+        )
+        try "struct OfflineRoutes {}\n".write(
+            to: root.appendingPathComponent("OfflineRoutes.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try await runner.runAndRequireSuccess(executable: git, arguments: ["add", "."], workingDirectory: root)
+        try await runner.runAndRequireSuccess(
+            executable: git,
+            arguments: [
+                "-c", "user.name=Tests", "-c", "user.email=tests@example.com",
+                "commit", "-m", "Add offline routes"
+            ],
+            workingDirectory: root
+        )
+
+        let evidence = await AppStoreReleaseNotesEvidenceService().evidence(
+            project: managedProject(at: root),
+            previousVersion: "1.0.0",
+            currentVersion: "2.0.0"
+        )
+
+        XCTAssertEqual(evidence?.source, .git)
+        XCTAssertTrue(evidence?.sourceDescription.contains("v1.0.0") == true)
+        XCTAssertTrue(evidence?.content.contains("Add offline routes") == true)
+        XCTAssertFalse(evidence?.content.contains("Release 1.0.0") == true)
+    }
+
     func testOpenAIComplianceRequestUsesStrictEnumsAndDoesNotStoreProjectData() throws {
         let body = OpenAIStoreMetadataService.complianceRequestBody(
             model: "gpt-5.6-luna",
@@ -648,6 +754,53 @@ final class AppStorePublishingTests: XCTestCase {
         let responseData = try JSONSerialization.data(withJSONObject: response)
 
         XCTAssertEqual(try OpenAIStoreMetadataService.decodeMetadata(from: responseData), generated)
+    }
+
+    func testOpenAIResponseDecodesAndAppliesLocalizedReleaseNotes() throws {
+        let generated = AppStoreGeneratedReleaseNotes(localizations: [
+            AppStoreGeneratedReleaseNotesLocalization(
+                locale: "en-US",
+                whatsNew: "View routes offline."
+            ),
+            AppStoreGeneratedReleaseNotesLocalization(
+                locale: "he",
+                whatsNew: "צפייה במסלולים ללא חיבור."
+            )
+        ])
+        let generatedData = try JSONEncoder().encode(generated)
+        let generatedJSON = try XCTUnwrap(String(data: generatedData, encoding: .utf8))
+        let responseData = try JSONSerialization.data(
+            withJSONObject: ["output_text": generatedJSON]
+        )
+        let decoded = try OpenAIStoreMetadataService.decodeReleaseNotes(from: responseData)
+        let listings = [
+            AppStoreLocalizedMetadata(
+                locale: "en-US",
+                appName: "Example",
+                subtitle: "Plan trips",
+                description: "Description",
+                keywords: "travel",
+                promotionalText: "Plan now.",
+                whatsNew: "Old English notes"
+            ),
+            AppStoreLocalizedMetadata(
+                locale: "he",
+                appName: "Example",
+                subtitle: "תכנון טיולים",
+                description: "תיאור",
+                keywords: "טיולים",
+                promotionalText: "תכננו עכשיו.",
+                whatsNew: "הערות ישנות"
+            )
+        ]
+
+        let updated = AppStorePublishingService.applyingReleaseNotes(decoded, to: listings)
+
+        XCTAssertEqual(updated.map(\.whatsNew), [
+            "View routes offline.",
+            "צפייה במסלולים ללא חיבור."
+        ])
+        XCTAssertEqual(updated.map(\.description), ["Description", "תיאור"])
     }
 
     func testLocalizedOpenAIResponseRequiresAndDecodesAppAnswers() throws {
@@ -1561,6 +1714,66 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertTrue(AppStoreConnectService.hasReadyForDistributionVersion(in: [
             ["attributes": ["appStoreState": "READY_FOR_SALE"]]
         ]))
+    }
+
+    func testLatestApprovedVersionChoosesNewestReleasedPredecessor() throws {
+        let versions: [[String: Any]] = [
+            [
+                "id": "old-approved",
+                "attributes": [
+                    "versionString": "1.9.0",
+                    "appStoreState": "REPLACED_WITH_NEW_VERSION"
+                ]
+            ],
+            [
+                "id": "latest-approved",
+                "attributes": [
+                    "versionString": "1.10.0",
+                    "appStoreState": "READY_FOR_DISTRIBUTION"
+                ]
+            ],
+            [
+                "id": "current-draft",
+                "attributes": [
+                    "versionString": "1.11.0",
+                    "appStoreState": "PREPARE_FOR_SUBMISSION"
+                ]
+            ]
+        ]
+
+        let approved = try XCTUnwrap(AppStoreConnectService.latestApprovedVersion(
+            in: versions,
+            excluding: "1.11.0"
+        ))
+
+        XCTAssertEqual(approved.id, "latest-approved")
+        XCTAssertEqual(approved.versionString, "1.10.0")
+    }
+
+    func testClosestSubscriptionPricePointChoosesExactThenNearestLowerTie() throws {
+        let points: [[String: Any]] = [
+            ["id": "lower", "attributes": ["customerPrice": "199.89"]],
+            ["id": "upper", "attributes": ["customerPrice": "199.91"]],
+            ["id": "apple", "attributes": ["customerPrice": "199.99"]]
+        ]
+
+        let exact = try XCTUnwrap(AppStoreConnectService.closestSubscriptionPricePoint(
+            in: points,
+            requestedPrice: "199.99"
+        ))
+        XCTAssertEqual(exact.id, "apple")
+        XCTAssertEqual(exact.price, "199.99")
+
+        let nearest = try XCTUnwrap(AppStoreConnectService.closestSubscriptionPricePoint(
+            in: points,
+            requestedPrice: "199.90"
+        ))
+        XCTAssertEqual(nearest.id, "lower")
+        XCTAssertEqual(nearest.price, "199.89")
+        XCTAssertNil(AppStoreConnectService.closestSubscriptionPricePoint(
+            in: points,
+            requestedPrice: "not-a-price"
+        ))
     }
 
     func testReusableDraftVersionChoosesNewestEditableVersion() throws {

@@ -68,19 +68,22 @@ final class AppStorePublishingService {
     private let publicationURLValidator: AppStorePublicationURLValidator
     private let xcodeGenPreparationService: XcodeGenProjectPreparationService
     private let privacyPublishingService: AppStorePrivacyPublishingService
+    private let openAIStoreMetadataService: OpenAIStoreMetadataService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
         fileManager: FileManager = .default,
         subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService = StoreKitSubscriptionDiscoveryService(),
         reviewAssetService: AppStoreReviewAssetService = AppStoreReviewAssetService(),
-        publicationURLValidator: AppStorePublicationURLValidator = AppStorePublicationURLValidator()
+        publicationURLValidator: AppStorePublicationURLValidator = AppStorePublicationURLValidator(),
+        openAIStoreMetadataService: OpenAIStoreMetadataService = OpenAIStoreMetadataService()
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
         self.subscriptionDiscoveryService = subscriptionDiscoveryService
         self.reviewAssetService = reviewAssetService
         self.publicationURLValidator = publicationURLValidator
+        self.openAIStoreMetadataService = openAIStoreMetadataService
         self.xcodeGenPreparationService = XcodeGenProjectPreparationService(
             processRunner: processRunner,
             fileManager: fileManager
@@ -119,6 +122,14 @@ final class AppStorePublishingService {
             privateKeyPEM: configuration.appStoreConnectPrivateKey
         )
         let appID = try await appStoreConnect.applicationID(bundleIdentifier: bundleIdentifier)
+        let previousApprovedVersion: AppStoreConnectVersionReferenceSnapshot? = if intent.submitsForReview {
+            try await appStoreConnect.latestApprovedVersion(
+                appID: appID,
+                excluding: localVersion
+            )
+        } else {
+            nil
+        }
         let existingBuild = try await appStoreConnect.build(
             appID: appID,
             marketingVersion: localVersion,
@@ -211,8 +222,8 @@ final class AppStorePublishingService {
         }
 
         eventHandler(.phase(.generatingMetadata))
-        let metadata: AppStoreMetadata
-        let localizedMetadata: [AppStoreLocalizedMetadata]
+        var metadata: AppStoreMetadata
+        var localizedMetadata: [AppStoreLocalizedMetadata]
         if !configuration.manualLocalizations.isEmpty {
             localizedMetadata = Self.normalizedLocalizedMetadata(configuration.manualLocalizations)
             let ignoredLocalizationCount = configuration.manualLocalizations.count - localizedMetadata.count
@@ -254,6 +265,45 @@ final class AppStorePublishingService {
             eventHandler(.output(L10n.text("Using manually configured per-app App Store metadata.\n")))
         } else {
             throw AppStorePublishingError.missingEditablePublishingDraft
+        }
+        if let previousApprovedVersion {
+            if let apiKey = configuration.openAIAPIKey?.nilIfEmpty {
+                eventHandler(.output(L10n.format(
+                    "Generating localized What’s New text with OpenAI for changes after approved version %@…\n",
+                    previousApprovedVersion.versionString
+                )))
+                let generation = try await openAIStoreMetadataService.generateReleaseNotes(
+                    project: project,
+                    previousApprovedVersion: previousApprovedVersion.versionString,
+                    currentVersion: localVersion,
+                    locales: localizedMetadata.map(\.locale),
+                    apiKey: apiKey,
+                    model: configuration.openAIModel
+                )
+                localizedMetadata = Self.applyingReleaseNotes(
+                    generation.releaseNotes,
+                    to: localizedMetadata
+                )
+                let preferredLocale = AppStoreLocale.canonicalIdentifier(configuration.locale)
+                    ?? configuration.locale
+                let preferred = localizedMetadata.first(where: {
+                    $0.locale.caseInsensitiveCompare(preferredLocale) == .orderedSame
+                }) ?? localizedMetadata[0]
+                metadata = preferred.metadata(
+                    primaryCategory: metadata.primaryCategory,
+                    secondaryCategory: metadata.secondaryCategory
+                )
+                eventHandler(.output(L10n.format(
+                    "Generated What’s New text for %d language(s) using %@.\n",
+                    localizedMetadata.count,
+                    generation.evidence.sourceDescription
+                )))
+            } else {
+                eventHandler(.output(L10n.format(
+                    "Approved version %@ exists, but no OpenAI API key is saved; keeping the configured What’s New text.\n",
+                    previousApprovedVersion.versionString
+                )))
+            }
         }
         var applicationConfiguration = subscriptionCatalog.application
         if applicationConfiguration == nil,
@@ -760,6 +810,23 @@ final class AppStorePublishingService {
             var normalized = localization.normalized()
             normalized.locale = locale
             return normalized
+        }
+    }
+
+    static func applyingReleaseNotes(
+        _ releaseNotes: AppStoreGeneratedReleaseNotes,
+        to localizations: [AppStoreLocalizedMetadata]
+    ) -> [AppStoreLocalizedMetadata] {
+        let values = Dictionary(uniqueKeysWithValues: releaseNotes.normalized().localizations.map {
+            ($0.locale.lowercased(), $0.whatsNew)
+        })
+        return localizations.map { localization in
+            guard let whatsNew = values[localization.locale.lowercased()] else {
+                return localization
+            }
+            var updated = localization
+            updated.whatsNew = whatsNew
+            return updated.normalized()
         }
     }
 

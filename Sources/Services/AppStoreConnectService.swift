@@ -396,6 +396,36 @@ final class AppStoreConnectService {
         }
     }
 
+    static func latestApprovedVersion(
+        in versions: [[String: Any]],
+        excluding version: String
+    ) -> AppStoreConnectVersionReferenceSnapshot? {
+        let approvedStates: Set<String> = [
+            "READY_FOR_DISTRIBUTION",
+            "READY_FOR_SALE",
+            "PREORDER_READY_FOR_SALE",
+            "REPLACED_WITH_NEW_VERSION",
+            "DEVELOPER_REMOVED_FROM_SALE",
+            "REMOVED_FROM_SALE"
+        ]
+        return versions.compactMap { resource -> AppStoreConnectVersionReferenceSnapshot? in
+            guard let id = resource["id"] as? String else { return nil }
+            let attributes = Self.attributes(resource)
+            guard let state = attributes["appStoreState"] as? String,
+                  approvedStates.contains(state),
+                  let versionString = attributes["versionString"] as? String,
+                  versionString != version else { return nil }
+            return AppStoreConnectVersionReferenceSnapshot(
+                id: id,
+                versionString: versionString,
+                state: state
+            )
+        }
+        .max { lhs, rhs in
+            AppStoreVersionComparison.compare(lhs.versionString, rhs.versionString) == .orderedAscending
+        }
+    }
+
     static func reusableDraftVersion(
         in versions: [[String: Any]]
     ) -> AppStoreConnectVersionReferenceSnapshot? {
@@ -1498,6 +1528,17 @@ final class AppStoreConnectService {
 
     func applicationID(bundleIdentifier: String) async throws -> String {
         try await findApplication(bundleIdentifier: bundleIdentifier)
+    }
+
+    func latestApprovedVersion(
+        appID: String,
+        excluding version: String
+    ) async throws -> AppStoreConnectVersionReferenceSnapshot? {
+        let versions = try await pagedData(
+            path: "/v1/apps/\(appID)/appStoreVersions",
+            query: ["filter[platform]": "IOS", "limit": "200"]
+        )
+        return Self.latestApprovedVersion(in: versions, excluding: version)
     }
 
     func build(
@@ -3040,14 +3081,25 @@ final class AppStoreConnectService {
             if !pricePoints.isEmpty { break }
             if attempt < 4 { try await Task.sleep(for: .seconds(2)) }
         }
-        guard let basePoint = pricePoints.first(where: {
-            let attributes = $0["attributes"] as? [String: Any]
-            return Self.pricesEqual(attributes?["customerPrice"], basePrice)
-        }), let basePointID = basePoint["id"] as? String else {
+        guard let baseSelection = Self.closestSubscriptionPricePoint(
+            in: pricePoints,
+            requestedPrice: basePrice
+        ) else {
             throw AppStoreConnectError.requestFailed(
                 422,
                 L10n.format("Price %@ is not an available subscription price point in %@ for %@.", basePrice, baseTerritory, productID)
             )
+        }
+        let basePointID = baseSelection.id
+        let effectiveBasePrice = baseSelection.price
+        if !Self.pricesEqual(effectiveBasePrice, basePrice) {
+            onOutput(L10n.format(
+                "Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n",
+                basePrice,
+                baseTerritory,
+                productID,
+                effectiveBasePrice
+            ))
         }
 
         var desiredPointsByTerritory = [baseTerritory.uppercased(): basePointID]
@@ -3080,15 +3132,25 @@ final class AppStoreConnectService {
                 query: ["filter[territory]": territory, "limit": "200"]
             )
             pointIDsByOverrideTerritory[territory] = Set(points.compactMap { $0["id"] as? String })
-            guard let point = points.first(where: {
-                Self.pricesEqual(Self.attributes($0)["customerPrice"], overridePrice)
-            }), let pointID = point["id"] as? String else {
+            guard let selection = Self.closestSubscriptionPricePoint(
+                in: points,
+                requestedPrice: overridePrice
+            ) else {
                 throw AppStoreConnectError.requestFailed(
                     422,
                     L10n.format("Price %@ is not an available subscription price point in %@ for %@.", overridePrice, territory, productID)
                 )
             }
-            desiredPointsByTerritory[territory] = pointID
+            if !Self.pricesEqual(selection.price, overridePrice) {
+                onOutput(L10n.format(
+                    "Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n",
+                    overridePrice,
+                    territory,
+                    productID,
+                    selection.price
+                ))
+            }
+            desiredPointsByTerritory[territory] = selection.id
         }
         let existingPrices = try await pagedData(
             path: "/v1/subscriptions/\(subscriptionID)/prices",
@@ -3143,7 +3205,7 @@ final class AppStoreConnectService {
         onOutput(L10n.format(
             "Subscription %@ uses %@ in %@; configured %d missing territory price(s).\n",
             productID,
-            basePrice,
+            effectiveBasePrice,
             baseTerritory,
             createdCount
         ))
@@ -3693,6 +3755,49 @@ final class AppStoreConnectService {
             return false
         }
         return lhs == rhs
+    }
+
+    static func closestSubscriptionPricePoint(
+        in pricePoints: [[String: Any]],
+        requestedPrice: String
+    ) -> (id: String, price: String)? {
+        guard let requested = Decimal(
+            string: requestedPrice,
+            locale: Locale(identifier: "en_US_POSIX")
+        ) else { return nil }
+        return pricePoints.compactMap { point -> (id: String, price: String, value: Decimal)? in
+            guard let id = point["id"] as? String,
+                  let parsed = decimalPrice(Self.attributes(point)["customerPrice"]) else {
+                return nil
+            }
+            return (id, parsed.text, parsed.value)
+        }
+        .min { lhs, rhs in
+            let lhsDifference = lhs.value >= requested
+                ? lhs.value - requested
+                : requested - lhs.value
+            let rhsDifference = rhs.value >= requested
+                ? rhs.value - requested
+                : requested - rhs.value
+            if lhsDifference != rhsDifference { return lhsDifference < rhsDifference }
+            return lhs.value < rhs.value
+        }
+        .map { ($0.id, $0.price) }
+    }
+
+    private static func decimalPrice(_ rawValue: Any?) -> (value: Decimal, text: String)? {
+        let text: String
+        if let value = rawValue as? String {
+            text = value
+        } else if let value = rawValue as? NSNumber {
+            text = value.stringValue
+        } else {
+            return nil
+        }
+        guard let value = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else {
+            return nil
+        }
+        return (value, text)
     }
 
     private static func base64URL(_ data: Data) -> String {

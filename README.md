@@ -204,6 +204,10 @@ Settings contains six tabs and is the only ordinary app window.
   copyright, age rating, and an App Privacy checklist. Public URLs, legal
   agreements, subscription prices, review contacts, credentials, and publisher
   attestations remain manual fields.
+- When an app has an earlier Apple-approved version, automatically draft each
+  localized **What’s New** field during Publish from the current-version README
+  release section or Git changes after that approved version, verified against
+  the bounded current source snapshot.
 - Store a Fastlane App Store Connect session in Keychain to publish an explicitly
   authorized **Data Not Collected** App Privacy declaration automatically.
 - Configure a default App Store Connect API and any number of named additional
@@ -267,6 +271,10 @@ submission. Review attachments are prepared and uploaded before that boundary.
 A hard intent guard prevents the TestFlight path from
 submitting review items. If the exact selected version and build are already in
 TestFlight, either action reuses it without another archive or upload.
+Before a review submission for an app with an earlier approved version, OpenAI
+automatically refreshes only the localized **What’s New** text. A matching
+current-version or release-notes section in `README.md` is preferred; otherwise
+Git commits and changed-file summaries after the approved version are used.
 When another App Store version is in review, TestFlight upload continues while
 Apple's locked version-scoped storefront metadata, screenshots, review assets,
 and App Store build attachment are deferred until that version is released or
@@ -282,8 +290,9 @@ documentation—and can draft localized listing text, categories, content-rights
 free-download and demo-account status, copyright, age-rating answers, and an App
 Privacy checklist. Unsupported age-rating answers default to No or None; positive
 answers require repository evidence. The user must review and save the draft
-before Upload or Publish; neither release action silently generates or changes
-it. Because Apple does not expose App Privacy through its public API,
+before Upload or Publish. Publish's sole automatic metadata exception is the
+approved-version **What’s New** refresh described above. Because Apple does not
+expose App Privacy through its public API,
 an authorized no-data declaration is published through the Fastlane session in
 Publishing Settings. Collected-data declarations retain a manual App Store
 Connect confirmation path. Support and
