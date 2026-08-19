@@ -2099,90 +2099,6 @@ final class AppStoreConnectService {
         throw AppStoreConnectError.activeReviewCancellationTimedOut(activeVersion.versionString)
     }
 
-    func submitForReview(
-        appID: String,
-        versionID: String,
-        additionalItems: [AppStoreConnectReviewItem] = [],
-        intent: PublishingIntent
-    ) async throws {
-        guard intent.submitsForReview else {
-            throw AppStoreConnectError.reviewSubmissionNotAllowed
-        }
-        let submissionResponse: [String: Any]
-        do {
-            submissionResponse = try await request(
-                method: "POST",
-                path: "/v1/reviewSubmissions",
-                body: [
-                    "data": [
-                        "type": "reviewSubmissions",
-                        "attributes": ["platform": "IOS"],
-                        "relationships": [
-                            "app": ["data": ["type": "apps", "id": appID]]
-                        ]
-                    ]
-                ]
-            )
-        } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 {
-            let existing = try await request(
-                method: "GET",
-                path: "/v1/apps/\(appID)/reviewSubmissions",
-                query: [
-                    "filter[platform]": "IOS",
-                    "filter[state]": "READY_FOR_REVIEW,UNRESOLVED_ISSUES",
-                    "limit": "50"
-                ]
-            )
-            guard let unresolved = (existing["data"] as? [[String: Any]])?.first else {
-                throw AppStoreConnectError.requestFailed(409, L10n.text("An active review submission could not be located."))
-            }
-            submissionResponse = ["data": unresolved]
-        }
-        let submissionID = try Self.identifier(in: submissionResponse, named: "review submission")
-
-        let appVersionItem = AppStoreConnectReviewItem(
-            relationship: "appStoreVersion",
-            resourceType: "appStoreVersions",
-            id: versionID,
-            label: "App Store version"
-        )
-        for item in [appVersionItem] + additionalItems {
-            do {
-                _ = try await request(
-                    method: "POST",
-                    path: "/v1/reviewSubmissionItems",
-                    body: [
-                        "data": [
-                            "type": "reviewSubmissionItems",
-                            "relationships": [
-                                "reviewSubmission": [
-                                    "data": ["type": "reviewSubmissions", "id": submissionID]
-                                ],
-                                item.relationship: [
-                                    "data": ["type": item.resourceType, "id": item.id]
-                                ]
-                            ]
-                        ]
-                    ]
-                )
-            } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 {
-                // The item is already attached to this active review submission.
-            }
-        }
-
-        _ = try await request(
-            method: "PATCH",
-            path: "/v1/reviewSubmissions/\(submissionID)",
-            body: [
-                "data": [
-                    "type": "reviewSubmissions",
-                    "id": submissionID,
-                    "attributes": ["submitted": true]
-                ]
-            ]
-        )
-    }
-
     static func jwt(
         issuerID: String,
         keyID: String,
@@ -3689,7 +3605,7 @@ final class AppStoreConnectService {
         try Self.jwt(issuerID: issuerID, keyID: keyID, privateKey: privateKey)
     }
 
-    private static func identifier(in response: [String: Any], named name: String) throws -> String {
+    static func identifier(in response: [String: Any], named name: String) throws -> String {
         guard let data = response["data"] as? [String: Any], let id = data["id"] as? String else {
             throw AppStoreConnectError.missingIdentifier(name)
         }

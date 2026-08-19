@@ -36,6 +36,7 @@
 		5FBF32C8DE8C0A0D70999AA2 /* DeveloperTeamService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20FE1B7E5F176778282E80E /* DeveloperTeamService.swift */; };
 		614EB1AC385AB547B28CACE4 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92BA78CBDD2A9BB9E2A7417E /* SettingsView.swift */; };
 		642ACDD0B44BC448AD2549B4 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22ABD6C88F410A71DC9F716 /* Localization.swift */; };
+		6547D59C8CD027A8659A7944 /* AppStoreConnectReviewSubmissionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99980DEA6AE5F8012A72002A /* AppStoreConnectReviewSubmissionService.swift */; };
 		656E89642D340B1481D4BB85 /* DevManagementApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE36EEE9705302CF6B6190C7 /* DevManagementApp.swift */; };
 		68CCE54A459F4078E5406101 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25700C1E26331F9B6C65EBC7 /* SettingsStore.swift */; };
 		6A959F01BA7F8BE032126ECB /* PublishingSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 960A2EC9E613818529E77D09 /* PublishingSettingsView.swift */; };
@@ -57,6 +58,7 @@
 		9D7F580C89BD70EA6C0EBB86 /* InstallationLogWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 439AE14DCCE24CDCB7F7CD21 /* InstallationLogWindow.swift */; };
 		A320D33616A2FE0C503BE868 /* AppStoreReleaseNotesEvidenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A437F70A24F278201E172E4B /* AppStoreReleaseNotesEvidenceService.swift */; };
 		A8D413789388A0BF23682C35 /* OpenAIStoreMetadataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41B846AE2D38B1B7E7AC1C25 /* OpenAIStoreMetadataService.swift */; };
+		B053F9EB45F1331720625669 /* AppStoreConnectReviewSubmissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1F534FD2993AC883A1EA56 /* AppStoreConnectReviewSubmissionTests.swift */; };
 		B1EBEC96A382A7896C968CD4 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4BD224F76E01A19DEBB6020 /* MenuBarView.swift */; };
 		B24A7569EE19C148FEE36102 /* PublishingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC02EA04969F48B7CB14ED49 /* PublishingWindow.swift */; };
 		B83A4EAA414165468AF70F69 /* SubscriptionPricingCardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2560EED79D4F38A53DDABAB1 /* SubscriptionPricingCardsView.swift */; };
@@ -145,6 +147,7 @@
 		913C295EE121D11D54FE3D0D /* ProjectIconService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIconService.swift; sourceTree = "<group>"; };
 		92BA78CBDD2A9BB9E2A7417E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		960A2EC9E613818529E77D09 /* PublishingSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingSettingsView.swift; sourceTree = "<group>"; };
+		99980DEA6AE5F8012A72002A /* AppStoreConnectReviewSubmissionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreConnectReviewSubmissionService.swift; sourceTree = "<group>"; };
 		9A274BABF591ED945D7895E6 /* ProjectDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDiscoveryService.swift; sourceTree = "<group>"; };
 		9E6B368943210F206DF5C9E6 /* PublishingReadinessView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingReadinessView.swift; sourceTree = "<group>"; };
 		A1907348C889C1CB74F76247 /* Publishing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Publishing.swift; sourceTree = "<group>"; };
@@ -170,6 +173,7 @@
 		E4C41CCD4A0006E175E4B9C2 /* PublishingAgeRatingFields.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingAgeRatingFields.swift; sourceTree = "<group>"; };
 		E6526534493A80657384E6ED /* AppStorePublicationURLValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStorePublicationURLValidator.swift; sourceTree = "<group>"; };
 		E8217125EF1A7EDC42D724E6 /* KeychainCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCredentialStore.swift; sourceTree = "<group>"; };
+		EA1F534FD2993AC883A1EA56 /* AppStoreConnectReviewSubmissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreConnectReviewSubmissionTests.swift; sourceTree = "<group>"; };
 		EE36EEE9705302CF6B6190C7 /* DevManagementApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevManagementApp.swift; sourceTree = "<group>"; };
 		EEB7006C83FBE963AE4FD977 /* PublishingExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingExperience.swift; sourceTree = "<group>"; };
 		F0958EDE18F62F4A209B64D6 /* ConnectedDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedDevice.swift; sourceTree = "<group>"; };
@@ -196,6 +200,7 @@
 		04E8A2B6992E42828AB32285 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				99980DEA6AE5F8012A72002A /* AppStoreConnectReviewSubmissionService.swift */,
 				537B048C63747430E7107A8A /* AppStoreConnectService.swift */,
 				272365064E9C495BDD9703B7 /* AppStoreConnectServiceSandboxTesters.swift */,
 				BFEE7B1D2C50ED2BB83B31D1 /* AppStoreCopyrightNormalizer.swift */,
@@ -329,6 +334,7 @@
 			children = (
 				00DA70D9C57D60634A83F11A /* AppStoreArchiveMetadataTests.swift */,
 				38A1DE6179F2DBCC345DFED4 /* AppStoreConnectCredentialTests.swift */,
+				EA1F534FD2993AC883A1EA56 /* AppStoreConnectReviewSubmissionTests.swift */,
 				7FA9DEC991B43F6B915C1712 /* AppStorePublishingTests.swift */,
 				AA50B22EEA4F44C04C57D311 /* AppStoreReviewAssetServiceTests.swift */,
 				530E58724DCC86E51ADA96DC /* DeviceInstallationSelectionTests.swift */,
@@ -459,6 +465,7 @@
 				1766C77D192322DDFE013B52 /* AppModel.swift in Sources */,
 				26808D5C2DAEB3D8364A2B0D /* AppState.swift in Sources */,
 				BED08FEC41A5C801D5F6FE2D /* AppStoreConnectCredentialProfile.swift in Sources */,
+				6547D59C8CD027A8659A7944 /* AppStoreConnectReviewSubmissionService.swift in Sources */,
 				F57E6396AC4BF95E55028684 /* AppStoreConnectService.swift in Sources */,
 				C4C0FE74DE9AE6F29AC8A033 /* AppStoreConnectServiceSandboxTesters.swift in Sources */,
 				FFA08E86D752D3D51B6D6764 /* AppStoreCopyrightNormalizer.swift in Sources */,
@@ -519,6 +526,7 @@
 			files = (
 				72023698FDFDB4D51D90D1FF /* AppStoreArchiveMetadataTests.swift in Sources */,
 				CEF783C3241582FDA83E2E5A /* AppStoreConnectCredentialTests.swift in Sources */,
+				B053F9EB45F1331720625669 /* AppStoreConnectReviewSubmissionTests.swift in Sources */,
 				4349D459F2E4B2C4F17EA0E1 /* AppStorePublishingTests.swift in Sources */,
 				838F0881E4A418BDF08E4B07 /* AppStoreReviewAssetServiceTests.swift in Sources */,
 				FBB51E7BF36D23DFFD6059CB /* DeviceInstallationSelectionTests.swift in Sources */,
@@ -654,7 +662,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 86;
+				CURRENT_PROJECT_VERSION = 87;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -674,7 +682,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.8.5;
+				MARKETING_VERSION = 1.8.6;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -721,7 +729,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 86;
+				CURRENT_PROJECT_VERSION = 87;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -735,7 +743,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.8.5;
+				MARKETING_VERSION = 1.8.6;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

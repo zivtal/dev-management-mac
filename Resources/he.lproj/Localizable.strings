@@ -312,6 +312,8 @@
 "App Store build processing: %@.\n" = "עיבוד הבנייה ב־App Store: %@.\n";
 "Waiting for the uploaded build to appear in App Store Connect…\n" = "ממתין שהבנייה שהועלתה תופיע ב־App Store Connect…\n";
 "An active review submission could not be located." = "לא נמצאה הגשה פעילה לבדיקה.";
+"The App Store version was not attached to the active review submission." = "גרסת ה־App Store לא שויכה להגשה הפעילה לבדיקה.";
+"The unresolved App Review submission does not include %@, and Apple does not allow adding items to it." = "הגשת הבדיקה עם הבעיות שטרם נפתרו אינה כוללת את %@, ו־Apple אינה מאפשרת להוסיף אליה פריטים.";
 "Screenshot asset upload failed." = "העלאת צילום המסך נכשלה.";
 "Uploaded screenshot %@.\n" = "צילום המסך %@ הועלה.\n";
 "Copyright owner" = "בעל זכויות היוצרים";

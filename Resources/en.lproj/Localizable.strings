@@ -312,6 +312,8 @@
 "App Store build processing: %@.\n" = "App Store build processing: %@.\n";
 "Waiting for the uploaded build to appear in App Store Connect…\n" = "Waiting for the uploaded build to appear in App Store Connect…\n";
 "An active review submission could not be located." = "An active review submission could not be located.";
+"The App Store version was not attached to the active review submission." = "The App Store version was not attached to the active review submission.";
+"The unresolved App Review submission does not include %@, and Apple does not allow adding items to it." = "The unresolved App Review submission does not include %@, and Apple does not allow adding items to it.";
 "Screenshot asset upload failed." = "Screenshot asset upload failed.";
 "Uploaded screenshot %@.\n" = "Uploaded screenshot %@.\n";
 "Copyright owner" = "Copyright owner";
