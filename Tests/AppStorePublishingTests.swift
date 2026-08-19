@@ -37,6 +37,27 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertTrue(AppStorePublishingService.requiresReachablePublicationURLs(for: .publish))
     }
 
+    func testUploadFailureDetectorStopsRepeatedChecksumLoopAcrossOutputChunks() {
+        let detector = AppStoreUploadFailureDetector(checksumFailureLimit: 3)
+
+        XCTAssertFalse(detector.observe("WILL RETRY PART 1. Check"))
+        XCTAssertFalse(detector.observe("sums do not match.\nChecksums do not match.\n"))
+        XCTAssertTrue(detector.observe("Checksums do not match.\n"))
+        XCTAssertTrue(detector.didDetectRepeatedChecksumFailures)
+    }
+
+    func testUploadFailureDetectorClassifiesOnlyTransientTransferFailures() {
+        XCTAssertTrue(AppStoreUploadFailureDetector.isTransientFailure(
+            "Error Domain=NSURLErrorDomain Code=-1005 The network connection was lost."
+        ))
+        XCTAssertTrue(AppStoreUploadFailureDetector.isTransientFailure(
+            "WILL RETRY PART 1. Checksums do not match."
+        ))
+        XCTAssertFalse(AppStoreUploadFailureDetector.isTransientFailure(
+            "Authentication credentials are missing or invalid."
+        ))
+    }
+
     func testPublicationURLValidatorRetriesRejectedHEADWithFullGET() async throws {
         let session = publicationURLTestSession { request in
             let statusCode = request.httpMethod == "HEAD" ? 405 : 200

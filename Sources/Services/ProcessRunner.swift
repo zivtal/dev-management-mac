@@ -64,13 +64,15 @@ enum CommandFailureSummary {
 
 final class ProcessRunner {
     typealias OutputHandler = @Sendable (String) -> Void
+    typealias OutputTerminationPredicate = @Sendable (String) -> Bool
 
     func run(
         executable: URL,
         arguments: [String],
         workingDirectory: URL? = nil,
         additionalEnvironment: [String: String] = [:],
-        onOutput: OutputHandler? = nil
+        onOutput: OutputHandler? = nil,
+        terminateWhenOutput: OutputTerminationPredicate? = nil
     ) async throws -> CommandResult {
         let cancellationController = ProcessCancellationController()
         return try await withTaskCancellationHandler {
@@ -107,6 +109,9 @@ final class ProcessRunner {
                     }
                     buffer.append(text)
                     onOutput?(text)
+                    if terminateWhenOutput?(text) == true {
+                        cancellationController.cancel()
+                    }
                 }
 
                 process.terminationHandler = { finishedProcess in
@@ -147,14 +152,16 @@ final class ProcessRunner {
         arguments: [String],
         workingDirectory: URL? = nil,
         additionalEnvironment: [String: String] = [:],
-        onOutput: OutputHandler? = nil
+        onOutput: OutputHandler? = nil,
+        terminateWhenOutput: OutputTerminationPredicate? = nil
     ) async throws -> CommandResult {
         let result = try await run(
             executable: executable,
             arguments: arguments,
             workingDirectory: workingDirectory,
             additionalEnvironment: additionalEnvironment,
-            onOutput: onOutput
+            onOutput: onOutput,
+            terminateWhenOutput: terminateWhenOutput
         )
 
         guard result.terminationStatus == 0 else {

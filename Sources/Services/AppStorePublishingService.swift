@@ -14,6 +14,7 @@ enum AppStorePublishingError: LocalizedError {
     case noScreenshots
     case noSimulatorApplication
     case uploaderUnavailable
+    case uploadTransferFailed(Int)
     case missingEditablePublishingDraft
     case privacyManifestUnavailable
 
@@ -43,6 +44,11 @@ enum AppStorePublishingError: LocalizedError {
             return L10n.text("The simulator build completed, but its application product was not found.")
         case .uploaderUnavailable:
             return L10n.text("Apple's App Store upload tool was not found in the selected Xcode installation.")
+        case .uploadTransferFailed(let attempts):
+            return L10n.format(
+                "Apple's upload tool repeatedly lost or corrupted the transfer. The upload was stopped after %d attempts. Check the network connection and try again; the validated IPA is not the cause of this failure.",
+                attempts
+            )
         case .missingEditablePublishingDraft:
             return L10n.text("Review and save the editable App Store listing and app declarations before releasing.")
         case .privacyManifestUnavailable:
@@ -1114,20 +1120,49 @@ final class AppStorePublishingService {
             onOutput: { eventHandler(.output($0)) }
         )
         eventHandler(.output(L10n.text("Uploading the exported IPA to App Store Connect…\n")))
-        _ = try await processRunner.runAndRequireSuccess(
-            executable: uploaderURL,
-            arguments: [
-                "--upload-package", ipaURL.path,
-                "--api-key", keyID,
-                "--api-issuer", issuerID,
-                "--wait",
-                "--output-format", "json",
-                "--show-progress"
-            ],
-            workingDirectory: ipaURL.deletingLastPathComponent(),
-            additionalEnvironment: ["API_PRIVATE_KEYS_DIR": keyDirectory.path],
-            onOutput: { eventHandler(.output($0)) }
-        )
+        let maximumAttempts = 3
+        for attempt in 1...maximumAttempts {
+            let failureDetector = AppStoreUploadFailureDetector()
+            do {
+                _ = try await processRunner.runAndRequireSuccess(
+                    executable: uploaderURL,
+                    arguments: [
+                        "--upload-package", ipaURL.path,
+                        "--api-key", keyID,
+                        "--api-issuer", issuerID,
+                        "--output-format", "json",
+                        "--show-progress"
+                    ],
+                    workingDirectory: ipaURL.deletingLastPathComponent(),
+                    additionalEnvironment: ["API_PRIVATE_KEYS_DIR": keyDirectory.path],
+                    onOutput: { eventHandler(.output($0)) },
+                    terminateWhenOutput: { failureDetector.observe($0) }
+                )
+                return
+            } catch {
+                try Task.checkCancellation()
+                guard failureDetector.didDetectRepeatedChecksumFailures
+                    || Self.isTransientUploadFailure(error) else {
+                    throw error
+                }
+                guard attempt < maximumAttempts else {
+                    throw AppStorePublishingError.uploadTransferFailed(maximumAttempts)
+                }
+                eventHandler(.output(L10n.format(
+                    "Apple's upload transfer became unreliable. Restarting it (attempt %d of %d)…\n",
+                    attempt + 1,
+                    maximumAttempts
+                )))
+                try await Task.sleep(for: .seconds(attempt * 2))
+            }
+        }
+    }
+
+    private static func isTransientUploadFailure(_ error: Error) -> Bool {
+        guard case ProcessRunnerError.commandFailed(_, _, let output) = error else {
+            return false
+        }
+        return AppStoreUploadFailureDetector.isTransientFailure(output)
     }
 
     private func appStoreUploaderURL() throws -> URL {
@@ -1568,6 +1603,57 @@ final class AppStorePublishingService {
     private struct SimulatorApplication {
         let url: URL
         let bundleIdentifier: String
+    }
+}
+
+final class AppStoreUploadFailureDetector: @unchecked Sendable {
+    private static let checksumFailure = "checksums do not match"
+    private static let defaultChecksumFailureLimit = 8
+
+    private let lock = NSLock()
+    private let checksumFailureLimit: Int
+    private var bufferedOutput = ""
+    private var checksumFailureCount = 0
+    private var detectedRepeatedChecksumFailures = false
+
+    init(checksumFailureLimit: Int = defaultChecksumFailureLimit) {
+        self.checksumFailureLimit = max(checksumFailureLimit, 1)
+    }
+
+    func observe(_ output: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !detectedRepeatedChecksumFailures else { return true }
+        bufferedOutput.append(output.lowercased())
+        while let range = bufferedOutput.range(of: Self.checksumFailure) {
+            checksumFailureCount += 1
+            bufferedOutput.removeSubrange(bufferedOutput.startIndex..<range.upperBound)
+        }
+        let maximumRemainderLength = Self.checksumFailure.count - 1
+        if bufferedOutput.count > maximumRemainderLength {
+            bufferedOutput = String(bufferedOutput.suffix(maximumRemainderLength))
+        }
+        detectedRepeatedChecksumFailures = checksumFailureCount >= checksumFailureLimit
+        return detectedRepeatedChecksumFailures
+    }
+
+    var didDetectRepeatedChecksumFailures: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return detectedRepeatedChecksumFailures
+    }
+
+    static func isTransientFailure(_ output: String) -> Bool {
+        let normalized = output.lowercased()
+        return [
+            "checksums do not match",
+            "the network connection was lost",
+            "nsurlerrordomain code=-1001",
+            "nsurlerrordomain code=-1005",
+            "connection reset by peer",
+            "network is unreachable"
+        ].contains { normalized.contains($0) }
     }
 }
 

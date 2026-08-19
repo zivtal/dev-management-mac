@@ -250,7 +250,10 @@ order:
 7. Create or update the App Store version and reconcile localized listing text,
    app categories and declarations, availability, app pricing, subscription
    groups/products/localizations/prices, and localized screenshots. When an
-   archive was required, validate and upload its IPA.
+   archive was required, validate and upload its IPA. The upload returns as soon
+   as Apple accepts the transfer because processing is monitored separately. A
+   poisoned transfer that repeatedly reports checksum mismatches is stopped and
+   restarted, with at most three upload attempts.
 8. Wait for Apple to process the exact archived build and attach it to the exact
    archived marketing version.
 9. Reconcile localized TestFlight descriptions, URLs, beta review information,

@@ -126,4 +126,21 @@ final class ProcessRunnerCancellationTests: XCTestCase {
             XCTFail("Expected CancellationError, received \(error)")
         }
     }
+
+    func testOutputTerminationPredicateStopsRunningCommand() async throws {
+        let start = Date()
+
+        do {
+            _ = try await ProcessRunner().runAndRequireSuccess(
+                executable: URL(fileURLWithPath: "/bin/sh"),
+                arguments: ["-c", "echo poisoned-upload; exec /bin/sleep 30"],
+                terminateWhenOutput: { $0.contains("poisoned-upload") }
+            )
+            XCTFail("The command should be terminated after matching its output")
+        } catch ProcessRunnerError.commandFailed {
+            XCTAssertLessThan(Date().timeIntervalSince(start), 3)
+        } catch {
+            XCTFail("Expected a command failure, received \(error)")
+        }
+    }
 }
