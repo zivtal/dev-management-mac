@@ -281,6 +281,12 @@ the editable record, preferring `PREPARE_FOR_SUBMISSION`, so localized app name,
 subtitle, privacy URLs, categories, and age rating are applied to the upcoming
 release rather than rejected against the live record.
 
+Existing localized App Info is patched only when a configured value changed.
+If Apple rejects only a requested rename because the name is unavailable, the
+existing localized name is preserved and reported in the publishing log while
+the remaining subtitle and privacy values continue to reconcile. Creating a
+new localization and unrelated conflicts still fail without fallback.
+
 **Publish** additionally cancels an explicitly confirmed older active review
 only after the replacement archive succeeds (or a matching processed build is
 already available), then continues with the

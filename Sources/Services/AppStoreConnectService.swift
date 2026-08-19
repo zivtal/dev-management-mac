@@ -105,6 +105,12 @@ struct AppStoreConnectPublication: Sendable {
     let deferredStorefrontSetup: Bool
 }
 
+struct AppStoreLocalizedNamePreservation: Equatable, Sendable {
+    let locale: String
+    let requestedName: String
+    let existingName: String
+}
+
 enum AppStoreConnectError: LocalizedError {
     case invalidPrivateKey
     case invalidResponse
@@ -856,14 +862,21 @@ final class AppStoreConnectService {
             }
             if !preservedLockedAppInformation {
                 do {
-                    try await configureLocalizedAppInformation(
+                    if let preservation = try await configureLocalizedAppInformation(
                         appID: appID,
                         locale: listing.locale,
                         appName: listing.appName.nilIfEmpty ?? appName,
                         subtitle: listing.subtitle.nilIfEmpty ?? subtitle ?? metadata.subtitle,
                         privacyPolicyURL: privacyPolicyURL,
                         privacyChoicesURL: privacyChoicesURL
-                    )
+                    ) {
+                        onOutput(L10n.format(
+                            "The requested App Store name %@ is unavailable for %@. Keeping the existing name %@ and continuing.\n",
+                            preservation.requestedName,
+                            preservation.locale,
+                            preservation.existingName
+                        ))
+                    }
                 } catch AppStoreConnectError.requestFailed(let status, _)
                     where intent.preservesLockedAppInformation(forHTTPStatus: status) {
                     preservedLockedAppInformation = true
@@ -2296,14 +2309,14 @@ final class AppStoreConnectService {
         }
     }
 
-    private func configureLocalizedAppInformation(
+    func configureLocalizedAppInformation(
         appID: String,
         locale: String,
         appName: String?,
         subtitle: String?,
         privacyPolicyURL: String?,
         privacyChoicesURL: String?
-    ) async throws {
+    ) async throws -> AppStoreLocalizedNamePreservation? {
         var attributes: [String: Any] = [:]
         if let appName = appName?.nilIfEmpty { attributes["name"] = String(appName.prefix(30)) }
         if let subtitle = subtitle?.nilIfEmpty { attributes["subtitle"] = String(subtitle.prefix(30)) }
@@ -2313,7 +2326,7 @@ final class AppStoreConnectService {
         if let privacyChoicesURL = privacyChoicesURL?.nilIfEmpty {
             attributes["privacyChoicesUrl"] = privacyChoicesURL
         }
-        guard !attributes.isEmpty else { return }
+        guard !attributes.isEmpty else { return nil }
 
         let infos = try await pagedData(
             path: "/v1/apps/\(appID)/appInfos",
@@ -2329,17 +2342,36 @@ final class AppStoreConnectService {
         if let existing = localizations.first(where: {
             Self.attributes($0)["locale"] as? String == locale
         }), let localizationID = existing["id"] as? String {
-            _ = try await request(
-                method: "PATCH",
-                path: "/v1/appInfoLocalizations/\(localizationID)",
-                body: [
-                    "data": [
-                        "type": "appInfoLocalizations",
-                        "id": localizationID,
-                        "attributes": attributes
-                    ]
-                ]
-            )
+            let existingAttributes = Self.attributes(existing)
+            var changedAttributes = attributes.filter { key, value in
+                existingAttributes[key] as? String != value as? String
+            }
+            guard !changedAttributes.isEmpty else { return nil }
+            do {
+                try await updateAppInfoLocalization(
+                    localizationID,
+                    attributes: changedAttributes
+                )
+            } catch AppStoreConnectError.requestFailed(let status, let message) {
+                guard let requestedName = changedAttributes["name"] as? String,
+                      let existingName = existingAttributes["name"] as? String,
+                      existingName.nilIfEmpty != nil,
+                      Self.isAppNameAvailabilityConflict(status: status, message: message) else {
+                    throw AppStoreConnectError.requestFailed(status, message)
+                }
+                changedAttributes.removeValue(forKey: "name")
+                if !changedAttributes.isEmpty {
+                    try await updateAppInfoLocalization(
+                        localizationID,
+                        attributes: changedAttributes
+                    )
+                }
+                return AppStoreLocalizedNamePreservation(
+                    locale: locale,
+                    requestedName: requestedName,
+                    existingName: existingName
+                )
+            }
         } else {
             attributes["locale"] = locale
             _ = try await request(
@@ -2358,6 +2390,32 @@ final class AppStoreConnectService {
                 ]
             )
         }
+        return nil
+    }
+
+    private func updateAppInfoLocalization(
+        _ localizationID: String,
+        attributes: [String: Any]
+    ) async throws {
+        _ = try await request(
+            method: "PATCH",
+            path: "/v1/appInfoLocalizations/\(localizationID)",
+            body: [
+                "data": [
+                    "type": "appInfoLocalizations",
+                    "id": localizationID,
+                    "attributes": attributes
+                ]
+            ]
+        )
+    }
+
+    static func isAppNameAvailabilityConflict(status: Int, message: String) -> Bool {
+        guard status == 409 else { return false }
+        let normalized = message.lowercased()
+        return normalized.contains("app name")
+            && (normalized.contains("already being used")
+                || normalized.contains("not available"))
     }
 
     private func configureLicenseAgreement(

@@ -266,6 +266,134 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertFalse(PublishingIntent.publish.preservesLockedAppInformation(forHTTPStatus: 409))
     }
 
+    func testAppNameAvailabilityConflictIsIdentifiedNarrowly() {
+        XCTAssertTrue(AppStoreConnectService.isAppNameAvailabilityConflict(
+            status: 409,
+            message: "The app name you entered is already being used."
+        ))
+        XCTAssertFalse(AppStoreConnectService.isAppNameAvailabilityConflict(
+            status: 409,
+            message: "You cannot create a new version of the App in the current state."
+        ))
+        XCTAssertFalse(AppStoreConnectService.isAppNameAvailabilityConflict(
+            status: 422,
+            message: "The app name is not available."
+        ))
+    }
+
+    func testExistingAppNameConflictPreservesNameAndUpdatesOtherInformation() async throws {
+        var patchCount = 0
+        let service = try appStoreConnectTestService { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/apps/app-id/appInfos"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [["type": "appInfos", "id": "info-id", "attributes": ["state": "PREPARE_FOR_SUBMISSION"]]]]
+                )
+            case ("GET", "/v1/appInfos/info-id/appInfoLocalizations"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [[
+                        "type": "appInfoLocalizations",
+                        "id": "localization-id",
+                        "attributes": [
+                            "locale": "en-US",
+                            "name": "TripFlow Itinerary",
+                            "subtitle": "Old subtitle"
+                        ]
+                    ]]]
+                )
+            case ("PATCH", "/v1/appInfoLocalizations/localization-id"):
+                patchCount += 1
+                let body = try Self.requestBodyData(request)
+                let root = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+                let data = try XCTUnwrap(root["data"] as? [String: Any])
+                let attributes = try XCTUnwrap(data["attributes"] as? [String: Any])
+                if patchCount == 1 {
+                    XCTAssertEqual(attributes["name"] as? String, "TripFlow")
+                    XCTAssertEqual(attributes["subtitle"] as? String, "New subtitle")
+                    return try Self.appStoreConnectResponse(
+                        for: request,
+                        status: 409,
+                        json: ["errors": [["detail": "The app name you entered is already being used."]]]
+                    )
+                }
+                XCTAssertNil(attributes["name"])
+                XCTAssertEqual(attributes["subtitle"] as? String, "New subtitle")
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": ["type": "appInfoLocalizations", "id": "localization-id"]]
+                )
+            default:
+                XCTFail("Unexpected App Store Connect request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
+                return try Self.appStoreConnectResponse(for: request, status: 500, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+
+        let preservation = try await service.configureLocalizedAppInformation(
+            appID: "app-id",
+            locale: "en-US",
+            appName: "TripFlow",
+            subtitle: "New subtitle",
+            privacyPolicyURL: nil,
+            privacyChoicesURL: nil
+        )
+
+        XCTAssertEqual(patchCount, 2)
+        XCTAssertEqual(preservation, AppStoreLocalizedNamePreservation(
+            locale: "en-US",
+            requestedName: "TripFlow",
+            existingName: "TripFlow Itinerary"
+        ))
+    }
+
+    func testUnchangedLocalizedAppInformationDoesNotPatch() async throws {
+        let service = try appStoreConnectTestService { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/apps/app-id/appInfos"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [["type": "appInfos", "id": "info-id", "attributes": ["state": "PREPARE_FOR_SUBMISSION"]]]]
+                )
+            case ("GET", "/v1/appInfos/info-id/appInfoLocalizations"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [[
+                        "type": "appInfoLocalizations",
+                        "id": "localization-id",
+                        "attributes": [
+                            "locale": "en-US",
+                            "name": "TripFlow Itinerary",
+                            "subtitle": "Plan every trip"
+                        ]
+                    ]]]
+                )
+            default:
+                XCTFail("Unexpected App Store Connect request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
+                return try Self.appStoreConnectResponse(for: request, status: 500, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+
+        let preservation = try await service.configureLocalizedAppInformation(
+            appID: "app-id",
+            locale: "en-US",
+            appName: "TripFlow Itinerary",
+            subtitle: "Plan every trip",
+            privacyPolicyURL: nil,
+            privacyChoicesURL: nil
+        )
+
+        XCTAssertNil(preservation)
+        XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.count, 2)
+    }
+
     func testLockedTestFlightUploadPreservesSubmittedSubscriptionConfiguration() {
         XCTAssertTrue(AppStorePublishingService.preservesExistingSubscriptionConfiguration(
             intent: .testFlight,
@@ -1632,6 +1760,23 @@ private extension AppStorePublishingTests {
             headerFields: responseHeaders
         ))
         return (response, try JSONSerialization.data(withJSONObject: json))
+    }
+
+    static func requestBodyData(_ request: URLRequest) throws -> Data {
+        if let body = request.httpBody { return body }
+        let stream = try XCTUnwrap(request.httpBodyStream)
+        stream.open()
+        defer { stream.close() }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count < 0 { throw stream.streamError ?? AppStoreConnectError.invalidResponse }
+            if count == 0 { break }
+            data.append(buffer, count: count)
+        }
+        return data
     }
 }
 
