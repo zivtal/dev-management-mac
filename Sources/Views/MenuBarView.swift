@@ -38,14 +38,22 @@ struct MenuBarView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 260)
+                .frame(
+                    minHeight: MenuBarLayoutPolicy.minimumActiveWorkHeight,
+                    idealHeight: MenuBarLayoutPolicy.activeWorkHeight(
+                        publishingCount: model.activePublishingProgresses.count,
+                        installationCount: model.activeInstallationProgresses.count
+                    ),
+                    maxHeight: MenuBarLayoutPolicy.maximumActiveWorkHeight
+                )
+                .layoutPriority(2)
             } else if isDeviceListExpanded
                         || (model.connectedDevices.isEmpty && model.hasIOSProjects) {
                 deviceSection
             }
 
             Divider()
-            projectSection
+            projectSectionContainer
             Divider()
             footer
         }
@@ -491,6 +499,22 @@ struct MenuBarView: View {
         }
     }
 
+    @ViewBuilder
+    private var projectSectionContainer: some View {
+        if model.hasActiveWork {
+            ScrollView {
+                projectSection
+            }
+            .frame(
+                minHeight: MenuBarLayoutPolicy.minimumProjectListHeight,
+                maxHeight: MenuBarLayoutPolicy.maximumProjectListHeight
+            )
+            .layoutPriority(1)
+        } else {
+            projectSection
+        }
+    }
+
     private var footer: some View {
         HStack {
             Button {
@@ -708,6 +732,27 @@ struct MenuBarView: View {
             return L10n.text("Never")
         }
         return date.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+enum MenuBarLayoutPolicy {
+    static let minimumActiveWorkHeight: CGFloat = 88
+    static let maximumActiveWorkHeight: CGFloat = 170
+    static let minimumProjectListHeight: CGFloat = 105
+    static let maximumProjectListHeight: CGFloat = 210
+
+    static func activeWorkHeight(
+        publishingCount: Int,
+        installationCount: Int
+    ) -> CGFloat {
+        let publishingHeight = CGFloat(max(0, publishingCount)) * 136
+        let installationHeight = CGFloat(max(0, installationCount)) * 88
+        let taskCount = max(0, publishingCount) + max(0, installationCount)
+        let spacing = CGFloat(max(0, taskCount - 1)) * 8
+        return min(
+            maximumActiveWorkHeight,
+            max(minimumActiveWorkHeight, publishingHeight + installationHeight + spacing)
+        )
     }
 }
 
