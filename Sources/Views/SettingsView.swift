@@ -178,7 +178,7 @@ private struct DevicesSettingsView: View {
                 } label: {
                     Label("Refresh devices", systemImage: "arrow.clockwise")
                 }
-                .disabled(model.isRefreshingDevices || model.hasActiveWork)
+                .disabled(model.isRefreshingDevices)
             }
 
             if model.connectedDevices.isEmpty {

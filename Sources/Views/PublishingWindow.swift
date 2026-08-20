@@ -219,8 +219,8 @@ private struct PublishingWindowView: View {
             if let log = presentedPublicationLog {
                 PublishingProgressView(
                     log: log,
-                    progress: model.publishingProgress,
-                    onCancel: model.cancelPublishing,
+                    progress: model.publishingProgress(for: log.projectID),
+                    onCancel: { model.cancelPublishing(projectID: log.projectID) },
                     onBackToReview: {
                         model.presentedError = nil
                         showsPublicationStatus = false
@@ -312,11 +312,13 @@ private struct PublishingWindowView: View {
         .frame(minWidth: 540, minHeight: 460)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            if let log = model.publishingLog, log.state == .inProgress {
+            if let projectID = selectedProjectID,
+               let log = model.publishingLog(for: projectID),
+               log.state == .inProgress {
                 selectedProjectID = log.projectID
                 Task { @MainActor in
                     await Task.yield()
-                    PublishingLogWindowPresenter.shared.show(model: model)
+                    PublishingLogWindowPresenter.shared.show(model: model, projectID: log.projectID)
                     PublishingWindowPresenter.shared.close()
                 }
             }
@@ -354,8 +356,8 @@ private struct PublishingWindowView: View {
                         && olderActiveReviewVersion != nil,
                     existingConfiguration: currentAppStoreSnapshot
                 )
-                if model.publishingProgress != nil {
-                    PublishingLogWindowPresenter.shared.show(model: model)
+                if model.isPublishing(projectID: projectID) {
+                    PublishingLogWindowPresenter.shared.show(model: model, projectID: projectID)
                     PublishingWindowPresenter.shared.close()
                 }
             }
@@ -1459,7 +1461,11 @@ private struct PublishingWindowView: View {
                     } label: {
                         Label("Upload to TestFlight", systemImage: "airplane")
                     }
-                    .disabled(model.hasActiveWork)
+                    .disabled(
+                        model.isPublishing(projectID: project.id)
+                            || model.isInstalling(projectID: project.id)
+                            || model.isGeneratingOfferCodes
+                    )
                     Button {
                         handleReleaseAction(project, intent: .publish)
                     } label: {
@@ -1470,7 +1476,11 @@ private struct PublishingWindowView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(model.hasActiveWork)
+                    .disabled(
+                        model.isPublishing(projectID: project.id)
+                            || model.isInstalling(projectID: project.id)
+                            || model.isGeneratingOfferCodes
+                    )
                 } else {
                     Button {
                         handleReleaseAction(project, intent: .testFlight)
@@ -1479,7 +1489,11 @@ private struct PublishingWindowView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(model.hasActiveWork)
+                    .disabled(
+                        model.isPublishing(projectID: project.id)
+                            || model.isInstalling(projectID: project.id)
+                            || model.isGeneratingOfferCodes
+                    )
                 }
             }
         }
@@ -1722,7 +1736,8 @@ private struct PublishingWindowView: View {
     }
 
     private var presentedPublicationLog: PublishingLogSession? {
-        guard let log = model.publishingLog,
+        guard let selectedProjectID,
+              let log = model.publishingLog(for: selectedProjectID),
               log.state == .inProgress || showsPublicationStatus else { return nil }
         return log
     }

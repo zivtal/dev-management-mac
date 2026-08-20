@@ -69,6 +69,30 @@ final class DirectXcodeInstallationTests: XCTestCase {
         }))
     }
 
+    func testSameBuiltApplicationCanBeSentToMultipleDevices() {
+        let applicationURL = URL(fileURLWithPath: "/tmp/DerivedData/Example.app")
+        let first = InstallationService.deviceInstallArguments(
+            device: makeDevice(),
+            applicationURL: applicationURL
+        )
+        let second = InstallationService.deviceInstallArguments(
+            device: ConnectedDevice(
+                udid: "PHONE-2",
+                name: "Second iPhone",
+                model: "iPhone 17",
+                platform: "iOS",
+                transportType: "network",
+                isInstallReady: true
+            ),
+            applicationURL: applicationURL
+        )
+
+        XCTAssertEqual(first.last, applicationURL.path)
+        XCTAssertEqual(second.last, applicationURL.path)
+        XCTAssertTrue(first.contains("PHONE-1"))
+        XCTAssertTrue(second.contains("PHONE-2"))
+    }
+
     func testSigningTeamPersistsWithManagedProject() throws {
         var project = makeProject()
         project.signingTeamID = "52HV33827A"
@@ -131,6 +155,57 @@ final class DirectXcodeInstallationTests: XCTestCase {
         XCTAssertEqual(teams, [
             DeveloperTeam(id: "52HV33827A", organizationName: "Ziv Tal", accountName: nil)
         ])
+    }
+
+    func testDistributionIdentityMustMatchSelectedTeam() {
+        let records = [
+            SigningCertificateRecord(
+                commonName: "Apple Development: Ziv Tal (PFB88Y2DHG)",
+                organizationalUnit: "TEAM-A",
+                organizationName: "Ziv Tal"
+            ),
+            SigningCertificateRecord(
+                commonName: "Apple Distribution: Ziv Tal (TEAM-B)",
+                organizationalUnit: "TEAM-B",
+                organizationName: "Ziv Tal"
+            )
+        ]
+
+        XCTAssertFalse(DeveloperTeamService.hasDistributionSigningIdentity(
+            certificateRecords: records,
+            teamID: "TEAM-A"
+        ))
+        XCTAssertTrue(DeveloperTeamService.hasDistributionSigningIdentity(
+            certificateRecords: records,
+            teamID: "TEAM-B"
+        ))
+    }
+
+    func testBuiltApplicationVersionMustMatchKnownProjectVersion() throws {
+        let applicationURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BuiltVersionTests-\(UUID().uuidString).app", isDirectory: true)
+        try FileManager.default.createDirectory(at: applicationURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: applicationURL) }
+        let plistData = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "CFBundleShortVersionString": "4.2.1",
+                "CFBundleVersion": "73"
+            ],
+            format: .binary,
+            options: 0
+        )
+        try plistData.write(to: applicationURL.appendingPathComponent("Info.plist"))
+
+        let actual = try InstallationService.applicationVersion(at: applicationURL)
+        XCTAssertEqual(actual, ProjectVersion(marketingVersion: "4.2.1", buildNumber: "73"))
+        XCTAssertTrue(InstallationService.versionsMatch(
+            expected: ProjectVersion(marketingVersion: "4.2.1", buildNumber: "73"),
+            actual: actual
+        ))
+        XCTAssertFalse(InstallationService.versionsMatch(
+            expected: ProjectVersion(marketingVersion: "4.2.1", buildNumber: "74"),
+            actual: actual
+        ))
     }
 
     func testMatchingProvisioningProfileNamespaceRecommendsTeam() {

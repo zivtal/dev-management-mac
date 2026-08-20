@@ -7,6 +7,7 @@ struct MenuBarView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isDeviceListExpanded = false
     @State private var showsCancelInstallationConfirmation = false
+    @State private var cancellationProjectID: UUID?
     @State private var isOpeningPublishingWindow = false
     @State private var openingPublishingProjectID: UUID?
     @State private var openingPublishingAction = PublishingAction.release
@@ -25,10 +26,19 @@ struct MenuBarView: View {
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
-            } else if let publishing = model.publishingProgress {
-                publishingProgressSection(publishing)
-            } else if let progress = model.progress {
-                progressSection(progress)
+            } else if !model.activePublishingProgresses.isEmpty
+                        || !model.activeInstallationProgresses.isEmpty {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(model.activePublishingProgresses, id: \.projectID) {
+                            publishingProgressSection($0)
+                        }
+                        ForEach(model.activeInstallationProgresses, id: \.projectID) {
+                            progressSection($0)
+                        }
+                    }
+                }
+                .frame(maxHeight: 260)
             } else if isDeviceListExpanded
                         || (model.connectedDevices.isEmpty && model.hasIOSProjects) {
                 deviceSection
@@ -40,7 +50,7 @@ struct MenuBarView: View {
             footer
         }
         .padding(14)
-        .frame(width: 615)
+        .frame(width: showsGitBranchColumn ? 715 : 615)
         .background {
             MenuBarOpenObserver {
                 Task {
@@ -87,7 +97,7 @@ struct MenuBarView: View {
                 Text("Development Management")
                     .font(.headline)
                 Group {
-                    if !model.hasActiveWork, !model.connectedDevices.isEmpty {
+                    if !model.connectedDevices.isEmpty {
                         Button {
                             withAnimation(.easeInOut(duration: 0.16)) {
                                 isDeviceListExpanded.toggle()
@@ -134,12 +144,15 @@ struct MenuBarView: View {
                     menuWindow?.orderOut(nil)
                     Task { @MainActor in
                         await Task.yield()
-                        PublishingLogWindowPresenter.shared.show(model: model)
+                        PublishingLogWindowPresenter.shared.show(
+                            model: model,
+                            projectID: progress.projectID
+                        )
                     }
                 }
                 .controlSize(.small)
                 Button {
-                    model.cancelPublishing()
+                    model.cancelPublishing(projectID: progress.projectID)
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title3)
@@ -179,6 +192,9 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private func progressSection(_ progress: InstallationProgress) -> some View {
+        let cancellationInProgress = progress.projectID.map {
+            model.isCancellingInstallation(projectID: $0)
+        } ?? false
         ZStack(alignment: .topTrailing) {
             Button {
                 let menuWindow = NSApplication.shared.keyWindow
@@ -186,7 +202,12 @@ struct MenuBarView: View {
                 menuWindow?.orderOut(nil)
                 Task { @MainActor in
                     await Task.yield()
-                    InstallationLogWindowPresenter.shared.show(model: model)
+                    if let projectID = progress.projectID {
+                        InstallationLogWindowPresenter.shared.show(
+                            model: model,
+                            projectID: projectID
+                        )
+                    }
                 }
             } label: {
                 VStack(alignment: .leading, spacing: 7) {
@@ -217,9 +238,10 @@ struct MenuBarView: View {
             .accessibilityLabel("Show installation log")
 
             Button {
+                cancellationProjectID = progress.projectID
                 showsCancelInstallationConfirmation = true
             } label: {
-                if model.isCancellingInstallation {
+                if cancellationInProgress {
                     ProgressView().controlSize(.small)
                 } else {
                     Image(systemName: "xmark.circle.fill")
@@ -230,7 +252,7 @@ struct MenuBarView: View {
             .buttonStyle(.borderless)
             .help("Cancel installation")
             .accessibilityLabel("Cancel installation")
-            .disabled(model.isCancellingInstallation)
+            .disabled(cancellationInProgress)
             .padding(9)
         }
     }
@@ -253,13 +275,17 @@ struct MenuBarView: View {
                 HStack {
                     Button("Cancel Installation", role: .destructive) {
                         showsCancelInstallationConfirmation = false
-                        model.cancelActiveInstallation()
+                        if let cancellationProjectID {
+                            model.cancelInstallation(projectID: cancellationProjectID)
+                        }
+                        cancellationProjectID = nil
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
 
                     Button("Keep Installing", role: .cancel) {
                         showsCancelInstallationConfirmation = false
+                        cancellationProjectID = nil
                     }
                     .buttonStyle(.bordered)
                     .keyboardShortcut(.defaultAction)
@@ -311,6 +337,10 @@ struct MenuBarView: View {
                     GridRow {
                         Text("Application")
                             .frame(width: 160, alignment: .leading)
+                        if showsGitBranchColumn {
+                            Text("Branch")
+                                .frame(width: 90, alignment: .leading)
+                        }
                         Text("Devices")
                             .frame(width: 55, alignment: .center)
                         Text("Expires at")
@@ -322,7 +352,7 @@ struct MenuBarView: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                    Divider().gridCellColumns(5)
+                    Divider().gridCellColumns(showsGitBranchColumn ? 6 : 5)
 
                     ForEach(model.projects) { project in
                         GridRow {
@@ -338,6 +368,15 @@ struct MenuBarView: View {
                                 }
                             }
                             .frame(width: 160, alignment: .leading)
+
+                            if showsGitBranchColumn {
+                                Text(model.activeGitBranch(for: project.id) ?? "—")
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 90, alignment: .leading)
+                                    .lineLimit(1)
+                                    .help(model.activeGitBranch(for: project.id) ?? L10n.text("Not a Git worktree"))
+                            }
 
                             selectedDeviceCountCell(for: project)
 
@@ -400,7 +439,11 @@ struct MenuBarView: View {
                                     .foregroundStyle(.blue)
                                     .help(L10n.format("Publish %@…", project.displayName))
                                     .accessibilityLabel(L10n.format("Publish %@…", project.displayName))
-                                    .disabled(model.hasActiveWork || isOpeningPublishingWindow)
+                                    .disabled(
+                                        model.isInstalling(projectID: project.id)
+                                            || model.isPublishing(projectID: project.id)
+                                            || isOpeningPublishingWindow
+                                    )
                                 } else {
                                     Color.clear.frame(width: 14, height: 14)
                                 }
@@ -436,7 +479,8 @@ struct MenuBarView: View {
                                     !project.isEnabled
                                         || !model.hasAvailableInstallationTarget(for: project)
                                         || model.isInstallationQueued(for: project.id)
-                                        || model.hasActiveWork
+                                        || model.isInstalling(projectID: project.id)
+                                        || model.isPublishing(projectID: project.id)
                                 )
                             }
                             .frame(width: 98, alignment: .trailing)
@@ -454,14 +498,14 @@ struct MenuBarView: View {
             } label: {
                 Label("Install All Now", systemImage: "arrow.triangle.2.circlepath")
             }
-            .disabled(model.projects.filter(\.isEnabled).isEmpty || model.hasActiveWork)
+            .disabled(model.projects.filter(\.isEnabled).isEmpty || model.isGeneratingOfferCodes)
 
             Button {
                 model.refreshNow()
             } label: {
                 Label("Check now", systemImage: "arrow.clockwise")
             }
-            .disabled(model.isRefreshingDevices || model.hasActiveWork)
+            .disabled(model.isRefreshingDevices)
 
             Button {
                 openPublishing(projectID: nil, action: .release)
@@ -476,7 +520,7 @@ struct MenuBarView: View {
                 }
             }
             .disabled(
-                model.hasActiveWork || isOpeningPublishingWindow
+                isOpeningPublishingWindow
                     || !model.projects.contains {
                         !$0.isMacOSApplication
                     }
@@ -521,6 +565,10 @@ struct MenuBarView: View {
 
     private func canPublish(_ project: ManagedProject) -> Bool {
         !project.isMacOSApplication
+    }
+
+    private var showsGitBranchColumn: Bool {
+        !model.gitBranchesByProjectID.isEmpty
     }
 
     private func hasSubscriptions(_ project: ManagedProject) -> Bool {
@@ -587,6 +635,11 @@ struct MenuBarView: View {
 
     private var statusText: String {
         if model.isGeneratingOfferCodes { return L10n.text("Generating subscription offer codes…") }
+        let activeTaskCount = model.activePublishingProgresses.count
+            + model.activeInstallationProgresses.count
+        if activeTaskCount > 1 {
+            return L10n.format("%d tasks in progress", activeTaskCount)
+        }
         if let publishing = model.publishingProgress { return publishing.phase.title }
         if model.progress != nil { return L10n.text("Installation in progress") }
         if !model.preferences.automationEnabled { return L10n.text("Automation is paused") }

@@ -19,6 +19,7 @@ enum AppStorePublishingError: LocalizedError {
     case uploadTransferFailed(Int)
     case missingEditablePublishingDraft
     case privacyManifestUnavailable
+    case distributionSigningUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -67,6 +68,8 @@ enum AppStorePublishingError: LocalizedError {
             return L10n.text("Review and save the editable App Store listing and app declarations before releasing.")
         case .privacyManifestUnavailable:
             return L10n.text("App Privacy was published, but app-store-publishing.json could not be updated with the publication time.")
+        case .distributionSigningUnavailable:
+            return L10n.text("Distribution signing is not available. Grant the selected App Store Connect API key access to Certificates, Identifiers & Profiles and Cloud Managed App Distribution, or install an active Apple Distribution certificate with its private key in Keychain. No archive was uploaded.")
         }
     }
 }
@@ -83,19 +86,22 @@ final class AppStorePublishingService {
     private let xcodeGenPreparationService: XcodeGenProjectPreparationService
     private let xcodeSchemePreparationService: XcodeSchemeBuildPreparationService
     private let privacyPublishingService: AppStorePrivacyPublishingService
+    private let developerTeamService: DeveloperTeamService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
         fileManager: FileManager = .default,
         subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService = StoreKitSubscriptionDiscoveryService(),
         reviewAssetService: AppStoreReviewAssetService = AppStoreReviewAssetService(),
-        publicationURLValidator: AppStorePublicationURLValidator = AppStorePublicationURLValidator()
+        publicationURLValidator: AppStorePublicationURLValidator = AppStorePublicationURLValidator(),
+        developerTeamService: DeveloperTeamService = DeveloperTeamService()
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
         self.subscriptionDiscoveryService = subscriptionDiscoveryService
         self.reviewAssetService = reviewAssetService
         self.publicationURLValidator = publicationURLValidator
+        self.developerTeamService = developerTeamService
         self.xcodeGenPreparationService = XcodeGenProjectPreparationService(
             processRunner: processRunner,
             fileManager: fileManager
@@ -325,6 +331,21 @@ final class AppStorePublishingService {
             targetVersion = localVersion
             targetBuildNumber = localBuildNumber
         } else {
+            let signingTeamID = project.signingTeamID ?? project.projectSigningTeamID
+            if developerTeamService.hasDistributionSigningIdentity(teamID: signingTeamID) {
+                eventHandler(.output(L10n.text(
+                    "Found a local Apple Distribution signing identity.\n"
+                )))
+            } else {
+                eventHandler(.output(L10n.text(
+                    "No local Apple Distribution identity was found; checking cloud distribution-signing permission before archiving…\n"
+                )))
+                do {
+                    try await appStoreConnect.validateDistributionSigningAccess()
+                } catch AppStoreConnectError.requestFailed(let status, _) where status == 401 || status == 403 {
+                    throw AppStorePublishingError.distributionSigningUnavailable
+                }
+            }
             let directory = fileManager.temporaryDirectory
                 .appendingPathComponent("DevManagement-Publish-\(UUID().uuidString)", isDirectory: true)
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -1099,18 +1120,25 @@ final class AppStorePublishingService {
             options: 0
         )
         try plist.write(to: exportOptionsURL, options: .atomic)
-        _ = try await processRunner.runAndRequireSuccess(
-            executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
-            arguments: [
-                "-exportArchive",
-                "-archivePath", archiveURL.path,
-                "-exportPath", exportURL.path,
-                "-exportOptionsPlist", exportOptionsURL.path,
-                "-allowProvisioningUpdates"
-            ] + authenticationArguments,
-            workingDirectory: project.folderURL,
-            onOutput: { eventHandler(.output($0)) }
-        )
+        do {
+            _ = try await processRunner.runAndRequireSuccess(
+                executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
+                arguments: [
+                    "-exportArchive",
+                    "-archivePath", archiveURL.path,
+                    "-exportPath", exportURL.path,
+                    "-exportOptionsPlist", exportOptionsURL.path,
+                    "-allowProvisioningUpdates"
+                ] + authenticationArguments,
+                workingDirectory: project.folderURL,
+                onOutput: { eventHandler(.output($0)) }
+            )
+        } catch {
+            if Self.isDistributionSigningFailure(error.localizedDescription) {
+                throw AppStorePublishingError.distributionSigningUnavailable
+            }
+            throw error
+        }
         guard let ipaURL = try fileManager.contentsOfDirectory(
             at: exportURL,
             includingPropertiesForKeys: nil
@@ -1165,6 +1193,13 @@ final class AppStorePublishingService {
             )
         }
         throw AppStorePublishingError.missingArchiveApplication
+    }
+
+    static func isDistributionSigningFailure(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return normalized.contains("cloud signing permission error")
+            || normalized.contains("no signing certificate \"ios distribution\" found")
+            || normalized.contains("no signing certificate \"apple distribution\" found")
     }
 
     static func xcodeAuthenticationArguments(

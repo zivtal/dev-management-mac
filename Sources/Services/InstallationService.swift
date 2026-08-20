@@ -105,12 +105,32 @@ struct InstallationOutcome {
     }
 }
 
+struct DeviceInstallationResult: Equatable, Sendable {
+    let deviceUDID: String
+    let deviceName: String
+    let log: String
+    let failureMessage: String?
+
+    var succeeded: Bool { failureMessage == nil }
+}
+
+struct InstallationBatchOutcome: Sendable {
+    let log: String
+    let deviceResults: [DeviceInstallationResult]
+    let profileExpirationDate: Date?
+    let profileExpirationWasChecked: Bool
+}
+
 enum InstallationServiceError: LocalizedError {
     case missingProjectContainer
     case missingDevelopmentTeam
     case noBuiltApplication
     case couldNotStopRunningApplication(String)
     case cannotReplaceDevelopmentManagement
+    case noInstallationDevices
+    case deviceInstallationFailed(String, String)
+    case sourceVersionChanged(expected: ProjectVersion, actual: ProjectVersion)
+    case builtVersionMismatch(expected: ProjectVersion, actual: ProjectVersion)
 
     var errorDescription: String? {
         switch self {
@@ -124,7 +144,27 @@ enum InstallationServiceError: LocalizedError {
             L10n.format("Could not stop the running %@ application.", name)
         case .cannotReplaceDevelopmentManagement:
             L10n.text("Development Management cannot replace itself. Choose a different macOS application.")
+        case .noInstallationDevices:
+            L10n.text("No compatible connected device was selected for installation.")
+        case .deviceInstallationFailed(let deviceName, let message):
+            L10n.format("Installation on %@ failed: %@", deviceName, message)
+        case .sourceVersionChanged(let expected, let actual):
+            L10n.format(
+                "The direct build changed the project version from %@ to %@. Installation stopped; Development Management never runs app install or version-bump scripts.",
+                Self.displayVersion(expected),
+                Self.displayVersion(actual)
+            )
+        case .builtVersionMismatch(let expected, let actual):
+            L10n.format(
+                "The built application version %@ does not match the project version %@. Installation stopped.",
+                Self.displayVersion(actual),
+                Self.displayVersion(expected)
+            )
         }
+    }
+
+    private static func displayVersion(_ version: ProjectVersion) -> String {
+        "\(version.marketingVersion ?? "—") (\(version.buildNumber ?? "—"))"
     }
 }
 
@@ -134,17 +174,20 @@ final class InstallationService {
     private let processRunner: ProcessRunner
     private let fileManager: FileManager
     private let developerTeamService: DeveloperTeamService
+    private let versionService: ProjectVersionService
     private let xcodeGenPreparationService: XcodeGenProjectPreparationService
     private let xcodeSchemePreparationService: XcodeSchemeBuildPreparationService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
         fileManager: FileManager = .default,
-        developerTeamService: DeveloperTeamService = DeveloperTeamService()
+        developerTeamService: DeveloperTeamService = DeveloperTeamService(),
+        versionService: ProjectVersionService = ProjectVersionService()
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
         self.developerTeamService = developerTeamService
+        self.versionService = versionService
         self.xcodeGenPreparationService = XcodeGenProjectPreparationService(
             processRunner: processRunner,
             fileManager: fileManager
@@ -159,9 +202,28 @@ final class InstallationService {
         on device: ConnectedDevice,
         eventHandler: @escaping EventHandler
     ) async throws -> InstallationOutcome {
-        eventHandler(.phase(.preparing))
+        let outcome = try await install(project: project, on: [device], eventHandler: eventHandler)
+        guard let result = outcome.deviceResults.first else {
+            throw InstallationServiceError.noInstallationDevices
+        }
+        if let failureMessage = result.failureMessage {
+            throw InstallationServiceError.deviceInstallationFailed(result.deviceName, failureMessage)
+        }
+        return InstallationOutcome(
+            log: outcome.log,
+            profileExpirationDate: outcome.profileExpirationDate,
+            profileExpirationWasChecked: outcome.profileExpirationWasChecked
+        )
+    }
 
-        return try await buildAndInstall(project: project, device: device, eventHandler: eventHandler)
+    func install(
+        project: ManagedProject,
+        on devices: [ConnectedDevice],
+        eventHandler: @escaping EventHandler
+    ) async throws -> InstallationBatchOutcome {
+        guard !devices.isEmpty else { throw InstallationServiceError.noInstallationDevices }
+        eventHandler(.phase(.preparing))
+        return try await buildAndInstall(project: project, devices: devices, eventHandler: eventHandler)
     }
 
     func install(
@@ -178,9 +240,9 @@ final class InstallationService {
 
     private func buildAndInstall(
         project: ManagedProject,
-        device: ConnectedDevice,
+        devices: [ConnectedDevice],
         eventHandler: @escaping EventHandler
-    ) async throws -> InstallationOutcome {
+    ) async throws -> InstallationBatchOutcome {
         guard fileManager.fileExists(atPath: project.containerPath) else {
             throw InstallationServiceError.missingProjectContainer
         }
@@ -215,9 +277,14 @@ final class InstallationService {
 
         let commonArguments = Self.xcodeArguments(
             project: buildProject,
-            device: device,
+            device: devices[0],
             derivedDataURL: derivedDataURL,
             scheme: preparedScheme.name
+        )
+        let sourceVersion = versionService.currentVersion(for: project)
+        let expectedVersion = ProjectVersion(
+            marketingVersion: sourceVersion.marketingVersion ?? project.marketingVersion,
+            buildNumber: sourceVersion.buildNumber ?? project.buildNumber
         )
 
         eventHandler(.phase(.building))
@@ -237,25 +304,77 @@ final class InstallationService {
             commonArguments: commonArguments,
             derivedDataURL: derivedDataURL
         )
+        try validateVersionPreservation(
+            project: project,
+            sourceVersion: sourceVersion,
+            expectedVersion: expectedVersion,
+            applicationURL: appURL
+        )
+        let versionVerificationLog = L10n.format(
+            "Verified that the project and built app remain at version %@ (%@); no app script or version bump was run.\n",
+            expectedVersion.marketingVersion ?? "—",
+            expectedVersion.buildNumber ?? "—"
+        )
+        eventHandler(.output(versionVerificationLog))
         let profileExpirationDate = developerTeamService.provisioningProfileExpirationDate(
             in: appURL
         )
 
         eventHandler(.phase(.installing))
-        let installResult = try await processRunner.runAndRequireSuccess(
-            executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
-            arguments: [
-                "devicectl", "device", "install", "app",
-                "--device", device.udid,
-                "--timeout", "180",
-                appURL.path
-            ],
-            workingDirectory: project.folderURL,
-            onOutput: { eventHandler(.output($0)) }
-        )
+        eventHandler(.output(L10n.format(
+            "Built once; installing the same signed app on %d device(s) concurrently.\n",
+            devices.count
+        )))
+        let deviceResults = try await withThrowingTaskGroup(
+            of: (Int, DeviceInstallationResult).self
+        ) { group in
+            for (index, device) in devices.enumerated() {
+                group.addTask { [processRunner] in
+                    do {
+                        let installResult = try await processRunner.runAndRequireSuccess(
+                            executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                            arguments: Self.deviceInstallArguments(
+                                device: device,
+                                applicationURL: appURL
+                            ),
+                            workingDirectory: project.folderURL,
+                            onOutput: { output in
+                                eventHandler(.output(Self.prefixed(output, with: device.name)))
+                            }
+                        )
+                        return (index, DeviceInstallationResult(
+                            deviceUDID: device.udid,
+                            deviceName: device.name,
+                            log: installResult.output,
+                            failureMessage: nil
+                        ))
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch {
+                        let message = error.localizedDescription
+                        eventHandler(.output("[\(device.name)] \(message)\n"))
+                        return (index, DeviceInstallationResult(
+                            deviceUDID: device.udid,
+                            deviceName: device.name,
+                            log: message,
+                            failureMessage: message
+                        ))
+                    }
+                }
+            }
+            var collected: [(Int, DeviceInstallationResult)] = []
+            for try await result in group { collected.append(result) }
+            return collected.sorted(by: { $0.0 < $1.0 }).map(\.1)
+        }
+        let installationLogs = deviceResults.map {
+            "[\($0.deviceName)]\n\($0.log)"
+        }.joined(separator: "\n\n")
 
-        return InstallationOutcome(
-            log: Self.trimmedLog(buildResult.output + "\n\n" + installResult.output),
+        return InstallationBatchOutcome(
+            log: Self.trimmedLog(
+                buildResult.output + "\n\n" + versionVerificationLog + "\n" + installationLogs
+            ),
+            deviceResults: deviceResults,
             profileExpirationDate: profileExpirationDate,
             profileExpirationWasChecked: true
         )
@@ -295,6 +414,11 @@ final class InstallationService {
             derivedDataURL: derivedDataURL,
             scheme: preparedScheme.name
         )
+        let sourceVersion = versionService.currentVersion(for: project)
+        let expectedVersion = ProjectVersion(
+            marketingVersion: sourceVersion.marketingVersion ?? project.marketingVersion,
+            buildNumber: sourceVersion.buildNumber ?? project.buildNumber
+        )
         eventHandler(.phase(.building))
         let buildResult = try await processRunner.runAndRequireSuccess(
             executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
@@ -308,6 +432,18 @@ final class InstallationService {
             commonArguments: commonArguments,
             derivedDataURL: derivedDataURL
         )
+        try validateVersionPreservation(
+            project: project,
+            sourceVersion: sourceVersion,
+            expectedVersion: expectedVersion,
+            applicationURL: appURL
+        )
+        let versionVerificationLog = L10n.format(
+            "Verified that the project and built app remain at version %@ (%@); no app script or version bump was run.\n",
+            expectedVersion.marketingVersion ?? "—",
+            expectedVersion.buildNumber ?? "—"
+        )
+        eventHandler(.output(versionVerificationLog))
         let profileExpirationDate = developerTeamService.provisioningProfileExpirationDate(
             in: appURL
         )
@@ -417,6 +553,7 @@ final class InstallationService {
 
             let log = [
                 buildResult.output,
+                versionVerificationLog,
                 createResult.output,
                 verifyResult.output,
                 attachResult.output,
@@ -573,6 +710,18 @@ final class InstallationService {
         return arguments
     }
 
+    static func deviceInstallArguments(
+        device: ConnectedDevice,
+        applicationURL: URL
+    ) -> [String] {
+        [
+            "devicectl", "device", "install", "app",
+            "--device", device.udid,
+            "--timeout", "180",
+            applicationURL.path
+        ]
+    }
+
     static func macOSXcodeArguments(
         project: ManagedProject,
         derivedDataURL: URL,
@@ -671,6 +820,64 @@ final class InstallationService {
                 .appendingPathComponent(wrapperName, isDirectory: true)
         }
         return nil
+    }
+
+    private func validateVersionPreservation(
+        project: ManagedProject,
+        sourceVersion: ProjectVersion,
+        expectedVersion: ProjectVersion,
+        applicationURL: URL
+    ) throws {
+        let currentSourceVersion = versionService.currentVersion(for: project)
+        guard currentSourceVersion == sourceVersion else {
+            throw InstallationServiceError.sourceVersionChanged(
+                expected: sourceVersion,
+                actual: currentSourceVersion
+            )
+        }
+        let builtVersion = try Self.applicationVersion(
+            at: applicationURL,
+            fileManager: fileManager
+        )
+        guard Self.versionsMatch(expected: expectedVersion, actual: builtVersion) else {
+            throw InstallationServiceError.builtVersionMismatch(
+                expected: expectedVersion,
+                actual: builtVersion
+            )
+        }
+    }
+
+    static func applicationVersion(
+        at applicationURL: URL,
+        fileManager: FileManager = .default
+    ) throws -> ProjectVersion {
+        let candidateURLs = [
+            applicationURL.appendingPathComponent("Info.plist"),
+            applicationURL.appendingPathComponent("Contents/Info.plist")
+        ]
+        guard let plistURL = candidateURLs.first(where: { fileManager.fileExists(atPath: $0.path) }),
+              let data = try? Data(contentsOf: plistURL),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil)
+                as? [String: Any]
+        else {
+            return ProjectVersion(marketingVersion: nil, buildNumber: nil)
+        }
+        return ProjectVersion(
+            marketingVersion: plist["CFBundleShortVersionString"] as? String,
+            buildNumber: plist["CFBundleVersion"] as? String
+        )
+    }
+
+    static func versionsMatch(expected: ProjectVersion, actual: ProjectVersion) -> Bool {
+        (expected.marketingVersion == nil || expected.marketingVersion == actual.marketingVersion)
+            && (expected.buildNumber == nil || expected.buildNumber == actual.buildNumber)
+    }
+
+    private static func prefixed(_ output: String, with deviceName: String) -> String {
+        output
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { "[\(deviceName)] \($0)" }
+            .joined(separator: "\n")
     }
 
     private static func trimmedLog(_ log: String, limit: Int = 30_000) -> String {

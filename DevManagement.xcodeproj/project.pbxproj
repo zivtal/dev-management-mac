@@ -12,6 +12,7 @@
 		0690A247F796B6DE1221DC4C /* Publishing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1907348C889C1CB74F76247 /* Publishing.swift */; };
 		06EE2A5F979E5548AE7D75C3 /* PublishingSubscriptionForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E1276ED68C930278EA259F3 /* PublishingSubscriptionForm.swift */; };
 		08CCF7D7EAE702FDD8EBDA3B /* SandboxTestersSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00FDAF924E34B887A424033F /* SandboxTestersSettingsView.swift */; };
+		0B203CBCCA4AED31D80D61C3 /* ProjectGitServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8731D5EE09A9918B33614939 /* ProjectGitServiceTests.swift */; };
 		0EFCC40A31BDE64FC7DFCE67 /* SandboxTesterServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6EB9AF1E8FA9C94AAA2117 /* SandboxTesterServiceTests.swift */; };
 		10B73E068A2930D8B63CD51A /* PublishingExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEB7006C83FBE963AE4FD977 /* PublishingExperience.swift */; };
 		121804B98A7161635E126A7F /* ProjectVersionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 456F7738EAE617528B0F3D42 /* ProjectVersionServiceTests.swift */; };
@@ -39,6 +40,7 @@
 		642ACDD0B44BC448AD2549B4 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22ABD6C88F410A71DC9F716 /* Localization.swift */; };
 		6547D59C8CD027A8659A7944 /* AppStoreConnectReviewSubmissionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99980DEA6AE5F8012A72002A /* AppStoreConnectReviewSubmissionService.swift */; };
 		656E89642D340B1481D4BB85 /* DevManagementApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE36EEE9705302CF6B6190C7 /* DevManagementApp.swift */; };
+		65A8CD753557F0B9B571B41C /* ProjectGitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC44A4ABC103EA079DB6BB4 /* ProjectGitService.swift */; };
 		68CCE54A459F4078E5406101 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25700C1E26331F9B6C65EBC7 /* SettingsStore.swift */; };
 		6A959F01BA7F8BE032126ECB /* PublishingSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 960A2EC9E613818529E77D09 /* PublishingSettingsView.swift */; };
 		72023698FDFDB4D51D90D1FF /* AppStoreArchiveMetadataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00DA70D9C57D60634A83F11A /* AppStoreArchiveMetadataTests.swift */; };
@@ -143,9 +145,11 @@
 		8199DDF8810B81A5AB227609 /* DevManagementTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DevManagementTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8648AB030DDA915B7137674A /* InstallationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationService.swift; sourceTree = "<group>"; };
 		86BBDE915B650D7851ACEB46 /* InstallationNotificationTextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationNotificationTextTests.swift; sourceTree = "<group>"; };
+		8731D5EE09A9918B33614939 /* ProjectGitServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectGitServiceTests.swift; sourceTree = "<group>"; };
 		883000032D46600DD5CCFF08 /* String+NonEmpty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+NonEmpty.swift"; sourceTree = "<group>"; };
 		8A466250B1213AF0E709F70B /* XcodeSchemeBuildPreparationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XcodeSchemeBuildPreparationTests.swift; sourceTree = "<group>"; };
 		8BE596EF36D4CA2839361964 /* DevManagement.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DevManagement.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8CC44A4ABC103EA079DB6BB4 /* ProjectGitService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectGitService.swift; sourceTree = "<group>"; };
 		8F4D16DBF90639806C2952C8 /* AppStorePrivacyPublishingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStorePrivacyPublishingService.swift; sourceTree = "<group>"; };
 		913C295EE121D11D54FE3D0D /* ProjectIconService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIconService.swift; sourceTree = "<group>"; };
 		92BA78CBDD2A9BB9E2A7417E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -222,6 +226,7 @@
 				41B846AE2D38B1B7E7AC1C25 /* OpenAIStoreMetadataService.swift */,
 				1CB256DC4A73BE90711652A1 /* ProcessRunner.swift */,
 				9A274BABF591ED945D7895E6 /* ProjectDiscoveryService.swift */,
+				8CC44A4ABC103EA079DB6BB4 /* ProjectGitService.swift */,
 				913C295EE121D11D54FE3D0D /* ProjectIconService.swift */,
 				F58FBC7AF5A7D51D823487C5 /* ProjectLocalizationDiscoveryService.swift */,
 				16304D3C5216A6E329FC687D /* ProjectVersionService.swift */,
@@ -349,6 +354,7 @@
 				86BBDE915B650D7851ACEB46 /* InstallationNotificationTextTests.swift */,
 				7CA05D3B928C1D38506053D4 /* InstallationRecordTests.swift */,
 				D085DB26020DCCCA468F3EA7 /* MacOSInstallationTests.swift */,
+				8731D5EE09A9918B33614939 /* ProjectGitServiceTests.swift */,
 				A59E1559E63A3643555DC751 /* ProjectIconServiceTests.swift */,
 				456F7738EAE617528B0F3D42 /* ProjectVersionServiceTests.swift */,
 				35E9A1A9B6FDB5D74804A1F1 /* PublishingExperienceTests.swift */,
@@ -497,6 +503,7 @@
 				A8D413789388A0BF23682C35 /* OpenAIStoreMetadataService.swift in Sources */,
 				28BA34EC2DE3AC31188C4DCD /* ProcessRunner.swift in Sources */,
 				83CFCF32E6A27D8E46FD0830 /* ProjectDiscoveryService.swift in Sources */,
+				65A8CD753557F0B9B571B41C /* ProjectGitService.swift in Sources */,
 				80A1AAFB6139F7B3A8F903B3 /* ProjectIconService.swift in Sources */,
 				286867ABE436B1581E60801B /* ProjectIconView.swift in Sources */,
 				8E203327032B650A64BF8924 /* ProjectLocalizationDiscoveryService.swift in Sources */,
@@ -543,6 +550,7 @@
 				E102DDBCE6CBE4913170B88D /* InstallationNotificationTextTests.swift in Sources */,
 				FE79B7C7E59A6F6747FDC37A /* InstallationRecordTests.swift in Sources */,
 				5ABA067966EE5ADBBB2DFBEC /* MacOSInstallationTests.swift in Sources */,
+				0B203CBCCA4AED31D80D61C3 /* ProjectGitServiceTests.swift in Sources */,
 				30BE0C471F8EE7AA7B72A601 /* ProjectIconServiceTests.swift in Sources */,
 				121804B98A7161635E126A7F /* ProjectVersionServiceTests.swift in Sources */,
 				5A0A5C5DC670DB27092EEA59 /* PublishingExperienceTests.swift in Sources */,
@@ -670,7 +678,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 89;
+				CURRENT_PROJECT_VERSION = 90;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -690,7 +698,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.8.8;
+				MARKETING_VERSION = 1.8.9;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -737,7 +745,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 89;
+				CURRENT_PROJECT_VERSION = 90;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -751,7 +759,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.8.8;
+				MARKETING_VERSION = 1.8.9;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

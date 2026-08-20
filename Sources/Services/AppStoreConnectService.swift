@@ -178,6 +178,14 @@ enum AppStoreConnectError: LocalizedError {
 }
 
 final class AppStoreConnectService {
+    func validateDistributionSigningAccess() async throws {
+        _ = try await request(
+            method: "GET",
+            path: "/v1/certificates",
+            query: ["limit": "1"]
+        )
+    }
+
     private let session: URLSession
     private let issuerID: String
     private let keyID: String

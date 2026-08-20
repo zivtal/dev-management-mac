@@ -33,7 +33,10 @@ final class PublishingLogWindowPresenter {
 
     private init() {}
 
-    func show(model: AppModel) {
+    func show(model: AppModel, projectID: UUID? = nil) {
+        if let projectID {
+            model.selectPublishingLog(projectID: projectID)
+        }
         if windowController == nil {
             let rootView = PublishingLogWindowView()
                 .environmentObject(model)
@@ -97,7 +100,7 @@ private struct PublishingLogWindowView: View {
             PublishingProgressView(
                 log: log,
                 progress: model.publishingProgress,
-                onCancel: model.cancelPublishing,
+                onCancel: { model.cancelPublishing(projectID: log.projectID) },
                 onBackToReview: {
                     let projectID = log.projectID
                     model.presentedError = nil

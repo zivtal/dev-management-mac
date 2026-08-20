@@ -144,10 +144,13 @@ The menu-bar popover is the app's primary status surface. It displays:
 - An automation toggle.
 - All paired available iPhone, iPad, and Apple Watch devices, with connection
   type.
-- Installation progress and the latest command-output line while work runs.
-- Determinate App Store publishing progress with **View** and cancel actions.
+- Concurrent per-application installation progress and the latest command-output
+  line for each active job.
+- Concurrent per-application App Store publishing progress with **View** and
+  cancel actions.
 - Every managed application with its icon, enabled state, version, next due
-  date, and most recent installation.
+  date, most recent installation, and current Git branch when its folder belongs
+  to a Git worktree. Detached HEADs show their short revision.
 - A paper-plane action for publishing each eligible direct-build iOS app, plus
   a ticket action that opens a focused Redeem Codes window for apps with
   subscription products.
@@ -272,7 +275,11 @@ submitting review items. If the exact selected version and build are already in
 TestFlight, either action reuses it without another archive or upload.
 When an archive is needed, Xcode uses the selected App Store Connect `.p8` key
 for automatic distribution signing and provisioning; publishing does not rely
-on an Apple Account session stored in Xcode.
+on an Apple Account session stored in Xcode. Before spending time on an archive,
+Development Management checks that either the selected team has a local Apple
+Distribution identity or the API key can access certificates. Xcode cloud-signing
+permission failures are reported with the exact account permission or local
+certificate action required.
 The publishing configuration editor provides a dedicated **Generate What’s New
 with OpenAI** button beside that field. It detects the latest approved App Store
 version, prefers a matching current-version or release-notes section in
@@ -797,6 +804,9 @@ launch around this script.
   and `devicectl` output.
 - Confirm the selected scheme produces an installable iOS `.app`, not only a
   test, extension, or Watch product.
+- Development Management never invokes the repository's `install.sh` or scheme
+  action scripts. It verifies that the source version did not change and that
+  the built app contains that same marketing version and build number.
 
 ### No notification appears
 
@@ -814,7 +824,10 @@ launch around this script.
 - Only shared schemes returned by `xcodebuild -list -json` are usable.
 - Direct installation targets iOS-platform devices; discovered Apple Watch
   devices are informational.
-- One build/install operation runs at a time.
+- Independent applications can build, install, and publish concurrently. For one
+  iOS application selected on multiple devices, the app builds once and installs
+  that same signed product on the devices concurrently; individual device
+  failures remain visible without discarding successful installations.
 - Install All targets the selected installable devices available when its queue
   starts; the pending queue is not restored after relaunch.
 - Failed-attempt cooldowns are not persisted across relaunches.

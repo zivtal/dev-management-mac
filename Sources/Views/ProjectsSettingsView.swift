@@ -136,7 +136,7 @@ struct ProjectsSettingsView: View {
                 }
             }
             .help("Add application…")
-            .disabled(model.isDiscoveringProject || model.hasActiveWork)
+            .disabled(model.isDiscoveringProject)
 
             Divider().frame(height: 20).padding(.horizontal, 6)
 
@@ -146,7 +146,12 @@ struct ProjectsSettingsView: View {
                 Image(systemName: "minus")
             }
             .help("Remove")
-            .disabled(selection.isEmpty || model.hasActiveWork)
+            .disabled(
+                selection.isEmpty
+                    || selection.contains(where: {
+                        model.isInstalling(projectID: $0) || model.isPublishing(projectID: $0)
+                    })
+            )
 
             Divider().frame(height: 20).padding(.horizontal, 10)
 
@@ -155,7 +160,7 @@ struct ProjectsSettingsView: View {
             } label: {
                 Label("Install All Now", systemImage: "arrow.triangle.2.circlepath")
             }
-            .disabled(model.projects.filter(\.isEnabled).isEmpty || model.hasActiveWork)
+            .disabled(model.projects.filter(\.isEnabled).isEmpty || model.isGeneratingOfferCodes)
 
             if model.pendingInstallAllCount > 0 {
                 Text(L10n.format("Waiting to install %d application(s)", model.pendingInstallAllCount))
@@ -223,14 +228,15 @@ struct ProjectsSettingsView: View {
                     !project.isEnabled
                         || !model.hasAvailableInstallationTarget(for: project)
                         || model.isInstallationQueued(for: project.id)
-                        || model.hasActiveWork
+                        || model.isInstalling(projectID: project.id)
+                        || model.isPublishing(projectID: project.id)
                 )
 
                 if !project.isMacOSApplication {
                     Button {
                         PublishingWindowPresenter.shared.show(model: model, projectID: project.id)
                     } label: {
-                        if model.publishingProgress?.projectID == project.id {
+                        if model.isPublishing(projectID: project.id) {
                             Label {
                                 Text("Publishing…")
                             } icon: {
@@ -241,7 +247,11 @@ struct ProjectsSettingsView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(model.hasActiveWork)
+                    .disabled(
+                        model.isInstalling(projectID: project.id)
+                            || model.isPublishing(projectID: project.id)
+                            || model.isGeneratingOfferCodes
+                    )
                     .help("Build, upload, and submit this application to the App Store")
                 }
 
@@ -339,7 +349,7 @@ struct ProjectsSettingsView: View {
                         }
                         .buttonStyle(.borderless)
                         .help("Refresh signing teams")
-                        .disabled(model.isRefreshingDeveloperTeams || model.hasActiveWork)
+                        .disabled(model.isRefreshingDeveloperTeams)
                 }
             }
 
@@ -379,7 +389,7 @@ struct ProjectsSettingsView: View {
                     } label: {
                         Label("Refresh devices", systemImage: "arrow.clockwise")
                     }
-                    .disabled(model.isRefreshingDevices || model.hasActiveWork)
+                    .disabled(model.isRefreshingDevices)
                 }
                 .padding(.horizontal, 12)
                 .frame(minHeight: 44)

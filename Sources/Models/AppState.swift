@@ -126,10 +126,25 @@ struct InstallationProgress: Equatable {
         case launching
     }
 
+    let projectID: UUID?
     let projectName: String
     let deviceName: String
     var phase: Phase
     var latestOutput: String
+
+    init(
+        projectID: UUID? = nil,
+        projectName: String,
+        deviceName: String,
+        phase: Phase,
+        latestOutput: String
+    ) {
+        self.projectID = projectID
+        self.projectName = projectName
+        self.deviceName = deviceName
+        self.phase = phase
+        self.latestOutput = latestOutput
+    }
 
     var phaseTitle: String {
         switch phase {
@@ -154,6 +169,7 @@ struct InstallationLogSession: Equatable, Identifiable {
     }
 
     let id: UUID
+    let projectID: UUID?
     let projectName: String
     let deviceName: String
     let startedAt: Date
@@ -165,6 +181,7 @@ struct InstallationLogSession: Equatable, Identifiable {
 
     init(
         id: UUID = UUID(),
+        projectID: UUID? = nil,
         projectName: String,
         deviceName: String,
         startedAt: Date = Date(),
@@ -174,6 +191,7 @@ struct InstallationLogSession: Equatable, Identifiable {
         output: String = ""
     ) {
         self.id = id
+        self.projectID = projectID
         self.projectName = projectName
         self.deviceName = deviceName
         self.startedAt = startedAt

@@ -39,6 +39,26 @@ final class DeveloperTeamService {
         return availableTeams.count == 1 ? availableTeams[0].id : nil
     }
 
+    func hasDistributionSigningIdentity(teamID: String?) -> Bool {
+        Self.hasDistributionSigningIdentity(
+            certificateRecords: signingCertificateRecords(),
+            teamID: teamID
+        )
+    }
+
+    static func hasDistributionSigningIdentity(
+        certificateRecords: [SigningCertificateRecord],
+        teamID: String?
+    ) -> Bool {
+        let normalizedTeamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefixes = ["Apple Distribution:", "iPhone Distribution:"]
+        return certificateRecords.contains { record in
+            prefixes.contains(where: record.commonName.hasPrefix)
+                && (normalizedTeamID?.isEmpty != false
+                    || record.organizationalUnit == normalizedTeamID)
+        }
+    }
+
     static func teams(from records: [SigningCertificateRecord]) -> [DeveloperTeam] {
         teams(from: records, provisioningProfiles: [])
     }

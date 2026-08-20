@@ -9,7 +9,10 @@ final class InstallationLogWindowPresenter {
 
     private init() {}
 
-    func show(model: AppModel) {
+    func show(model: AppModel, projectID: UUID? = nil) {
+        if let projectID {
+            model.selectInstallationLog(projectID: projectID)
+        }
         if windowController == nil {
             let rootView = InstallationLogView()
                 .environmentObject(model)

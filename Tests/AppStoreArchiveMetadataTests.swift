@@ -66,4 +66,16 @@ final class AppStoreArchiveMetadataTests: XCTestCase {
             }
         }
     }
+
+    func testRecognizesDistributionSigningFailuresFromXcode() {
+        XCTAssertTrue(AppStorePublishingService.isDistributionSigningFailure(
+            "error: exportArchive Cloud signing permission error"
+        ))
+        XCTAssertTrue(AppStorePublishingService.isDistributionSigningFailure(
+            "error: exportArchive No signing certificate \"iOS Distribution\" found"
+        ))
+        XCTAssertFalse(AppStorePublishingService.isDistributionSigningFailure(
+            "error: exportArchive The network connection was lost"
+        ))
+    }
 }

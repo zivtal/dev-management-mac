@@ -24,22 +24,25 @@ final class AppModel: ObservableObject {
     @Published private(set) var connectedDevices: [ConnectedDevice] = []
     @Published private(set) var installedApplicationsByDeviceUDID: [String: [String: InstalledApplication]] = [:]
     @Published private(set) var checkedInstalledApplicationDeviceUDIDs: Set<String> = []
-    @Published private(set) var progress: InstallationProgress?
-    @Published private(set) var installationLog: InstallationLogSession?
-    @Published private(set) var publishingProgress: PublishingProgress?
-    @Published private(set) var publishingLog: PublishingLogSession?
+    @Published private(set) var installationProgresses: [UUID: InstallationProgress] = [:]
+    @Published private(set) var installationLogs: [UUID: InstallationLogSession] = [:]
+    @Published private(set) var publishingProgresses: [UUID: PublishingProgress] = [:]
+    @Published private(set) var publishingLogs: [UUID: PublishingLogSession] = [:]
+    @Published private var selectedInstallationLogProjectID: UUID?
+    @Published private var selectedPublishingLogProjectID: UUID?
     @Published private(set) var isGeneratingOfferCodes = false
     @Published private(set) var hasOpenAIAPIKey = false
     @Published private(set) var hasAppStoreConnectPrivateKey = false
     @Published private(set) var appStoreConnectPrivateKeyProfileIDs: Set<UUID> = []
     @Published private(set) var hasAppReviewDemoAccount = false
     @Published private(set) var hasAppStorePrivacyFastlaneSession = false
-    @Published private(set) var isCancellingInstallation = false
+    @Published private(set) var cancellingInstallationProjectIDs: Set<UUID> = []
     @Published private(set) var isRefreshingDevices = false
     @Published private(set) var isDiscoveringProject = false
     @Published private(set) var compatibilityRefreshProjectIDs: Set<UUID> = []
     @Published private(set) var pendingInstallAllCount = 0
     @Published private(set) var projectIconURLs: [UUID: URL] = [:]
+    @Published private(set) var gitBranchesByProjectID: [UUID: String] = [:]
     @Published private(set) var developerTeams: [DeveloperTeam] = []
     @Published private(set) var isRefreshingDeveloperTeams = false
     @Published private(set) var isSettingsWindowOpen = false
@@ -59,7 +62,75 @@ final class AppModel: ObservableObject {
     }
 
     var hasActiveWork: Bool {
-        progress != nil || publishingProgress != nil || isGeneratingOfferCodes
+        !installationProgresses.isEmpty || !publishingProgresses.isEmpty || isGeneratingOfferCodes
+    }
+
+    var progress: InstallationProgress? {
+        selectedInstallationLogProjectID.flatMap { installationProgresses[$0] }
+            ?? installationProgresses.values.sorted(by: { $0.projectName < $1.projectName }).first
+    }
+
+    var installationLog: InstallationLogSession? {
+        selectedInstallationLogProjectID.flatMap { installationLogs[$0] }
+            ?? installationLogs.values.max(by: { $0.startedAt < $1.startedAt })
+    }
+
+    var publishingProgress: PublishingProgress? {
+        selectedPublishingLogProjectID.flatMap { publishingProgresses[$0] }
+            ?? publishingProgresses.values.sorted(by: { $0.projectName < $1.projectName }).first
+    }
+
+    var publishingLog: PublishingLogSession? {
+        selectedPublishingLogProjectID.flatMap { publishingLogs[$0] }
+            ?? publishingLogs.values.max(by: { $0.startedAt < $1.startedAt })
+    }
+
+    var activeInstallationProgresses: [InstallationProgress] {
+        installationProgresses.values.sorted(by: { $0.projectName < $1.projectName })
+    }
+
+    var activePublishingProgresses: [PublishingProgress] {
+        publishingProgresses.values.sorted(by: { $0.projectName < $1.projectName })
+    }
+
+    func isInstalling(projectID: UUID) -> Bool {
+        installationProgresses[projectID] != nil
+    }
+
+    func isCancellingInstallation(projectID: UUID) -> Bool {
+        cancellingInstallationProjectIDs.contains(projectID)
+    }
+
+    func isPublishing(projectID: UUID) -> Bool {
+        publishingProgresses[projectID] != nil
+    }
+
+    func installationProgress(for projectID: UUID) -> InstallationProgress? {
+        installationProgresses[projectID]
+    }
+
+    func installationLog(for projectID: UUID) -> InstallationLogSession? {
+        installationLogs[projectID]
+    }
+
+    func publishingProgress(for projectID: UUID) -> PublishingProgress? {
+        publishingProgresses[projectID]
+    }
+
+    func publishingLog(for projectID: UUID) -> PublishingLogSession? {
+        publishingLogs[projectID]
+    }
+
+    func selectInstallationLog(projectID: UUID) {
+        selectedInstallationLogProjectID = projectID
+    }
+
+    func selectPublishingLog(projectID: UUID) {
+        selectedPublishingLogProjectID = projectID
+    }
+
+    func activeGitBranch(for projectID: UUID) -> String? {
+        gitBranchesByProjectID[projectID]
     }
 
     private struct ProjectInstallationTarget {
@@ -91,13 +162,13 @@ final class AppModel: ObservableObject {
     private let usbConnectionMonitor: USBConnectionMonitor
     private let notificationService: NotificationService
     private let projectIconService: ProjectIconService
+    private let projectGitService: ProjectGitService
     private let developerTeamService: DeveloperTeamService
     private let credentialStore: KeychainCredentialStore
     private let publishingService: AppStorePublishingService
     private var monitoringTask: Task<Void, Never>?
-    private var activeInstallationTask: Task<InstallationOutcome, Error>?
-    private var activePublishingTask: Task<Void, Never>?
-    private var installationCancellationGeneration = 0
+    private var activeInstallationTasks: [UUID: Task<Void, Never>] = [:]
+    private var activePublishingTasks: [UUID: Task<Void, Never>] = [:]
     private var isLoading = true
     private var failedAttemptCooldowns: [String: Date] = [:]
     private var failedVersionCheckDeviceUDIDs: Set<String> = []
@@ -119,6 +190,7 @@ final class AppModel: ObservableObject {
         usbConnectionMonitor: USBConnectionMonitor = USBConnectionMonitor(),
         notificationService: NotificationService = NotificationService(),
         projectIconService: ProjectIconService = ProjectIconService(),
+        projectGitService: ProjectGitService = ProjectGitService(),
         developerTeamService: DeveloperTeamService = DeveloperTeamService(),
         credentialStore: KeychainCredentialStore = KeychainCredentialStore(),
         publishingService: AppStorePublishingService = AppStorePublishingService()
@@ -132,6 +204,7 @@ final class AppModel: ObservableObject {
         self.usbConnectionMonitor = usbConnectionMonitor
         self.notificationService = notificationService
         self.projectIconService = projectIconService
+        self.projectGitService = projectGitService
         self.developerTeamService = developerTeamService
         self.credentialStore = credentialStore
         self.publishingService = publishingService
@@ -174,7 +247,10 @@ final class AppModel: ObservableObject {
         persist()
         refreshDeveloperTeams()
         Task { @MainActor [weak self] in
-            await self?.refreshProjectIcons()
+            guard let self else { return }
+            async let icons: Void = self.refreshProjectIcons()
+            async let branches: Void = self.refreshProjectGitBranches()
+            _ = await (icons, branches)
         }
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
             startMonitoring()
@@ -187,8 +263,8 @@ final class AppModel: ObservableObject {
 
     deinit {
         monitoringTask?.cancel()
-        activeInstallationTask?.cancel()
-        activePublishingTask?.cancel()
+        activeInstallationTasks.values.forEach { $0.cancel() }
+        activePublishingTasks.values.forEach { $0.cancel() }
     }
 
     func startMonitoring() {
@@ -226,6 +302,7 @@ final class AppModel: ObservableObject {
 
         await refreshUnknownProjectMetadata(restartMonitoringAfterUpdate: false)
         refreshProjectVersions()
+        await refreshProjectGitBranches()
 
         do {
             let devices = try await deviceService.availableDevices()
@@ -281,6 +358,7 @@ final class AppModel: ObservableObject {
             project.buildNumber = version.buildNumber
             projects.append(project)
             await refreshProjectIcon(for: project)
+            await refreshProjectGitBranches()
             addActivity(
                 level: .info,
                 title: L10n.format("Added %@", project.displayName),
@@ -303,6 +381,7 @@ final class AppModel: ObservableObject {
         installAllTargets[id] = nil
         clearTransientInstallationState(for: id)
         projectIconURLs[id] = nil
+        gitBranchesByProjectID[id] = nil
         installationRecords.removeAll { $0.projectID == id }
         addActivity(level: .info, title: L10n.format("Removed %@", project.displayName))
     }
@@ -639,8 +718,12 @@ final class AppModel: ObservableObject {
         replaceActiveReviewVersion: Bool = false,
         existingConfiguration: AppStoreConnectConfigurationSnapshot? = nil
     ) {
-        guard !hasActiveWork else {
-            presentedError = L10n.text("Another build, installation, or publication is already in progress.")
+        guard !isGeneratingOfferCodes, !isPublishing(projectID: projectID) else {
+            presentedError = L10n.text("This application already has a publication in progress.")
+            return
+        }
+        guard !isInstalling(projectID: projectID) else {
+            presentedError = L10n.text("An installation is already in progress. Try again when it finishes.")
             return
         }
         refreshProjectVersions()
@@ -825,13 +908,14 @@ final class AppModel: ObservableObject {
             project.marketingVersion ?? "—",
             project.buildNumber ?? "—"
         ))
-        publishingLog = log
-        publishingProgress = PublishingProgress(
+        publishingLogs[project.id] = log
+        publishingProgresses[project.id] = PublishingProgress(
             projectID: project.id,
             projectName: project.displayName,
             phase: .preparing,
             latestOutput: log.latestOutputLine
         )
+        selectedPublishingLogProjectID = project.id
         addActivity(
             level: .info,
             title: L10n.format(
@@ -848,7 +932,7 @@ final class AppModel: ObservableObject {
             do {
                 let eventHandler: AppStorePublishingService.EventHandler = { [weak self] event in
                     Task { @MainActor [weak self] in
-                        self?.handlePublishingEvent(event, logID: logID)
+                        self?.handlePublishingEvent(event, projectID: project.id, logID: logID)
                     }
                 }
                 let result = try await publishingService.publish(
@@ -857,7 +941,7 @@ final class AppModel: ObservableObject {
                     eventHandler: eventHandler
                 )
                 guard !Task.isCancelled else { throw CancellationError() }
-                if var currentLog = publishingLog, currentLog.id == logID {
+                if var currentLog = publishingLogs[project.id], currentLog.id == logID {
                     currentLog.state = .succeeded
                     currentLog.finishedAt = Date()
                     currentLog.result = result
@@ -866,30 +950,30 @@ final class AppModel: ObservableObject {
                             ? "Publication completed successfully.\n"
                             : "TestFlight upload completed successfully.\n"
                     ))
-                    publishingLog = currentLog
+                    publishingLogs[project.id] = currentLog
                 }
-                publishingProgress = nil
-                activePublishingTask = nil
+                publishingProgresses[project.id] = nil
+                activePublishingTasks[project.id] = nil
                 refreshProjectVersions()
                 addActivity(
                     level: .success,
                     title: result.submittedForReview
                         ? L10n.format("%@ %@ (%@) was submitted for App Review", project.displayName, result.version, result.buildNumber)
                         : L10n.format("%@ %@ (%@) is available in TestFlight", project.displayName, result.version, result.buildNumber),
-                    details: publishingLog?.output,
+                    details: publishingLogs[project.id]?.output,
                     projectID: project.id
                 )
             } catch {
                 let cancelled = Task.isCancelled || error is CancellationError
-                if var currentLog = publishingLog, currentLog.id == logID {
+                if var currentLog = publishingLogs[project.id], currentLog.id == logID {
                     currentLog.state = cancelled ? .cancelled : .failed
                     currentLog.finishedAt = Date()
                     currentLog.failureMessage = cancelled ? nil : error.localizedDescription
                     currentLog.append("\n\(cancelled ? L10n.text(intent == .publish ? "Publication canceled by user." : "TestFlight upload canceled by user.") : error.localizedDescription)\n")
-                    publishingLog = currentLog
+                    publishingLogs[project.id] = currentLog
                 }
-                publishingProgress = nil
-                activePublishingTask = nil
+                publishingProgresses[project.id] = nil
+                activePublishingTasks[project.id] = nil
                 addActivity(
                     level: cancelled ? .warning : .error,
                     title: cancelled
@@ -905,16 +989,22 @@ final class AppModel: ObservableObject {
                                 : "TestFlight upload of %@ failed",
                             project.displayName
                         ),
-                    details: publishingLog?.output,
+                    details: publishingLogs[project.id]?.output,
                     projectID: project.id
                 )
             }
         }
-        activePublishingTask = task
+        activePublishingTasks[project.id] = task
     }
 
     func cancelPublishing() {
-        activePublishingTask?.cancel()
+        guard let projectID = selectedPublishingLogProjectID
+                ?? publishingProgresses.keys.first else { return }
+        cancelPublishing(projectID: projectID)
+    }
+
+    func cancelPublishing(projectID: UUID) {
+        activePublishingTasks[projectID]?.cancel()
     }
 
     func loadAppStoreConnectConfiguration(
@@ -1209,9 +1299,9 @@ final class AppModel: ObservableObject {
         )
     }
 
-    private func handlePublishingEvent(_ event: PublishingEvent, logID: UUID) {
-        guard var log = publishingLog, log.id == logID, log.state == .inProgress,
-              var current = publishingProgress else { return }
+    private func handlePublishingEvent(_ event: PublishingEvent, projectID: UUID, logID: UUID) {
+        guard var log = publishingLogs[projectID], log.id == logID, log.state == .inProgress,
+              var current = publishingProgresses[projectID] else { return }
         switch event {
         case .phase(let phase):
             log.phase = phase
@@ -1220,8 +1310,8 @@ final class AppModel: ObservableObject {
             log.append(output)
             current.latestOutput = log.latestOutputLine
         }
-        publishingLog = log
-        publishingProgress = current
+        publishingLogs[projectID] = log
+        publishingProgresses[projectID] = current
     }
 
     func installNow(projectID: UUID, deviceUDID: String? = nil) {
@@ -1231,15 +1321,11 @@ final class AppModel: ObservableObject {
             return
         }
         if project.isMacOSApplication {
-            let cancellationGeneration = installationCancellationGeneration
-            Task {
-                guard cancellationGeneration == installationCancellationGeneration else { return }
-                _ = await install(
-                    project: project,
-                    target: localMacInstallationTarget,
-                    ignoreSchedule: true
-                )
-            }
+            _ = startInstallation(
+                project: project,
+                targets: [localMacInstallationTarget],
+                requestedByInstallAll: false
+            )
             return
         }
 
@@ -1276,17 +1362,24 @@ final class AppModel: ObservableObject {
     }
 
     func cancelActiveInstallation() {
-        guard progress != nil, let activeInstallationTask else { return }
-        installationCancellationGeneration &+= 1
-        isCancellingInstallation = true
-        installAllTargets = [:]
-        completedInstallAllTargets = []
-        activeInstallationTask.cancel()
+        guard let projectID = selectedInstallationLogProjectID
+                ?? installationProgresses.keys.first else { return }
+        cancelInstallation(projectID: projectID)
+    }
+
+    func cancelInstallation(projectID: UUID) {
+        guard let task = activeInstallationTasks[projectID] else { return }
+        cancellingInstallationProjectIDs.insert(projectID)
+        installAllTargets[projectID] = nil
+        completedInstallAllTargets = completedInstallAllTargets.filter {
+            !$0.hasPrefix("\(projectID.uuidString)|")
+        }
+        task.cancel()
     }
 
     func installAll() {
-        guard !hasActiveWork else {
-            presentedError = L10n.text("An installation is already in progress. Try again when it finishes.")
+        guard !isGeneratingOfferCodes else {
+            presentedError = L10n.text("Offer codes are currently being generated. Try again when that finishes.")
             return
         }
         let enabledProjects = projects.filter(\.isEnabled)
@@ -1398,12 +1491,13 @@ final class AppModel: ObservableObject {
     }
 
     private func installDueProjects(on devices: [ConnectedDevice]) async {
-        guard !hasActiveWork else { return }
         let enabledProjects = projects.filter(\.isEnabled)
         let now = Date()
-        let cancellationGeneration = installationCancellationGeneration
 
         for project in enabledProjects {
+            guard !isInstalling(projectID: project.id), !isPublishing(projectID: project.id) else {
+                continue
+            }
             if project.isMacOSApplication {
                 let target = localMacInstallationTarget
                 let attemptKey = recordKey(
@@ -1425,19 +1519,21 @@ final class AppModel: ObservableObject {
                 ) else {
                     continue
                 }
-                guard cancellationGeneration == installationCancellationGeneration else { return }
-                _ = await install(project: project, target: target, ignoreSchedule: false)
+                _ = startInstallation(
+                    project: project,
+                    targets: [target],
+                    requestedByInstallAll: false
+                )
                 continue
             }
 
             let orderedDevices = project.devicesInInstallationOrder(
                 devices.filter { project.installationEnabled(for: $0) }
             )
-            for device in orderedDevices {
-                guard cancellationGeneration == installationCancellationGeneration else { return }
+            let dueTargets = orderedDevices.compactMap { device -> ProjectInstallationTarget? in
                 let attemptKey = recordKey(projectID: project.id, deviceUDID: device.udid)
                 if let cooldownUntil = failedAttemptCooldowns[attemptKey], cooldownUntil > now {
-                    continue
+                    return nil
                 }
 
                 let installationRecord = lastInstallationRecord(
@@ -1466,30 +1562,32 @@ final class AppModel: ObservableObject {
                     installedVersionIsOlder = false
                 }
                 guard scheduleIsDue || expirationDiscoveryIsDue || installedVersionIsOlder else {
-                    continue
+                    return nil
                 }
-
-                _ = await install(
+                return ProjectInstallationTarget(
+                    identifier: device.udid,
+                    name: device.name,
+                    device: device
+                )
+            }
+            if !dueTargets.isEmpty {
+                _ = startInstallation(
                     project: project,
-                    target: ProjectInstallationTarget(
-                        identifier: device.udid,
-                        name: device.name,
-                        device: device
-                    ),
-                    ignoreSchedule: false
+                    targets: dueTargets,
+                    requestedByInstallAll: false
                 )
             }
         }
     }
 
     private func installAllRequestedProjects(on devices: [ConnectedDevice]) async {
-        guard !hasActiveWork else { return }
-        let cancellationGeneration = installationCancellationGeneration
         let requestedIDs = projects.map(\.id).filter { installAllTargets[$0] != nil }
         for projectID in requestedIDs {
-            guard cancellationGeneration == installationCancellationGeneration else { return }
             guard let project = projects.first(where: { $0.id == projectID && $0.isEnabled }) else {
                 installAllTargets[projectID] = nil
+                continue
+            }
+            guard !isInstalling(projectID: projectID), !isPublishing(projectID: projectID) else {
                 continue
             }
             let targetDeviceUDIDs = installAllTargets[projectID] ?? []
@@ -1505,30 +1603,20 @@ final class AppModel: ObservableObject {
                     ProjectInstallationTarget(identifier: $0.udid, name: $0.name, device: $0)
                 }
             }
-            for target in targets {
-                guard cancellationGeneration == installationCancellationGeneration else { return }
-                let targetKey = recordKey(projectID: project.id, deviceUDID: target.identifier)
-                guard !completedInstallAllTargets.contains(targetKey) else { continue }
-                if await install(project: project, target: target, ignoreSchedule: true) {
-                    completedInstallAllTargets.insert(targetKey)
-                }
+            let pendingTargets = targets.filter {
+                !completedInstallAllTargets.contains(
+                    recordKey(projectID: project.id, deviceUDID: $0.identifier)
+                )
             }
-
-            if !targetDeviceUDIDs.isEmpty,
-               targetDeviceUDIDs.allSatisfy({ deviceUDID in
-                   completedInstallAllTargets.contains(
-                       recordKey(projectID: projectID, deviceUDID: deviceUDID)
-                   )
-               }) {
-                installAllTargets[projectID] = nil
+            if !pendingTargets.isEmpty {
+                _ = startInstallation(
+                    project: project,
+                    targets: pendingTargets,
+                    requestedByInstallAll: true
+                )
             }
         }
-
-        if installAllTargets.isEmpty,
-           cancellationGeneration == installationCancellationGeneration {
-            completedInstallAllTargets = []
-            addActivity(level: .success, title: L10n.text("Install All completed successfully"))
-        }
+        finishInstallAllIfComplete()
     }
 
     private func preparePendingInstallAllTargets() {
@@ -1547,156 +1635,294 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    private func install(
+    private func startInstallation(
         project requestedProject: ManagedProject,
-        target: ProjectInstallationTarget,
-        ignoreSchedule: Bool
-    ) async -> Bool {
-        guard let project = projects.first(where: { $0.id == requestedProject.id }) else { return false }
-        if let device = target.device {
-            guard !project.isMacOSApplication, project.installationEnabled(for: device) else { return false }
-        } else {
-            guard project.isMacOSApplication, project.isEnabled else { return false }
-        }
-        guard !hasActiveWork else {
-            if ignoreSchedule {
-                presentedError = L10n.text("An installation is already in progress. Try again when it finishes.")
+        targets requestedTargets: [ProjectInstallationTarget],
+        requestedByInstallAll: Bool
+    ) -> Bool {
+        guard let project = projects.first(where: { $0.id == requestedProject.id && $0.isEnabled }),
+              !isInstalling(projectID: requestedProject.id),
+              !isPublishing(projectID: requestedProject.id)
+        else { return false }
+        let targets = requestedTargets.filter { target in
+            if let device = target.device {
+                return !project.isMacOSApplication && project.installationEnabled(for: device)
             }
-            return false
+            return project.isMacOSApplication
         }
-
+        guard !targets.isEmpty else { return false }
         let installationLogID = UUID()
-        isCancellingInstallation = false
-        progress = InstallationProgress(
+        cancellingInstallationProjectIDs.remove(project.id)
+        let destinationName = targets.count == 1
+            ? targets[0].name
+            : L10n.format("%d devices", targets.count)
+        installationProgresses[project.id] = InstallationProgress(
+            projectID: project.id,
             projectName: project.displayName,
-            deviceName: target.name,
+            deviceName: destinationName,
             phase: .preparing,
             latestOutput: ""
         )
-        installationLog = InstallationLogSession(
+        installationLogs[project.id] = InstallationLogSession(
             id: installationLogID,
+            projectID: project.id,
             projectName: project.displayName,
-            deviceName: target.name
+            deviceName: destinationName
         )
+        selectedInstallationLogProjectID = project.id
         addActivity(
             level: .info,
-            title: L10n.format("Starting installation of %@ on %@", project.displayName, target.name),
-            projectID: project.id,
-            deviceUDID: target.identifier
+            title: L10n.format("Starting installation of %@ on %@", project.displayName, destinationName),
+            projectID: project.id
         )
 
         let eventCoalescer = InstallationEventCoalescer { [weak self] batch in
             Task { @MainActor [weak self] in
-                self?.handleInstallationEvents(batch, installationLogID: installationLogID)
-            }
-        }
-
-        let installationTask = Task { () -> InstallationOutcome in
-            if let device = target.device {
-                return try await installationService.install(
-                    project: project,
-                    on: device,
-                    eventHandler: { eventCoalescer.receive($0) }
+                self?.handleInstallationEvents(
+                    batch,
+                    projectID: project.id,
+                    installationLogID: installationLogID
                 )
             }
-            return try await installationService.install(
+        }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performInstallation(
                 project: project,
-                eventHandler: { eventCoalescer.receive($0) }
+                targets: targets,
+                requestedByInstallAll: requestedByInstallAll,
+                installationLogID: installationLogID,
+                eventCoalescer: eventCoalescer
             )
         }
-        activeInstallationTask = installationTask
+        activeInstallationTasks[project.id] = task
+        return true
+    }
 
+    private func performInstallation(
+        project: ManagedProject,
+        targets: [ProjectInstallationTarget],
+        requestedByInstallAll: Bool,
+        installationLogID: UUID,
+        eventCoalescer: InstallationEventCoalescer
+    ) async {
         do {
-            let outcome = try await installationTask.value
-            activeInstallationTask = nil
-            handleInstallationEvents(eventCoalescer.finish(), installationLogID: installationLogID)
-            replaceInstallationLogOutput(outcome.log, installationLogID: installationLogID)
-            finishInstallationLog(id: installationLogID, state: .succeeded)
-            recordSuccessfulInstallation(
-                projectID: project.id,
-                deviceUDID: target.identifier,
-                profileExpirationDate: outcome.profileExpirationDate,
-                profileExpirationWasChecked: outcome.profileExpirationWasChecked
-            )
-            if preferences.notificationsEnabled != false {
-                let iconURL = await projectIconService.iconURL(for: project)
-                projectIconURLs[project.id] = iconURL
-                if let device = target.device {
-                    notificationService.notifySuccessfulInstallation(
-                        project: project,
-                        device: device,
-                        applicationIconURL: iconURL
-                    )
-                } else {
-                    notificationService.notifySuccessfulMacOSInstallation(
-                        project: project,
-                        applicationIconURL: iconURL
-                    )
+            if project.isMacOSApplication {
+                let outcome = try await installationService.install(
+                    project: project,
+                    eventHandler: { eventCoalescer.receive($0) }
+                )
+                handleInstallationEvents(
+                    eventCoalescer.finish(),
+                    projectID: project.id,
+                    installationLogID: installationLogID
+                )
+                replaceInstallationLogOutput(
+                    outcome.log,
+                    projectID: project.id,
+                    installationLogID: installationLogID
+                )
+                finishInstallationLog(
+                    projectID: project.id,
+                    id: installationLogID,
+                    state: .succeeded
+                )
+                await recordSuccessfulTarget(
+                    project: project,
+                    target: targets[0],
+                    log: outcome.log,
+                    profileExpirationDate: outcome.profileExpirationDate,
+                    profileExpirationWasChecked: outcome.profileExpirationWasChecked,
+                    requestedByInstallAll: requestedByInstallAll
+                )
+            } else {
+                let devices = targets.compactMap(\.device)
+                let outcome = try await installationService.install(
+                    project: project,
+                    on: devices,
+                    eventHandler: { eventCoalescer.receive($0) }
+                )
+                handleInstallationEvents(
+                    eventCoalescer.finish(),
+                    projectID: project.id,
+                    installationLogID: installationLogID
+                )
+                replaceInstallationLogOutput(
+                    outcome.log,
+                    projectID: project.id,
+                    installationLogID: installationLogID
+                )
+                let failures = outcome.deviceResults.filter { !$0.succeeded }
+                finishInstallationLog(
+                    projectID: project.id,
+                    id: installationLogID,
+                    state: failures.isEmpty ? .succeeded : .failed,
+                    fallbackError: failures.compactMap(\.failureMessage).joined(separator: "\n")
+                )
+                for result in outcome.deviceResults {
+                    guard let target = targets.first(where: { $0.identifier == result.deviceUDID }) else {
+                        continue
+                    }
+                    if result.succeeded {
+                        await recordSuccessfulTarget(
+                            project: project,
+                            target: target,
+                            log: result.log,
+                            profileExpirationDate: outcome.profileExpirationDate,
+                            profileExpirationWasChecked: outcome.profileExpirationWasChecked,
+                            requestedByInstallAll: requestedByInstallAll
+                        )
+                    } else {
+                        recordFailedTarget(
+                            project: project,
+                            target: target,
+                            errorOutput: result.failureMessage ?? result.log
+                        )
+                    }
                 }
             }
-            failedAttemptCooldowns[
-                recordKey(projectID: project.id, deviceUDID: target.identifier)
-            ] = nil
-            addActivity(
-                level: .success,
-                title: L10n.format("%@ was installed successfully on %@", project.displayName, target.name),
-                details: outcome.log,
-                projectID: project.id,
-                deviceUDID: target.identifier
-            )
-            progress = nil
-            isCancellingInstallation = false
-            return true
         } catch {
-            activeInstallationTask = nil
-            handleInstallationEvents(eventCoalescer.finish(), installationLogID: installationLogID)
-            if installationTask.isCancelled || error is CancellationError {
+            handleInstallationEvents(
+                eventCoalescer.finish(),
+                projectID: project.id,
+                installationLogID: installationLogID
+            )
+            if Task.isCancelled || error is CancellationError {
                 let cancellationText = L10n.text("Installation canceled by user.")
                 appendInstallationLogOutput(
                     "\n\n\(cancellationText)\n",
+                    projectID: project.id,
                     installationLogID: installationLogID
                 )
-                finishInstallationLog(id: installationLogID, state: .cancelled)
-                failedAttemptCooldowns[
-                    recordKey(projectID: project.id, deviceUDID: target.identifier)
-                ] = nil
+                finishInstallationLog(
+                    projectID: project.id,
+                    id: installationLogID,
+                    state: .cancelled
+                )
+                for target in targets {
+                    failedAttemptCooldowns[
+                        recordKey(projectID: project.id, deviceUDID: target.identifier)
+                    ] = nil
+                }
                 addActivity(
                     level: .warning,
                     title: L10n.format("Installation of %@ was canceled", project.displayName),
                     details: cancellationText,
-                    projectID: project.id,
-                    deviceUDID: target.identifier
+                    projectID: project.id
                 )
-                progress = nil
-                isCancellingInstallation = false
-                return false
+            } else {
+                let errorOutput = Self.trimmedError(error.localizedDescription)
+                replaceInstallationLogOutput(
+                    errorOutput,
+                    projectID: project.id,
+                    installationLogID: installationLogID
+                )
+                finishInstallationLog(
+                    projectID: project.id,
+                    id: installationLogID,
+                    state: .failed,
+                    fallbackError: errorOutput
+                )
+                for target in targets {
+                    recordFailedTarget(project: project, target: target, errorOutput: errorOutput)
+                }
             }
-            let errorOutput = Self.trimmedError(error.localizedDescription)
-            replaceInstallationLogOutput(errorOutput, installationLogID: installationLogID)
-            finishInstallationLog(
-                id: installationLogID,
-                state: .failed,
-                fallbackError: errorOutput
+        }
+        installationProgresses[project.id] = nil
+        activeInstallationTasks[project.id] = nil
+        cancellingInstallationProjectIDs.remove(project.id)
+        completeInstallAllProjectIfPossible(projectID: project.id)
+        finishInstallAllIfComplete()
+    }
+
+    private func recordSuccessfulTarget(
+        project: ManagedProject,
+        target: ProjectInstallationTarget,
+        log: String,
+        profileExpirationDate: Date?,
+        profileExpirationWasChecked: Bool,
+        requestedByInstallAll: Bool
+    ) async {
+        recordSuccessfulInstallation(
+            projectID: project.id,
+            deviceUDID: target.identifier,
+            profileExpirationDate: profileExpirationDate,
+            profileExpirationWasChecked: profileExpirationWasChecked
+        )
+        if preferences.notificationsEnabled != false {
+            let iconURL = await projectIconService.iconURL(for: project)
+            projectIconURLs[project.id] = iconURL
+            if let device = target.device {
+                notificationService.notifySuccessfulInstallation(
+                    project: project,
+                    device: device,
+                    applicationIconURL: iconURL
+                )
+            } else {
+                notificationService.notifySuccessfulMacOSInstallation(
+                    project: project,
+                    applicationIconURL: iconURL
+                )
+            }
+        }
+        failedAttemptCooldowns[
+            recordKey(projectID: project.id, deviceUDID: target.identifier)
+        ] = nil
+        if requestedByInstallAll {
+            completedInstallAllTargets.insert(
+                recordKey(projectID: project.id, deviceUDID: target.identifier)
             )
-            failedAttemptCooldowns[recordKey(projectID: project.id, deviceUDID: target.identifier)] =
-                Date().addingTimeInterval(5 * 60)
-            addActivity(
-                level: .error,
-                title: L10n.format("Installation of %@ failed", project.displayName),
-                details: errorOutput,
-                projectID: project.id,
-                deviceUDID: target.identifier
-            )
-            progress = nil
-            isCancellingInstallation = false
-            return false
+        }
+        addActivity(
+            level: .success,
+            title: L10n.format("%@ was installed successfully on %@", project.displayName, target.name),
+            details: log,
+            projectID: project.id,
+            deviceUDID: target.identifier
+        )
+    }
+
+    private func recordFailedTarget(
+        project: ManagedProject,
+        target: ProjectInstallationTarget,
+        errorOutput: String
+    ) {
+        failedAttemptCooldowns[recordKey(projectID: project.id, deviceUDID: target.identifier)] =
+            Date().addingTimeInterval(5 * 60)
+        addActivity(
+            level: .error,
+            title: L10n.format("Installation of %@ failed on %@", project.displayName, target.name),
+            details: errorOutput,
+            projectID: project.id,
+            deviceUDID: target.identifier
+        )
+    }
+
+    private func completeInstallAllProjectIfPossible(projectID: UUID) {
+        guard let targetIdentifiers = installAllTargets[projectID], !targetIdentifiers.isEmpty else {
+            return
+        }
+        if targetIdentifiers.allSatisfy({
+            completedInstallAllTargets.contains(recordKey(projectID: projectID, deviceUDID: $0))
+        }) {
+            installAllTargets[projectID] = nil
         }
     }
 
-    private func handleInstallationEvents(_ batch: InstallationEventBatch, installationLogID: UUID) {
+    private func finishInstallAllIfComplete() {
+        guard installAllTargets.isEmpty, !completedInstallAllTargets.isEmpty else { return }
+        completedInstallAllTargets = []
+        addActivity(level: .success, title: L10n.text("Install All completed successfully"))
+    }
+
+    private func handleInstallationEvents(
+        _ batch: InstallationEventBatch,
+        projectID: UUID,
+        installationLogID: UUID
+    ) {
         guard !batch.isEmpty else { return }
-        guard var current = progress else { return }
-        guard var log = installationLog, log.id == installationLogID else { return }
+        guard var current = installationProgresses[projectID] else { return }
+        guard var log = installationLogs[projectID], log.id == installationLogID else { return }
         guard log.state == .inProgress else { return }
         if let phase = batch.phase {
             current.phase = phase
@@ -1706,28 +1932,37 @@ final class AppModel: ObservableObject {
             log.append(batch.output)
             current.latestOutput = log.latestOutputLine
         }
-        installationLog = log
-        progress = current
+        installationLogs[projectID] = log
+        installationProgresses[projectID] = current
     }
 
-    private func replaceInstallationLogOutput(_ output: String, installationLogID: UUID) {
-        guard var log = installationLog, log.id == installationLogID else { return }
+    private func replaceInstallationLogOutput(
+        _ output: String,
+        projectID: UUID,
+        installationLogID: UUID
+    ) {
+        guard var log = installationLogs[projectID], log.id == installationLogID else { return }
         log.replaceOutput(with: output)
-        installationLog = log
+        installationLogs[projectID] = log
     }
 
-    private func appendInstallationLogOutput(_ output: String, installationLogID: UUID) {
-        guard var log = installationLog, log.id == installationLogID else { return }
+    private func appendInstallationLogOutput(
+        _ output: String,
+        projectID: UUID,
+        installationLogID: UUID
+    ) {
+        guard var log = installationLogs[projectID], log.id == installationLogID else { return }
         log.append(output)
-        installationLog = log
+        installationLogs[projectID] = log
     }
 
     private func finishInstallationLog(
+        projectID: UUID,
         id: UUID,
         state: InstallationLogSession.State,
         fallbackError: String? = nil
     ) {
-        guard var log = installationLog, log.id == id else { return }
+        guard var log = installationLogs[projectID], log.id == id else { return }
         log.state = state
         log.finishedAt = Date()
         if log.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -1735,7 +1970,7 @@ final class AppModel: ObservableObject {
            !fallbackError.isEmpty {
             log.append(fallbackError)
         }
-        installationLog = log
+        installationLogs[projectID] = log
     }
 
     private func recordSuccessfulInstallation(
@@ -1818,6 +2053,22 @@ final class AppModel: ObservableObject {
 
     private func refreshProjectIcon(for project: ManagedProject) async {
         projectIconURLs[project.id] = await projectIconService.iconURL(for: project)
+    }
+
+    private func refreshProjectGitBranches() async {
+        let currentProjects = projects
+        var branches: [UUID: String] = [:]
+        await withTaskGroup(of: (UUID, String?).self) { group in
+            for project in currentProjects {
+                group.addTask { [projectGitService] in
+                    (project.id, await projectGitService.activeBranch(for: project))
+                }
+            }
+            for await (projectID, branch) in group {
+                if let branch { branches[projectID] = branch }
+            }
+        }
+        gitBranchesByProjectID = branches
     }
 
     private func refreshUnknownProjectMetadata(restartMonitoringAfterUpdate: Bool) async {
