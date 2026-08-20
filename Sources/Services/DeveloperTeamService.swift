@@ -59,6 +59,25 @@ final class DeveloperTeamService {
         }
     }
 
+    static func signingCertificateRecord(
+        certificateData: Data
+    ) -> SigningCertificateRecord? {
+        guard let certificate = SecCertificateCreateWithData(nil, certificateData as CFData),
+              let commonName = commonName(of: certificate),
+              let organizationalUnit = subjectValue(
+                kSecOIDOrganizationalUnitName,
+                certificate: certificate
+              )
+        else {
+            return nil
+        }
+        return SigningCertificateRecord(
+            commonName: commonName,
+            organizationalUnit: organizationalUnit,
+            organizationName: subjectValue(kSecOIDOrganizationName, certificate: certificate)
+        )
+    }
+
     static func teams(from records: [SigningCertificateRecord]) -> [DeveloperTeam] {
         teams(from: records, provisioningProfiles: [])
     }
@@ -249,8 +268,8 @@ final class DeveloperTeamService {
             var certificate: SecCertificate?
             guard SecIdentityCopyCertificate(identity, &certificate) == errSecSuccess,
                   let certificate,
-                  let commonName = commonName(of: certificate),
-                  let organizationalUnit = subjectValue(
+                  let commonName = Self.commonName(of: certificate),
+                  let organizationalUnit = Self.subjectValue(
                     kSecOIDOrganizationalUnitName,
                     certificate: certificate
                   )
@@ -261,7 +280,10 @@ final class DeveloperTeamService {
             return SigningCertificateRecord(
                 commonName: commonName,
                 organizationalUnit: organizationalUnit,
-                organizationName: subjectValue(kSecOIDOrganizationName, certificate: certificate)
+                organizationName: Self.subjectValue(
+                    kSecOIDOrganizationName,
+                    certificate: certificate
+                )
             )
         }
     }
@@ -337,13 +359,13 @@ final class DeveloperTeamService {
         return value
     }
 
-    private func commonName(of certificate: SecCertificate) -> String? {
+    private static func commonName(of certificate: SecCertificate) -> String? {
         var value: CFString?
         guard SecCertificateCopyCommonName(certificate, &value) == errSecSuccess else { return nil }
         return value as String?
     }
 
-    private func subjectValue(_ oid: CFString, certificate: SecCertificate) -> String? {
+    private static func subjectValue(_ oid: CFString, certificate: SecCertificate) -> String? {
         guard let values = SecCertificateCopyValues(certificate, [oid] as CFArray, nil) as NSDictionary?,
               let property = values[oid] as? NSDictionary,
               let value = property[kSecPropertyKeyValue] as? String

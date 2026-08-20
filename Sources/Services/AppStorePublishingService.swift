@@ -69,7 +69,7 @@ enum AppStorePublishingError: LocalizedError {
         case .privacyManifestUnavailable:
             return L10n.text("App Privacy was published, but app-store-publishing.json could not be updated with the publication time.")
         case .distributionSigningUnavailable:
-            return L10n.text("Distribution signing is not available. Grant the selected App Store Connect API key access to Certificates, Identifiers & Profiles and Cloud Managed App Distribution, or install an active Apple Distribution certificate with its private key in Keychain. No archive was uploaded.")
+            return L10n.text("Distribution signing is not available. Use an Account Holder or Admin App Store Connect API key with Certificates, Identifiers & Profiles access so Development Management can create a local Apple Distribution identity, grant Cloud Managed App Distribution access, or import an existing Apple Distribution certificate with its private key into Keychain. No archive was uploaded.")
         }
     }
 }
@@ -86,7 +86,7 @@ final class AppStorePublishingService {
     private let xcodeGenPreparationService: XcodeGenProjectPreparationService
     private let xcodeSchemePreparationService: XcodeSchemeBuildPreparationService
     private let privacyPublishingService: AppStorePrivacyPublishingService
-    private let developerTeamService: DeveloperTeamService
+    private let distributionCertificateProvisioningService: DistributionCertificateProvisioningService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
@@ -94,14 +94,14 @@ final class AppStorePublishingService {
         subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService = StoreKitSubscriptionDiscoveryService(),
         reviewAssetService: AppStoreReviewAssetService = AppStoreReviewAssetService(),
         publicationURLValidator: AppStorePublicationURLValidator = AppStorePublicationURLValidator(),
-        developerTeamService: DeveloperTeamService = DeveloperTeamService()
+        distributionCertificateProvisioningService: DistributionCertificateProvisioningService = .shared
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
         self.subscriptionDiscoveryService = subscriptionDiscoveryService
         self.reviewAssetService = reviewAssetService
         self.publicationURLValidator = publicationURLValidator
-        self.developerTeamService = developerTeamService
+        self.distributionCertificateProvisioningService = distributionCertificateProvisioningService
         self.xcodeGenPreparationService = XcodeGenProjectPreparationService(
             processRunner: processRunner,
             fileManager: fileManager
@@ -332,20 +332,13 @@ final class AppStorePublishingService {
             targetBuildNumber = localBuildNumber
         } else {
             let signingTeamID = project.signingTeamID ?? project.projectSigningTeamID
-            if developerTeamService.hasDistributionSigningIdentity(teamID: signingTeamID) {
-                eventHandler(.output(L10n.text(
-                    "Found a local Apple Distribution signing identity.\n"
-                )))
-            } else {
-                eventHandler(.output(L10n.text(
-                    "No local Apple Distribution identity was found; checking cloud distribution-signing permission before archiving…\n"
-                )))
-                do {
-                    try await appStoreConnect.validateDistributionSigningAccess()
-                } catch AppStoreConnectError.requestFailed(let status, _) where status == 401 || status == 403 {
-                    throw AppStorePublishingError.distributionSigningUnavailable
-                }
-            }
+            _ = try await distributionCertificateProvisioningService.prepareLocalIdentity(
+                teamID: signingTeamID,
+                issuerID: configuration.appStoreConnectIssuerID,
+                keyID: configuration.appStoreConnectKeyID,
+                privateKeyPEM: configuration.appStoreConnectPrivateKey,
+                onOutput: { eventHandler(.output($0)) }
+            )
             let directory = fileManager.temporaryDirectory
                 .appendingPathComponent("DevManagement-Publish-\(UUID().uuidString)", isDirectory: true)
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)

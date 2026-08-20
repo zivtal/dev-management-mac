@@ -54,6 +54,60 @@ final class AppStorePublishingTests: XCTestCase {
         )
     }
 
+    func testDistributionCertificateCreationUsesAppleProvisioningAPIShape() async throws {
+        let certificateData = Data([0x30, 0x03, 0x02, 0x01, 0x00])
+        let service = try appStoreConnectTestService { request in
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.url?.path, "/v1/certificates")
+            let bodyData = try Self.requestBodyData(request)
+            let root = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: bodyData) as? [String: Any]
+            )
+            let data = try XCTUnwrap(root["data"] as? [String: Any])
+            XCTAssertEqual(data["type"] as? String, "certificates")
+            let attributes = try XCTUnwrap(data["attributes"] as? [String: Any])
+            XCTAssertEqual(attributes["certificateType"] as? String, "DISTRIBUTION")
+            XCTAssertEqual(attributes["csrContent"] as? String, "PEM CSR")
+            return try Self.appStoreConnectResponse(
+                for: request,
+                status: 201,
+                json: [
+                    "data": [
+                        "type": "certificates",
+                        "id": "certificate-id",
+                        "attributes": [
+                            "certificateType": "DISTRIBUTION",
+                            "displayName": "Apple Distribution: Example",
+                            "certificateContent": certificateData.base64EncodedString(),
+                            "expirationDate": "2027-08-21T12:00:00.000+00:00",
+                            "activated": true
+                        ]
+                    ]
+                ]
+            )
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+
+        let certificate = try await service.createDistributionCertificate(
+            csrContent: "PEM CSR"
+        )
+
+        XCTAssertEqual(certificate.id, "certificate-id")
+        XCTAssertEqual(certificate.certificateType, "DISTRIBUTION")
+        XCTAssertEqual(certificate.certificateContent, certificateData)
+        XCTAssertTrue(certificate.isActive(at: Date(timeIntervalSince1970: 0)))
+    }
+
+    func testDistributionCertificatePEMUsesWrappedBase64() {
+        let data = Data(repeating: 0xA5, count: 60)
+
+        let pem = DistributionCertificateProvisioningService.certificatePEM(data)
+
+        XCTAssertTrue(pem.hasPrefix("-----BEGIN CERTIFICATE-----\n"))
+        XCTAssertTrue(pem.hasSuffix("\n-----END CERTIFICATE-----\n"))
+        XCTAssertEqual(AppStoreConnectService.certificateData(pem), data)
+    }
+
     func testUploadFailureDetectorStopsRepeatedChecksumLoopAcrossOutputChunks() {
         let detector = AppStoreUploadFailureDetector(checksumFailureLimit: 3)
 

@@ -105,6 +105,19 @@ struct AppStoreConnectPublication: Sendable {
     let deferredStorefrontSetup: Bool
 }
 
+struct AppStoreConnectCertificate: Equatable, Sendable {
+    let id: String
+    let certificateType: String
+    let displayName: String?
+    let certificateContent: Data?
+    let expirationDate: Date?
+    let activated: Bool?
+
+    func isActive(at date: Date = Date()) -> Bool {
+        activated != false && expirationDate.map { $0 > date } != false
+    }
+}
+
 struct AppStoreLocalizedNamePreservation: Equatable, Sendable {
     let locale: String
     let requestedName: String
@@ -178,12 +191,98 @@ enum AppStoreConnectError: LocalizedError {
 }
 
 final class AppStoreConnectService {
-    func validateDistributionSigningAccess() async throws {
-        _ = try await request(
-            method: "GET",
+    func certificates() async throws -> [AppStoreConnectCertificate] {
+        try await pagedData(
             path: "/v1/certificates",
-            query: ["limit": "1"]
+            query: [
+                "fields[certificates]": "name,displayName,certificateType,expirationDate,certificateContent,activated",
+                "limit": "200"
+            ]
+        ).compactMap(Self.certificate)
+    }
+
+    func createDistributionCertificate(
+        csrContent: String
+    ) async throws -> AppStoreConnectCertificate {
+        let response = try await request(
+            method: "POST",
+            path: "/v1/certificates",
+            body: Self.distributionCertificateCreateBody(csrContent: csrContent)
         )
+        guard let data = response["data"] as? [String: Any],
+              let certificate = Self.certificate(data)
+        else {
+            throw AppStoreConnectError.invalidResponse
+        }
+        if certificate.certificateContent != nil {
+            return certificate
+        }
+        return try await certificateDetails(id: certificate.id)
+    }
+
+    private func certificateDetails(id: String) async throws -> AppStoreConnectCertificate {
+        let response = try await request(
+            method: "GET",
+            path: "/v1/certificates/\(id)",
+            query: [
+                "fields[certificates]": "name,displayName,certificateType,expirationDate,certificateContent,activated"
+            ]
+        )
+        guard let data = response["data"] as? [String: Any],
+              let certificate = Self.certificate(data)
+        else {
+            throw AppStoreConnectError.invalidResponse
+        }
+        return certificate
+    }
+
+    static func distributionCertificateCreateBody(csrContent: String) -> [String: Any] {
+        [
+            "data": [
+                "type": "certificates",
+                "attributes": [
+                    "certificateType": "DISTRIBUTION",
+                    "csrContent": csrContent
+                ]
+            ]
+        ]
+    }
+
+    static func certificate(_ resource: [String: Any]) -> AppStoreConnectCertificate? {
+        guard let id = resource["id"] as? String,
+              let attributes = resource["attributes"] as? [String: Any],
+              let certificateType = attributes["certificateType"] as? String
+        else {
+            return nil
+        }
+        let certificateContent = (attributes["certificateContent"] as? String)
+            .flatMap(certificateData)
+        let expirationDate = (attributes["expirationDate"] as? String)
+            .flatMap(certificateDate)
+        return AppStoreConnectCertificate(
+            id: id,
+            certificateType: certificateType,
+            displayName: attributes["displayName"] as? String
+                ?? attributes["name"] as? String,
+            certificateContent: certificateContent,
+            expirationDate: expirationDate,
+            activated: attributes["activated"] as? Bool
+        )
+    }
+
+    static func certificateData(_ encodedContent: String) -> Data? {
+        let normalized = encodedContent
+            .replacingOccurrences(of: "-----BEGIN CERTIFICATE-----", with: "")
+            .replacingOccurrences(of: "-----END CERTIFICATE-----", with: "")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .joined()
+        return Data(base64Encoded: normalized, options: [.ignoreUnknownCharacters])
+    }
+
+    private static func certificateDate(_ value: String) -> Date? {
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractionalFormatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
     private let session: URLSession
