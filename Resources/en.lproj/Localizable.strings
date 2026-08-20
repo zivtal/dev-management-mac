@@ -102,7 +102,6 @@
 "Pause application installations" = "Pause application installations";
 "Resume application installations" = "Resume application installations";
 "Current version" = "Current version";
-"Installation method" = "Installation method";
 "Scheme" = "Scheme";
 "Configuration" = "Configuration";
 "Platform" = "Platform";
@@ -119,7 +118,6 @@
 "Choose an iOS application folder" = "Choose an iOS application folder";
 "Choose an iOS or macOS application folder" = "Choose an iOS or macOS application folder";
 "Add" = "Add";
-"install.sh (optional)" = "install.sh (optional)";
 "Direct Xcode build" = "Direct Xcode build";
 "Select an application to edit its build settings." = "Select an application to edit its build settings.";
 "Status" = "Status";
@@ -151,7 +149,6 @@
 "Installs on this Mac" = "Installs on this Mac";
 "Development Management builds the selected macOS scheme, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build." = "Development Management builds the selected macOS scheme, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build.";
 "DMG output: %@" = "DMG output: %@";
-"The selected install.sh runs locally with MACOS_INSTALL_TARGET=local." = "The selected install.sh runs locally with MACOS_INSTALL_TARGET=local.";
 
 "Activity log" = "Activity log";
 "The latest build, installation, and device events." = "The latest build, installation, and device events.";
@@ -191,7 +188,6 @@
 "No .xcodeproj or .xcworkspace was found in the selected folder." = "No .xcodeproj or .xcworkspace was found in the selected folder.";
 "No shared schemes were found. Mark a scheme as Shared in Xcode." = "No shared schemes were found. Mark a scheme as Shared in Xcode.";
 "Could not read the project details from Xcode." = "Could not read the project details from Xcode.";
-"install.sh was not found. Switch to Direct Xcode build in Settings." = "install.sh was not found. Switch to Direct Xcode build in Settings.";
 "The saved Xcode project or workspace no longer exists." = "The saved Xcode project or workspace no longer exists.";
 "The build finished, but no .app product was found to install." = "The build finished, but no .app product was found to install.";
 "Could not stop the running %@ application." = "Could not stop the running %@ application.";
@@ -690,7 +686,6 @@
 "All configured public App Store URLs are reachable.\n" = "All configured public App Store URLs are reachable.\n";
 "Prepared %d App Review attachment(s) from the project.\n" = "Prepared %d App Review attachment(s) from the project.\n";
 "Archive contains %@ %@ (%@).\n" = "Archive contains %@ %@ (%@).\n";
-"The Xcode scheme changed the version during archive; continuing with the archived version.\n" = "The Xcode scheme changed the version during archive; continuing with the archived version.\n";
 "The %@ URL returned HTTP %d: %@. Update it to a public page that returns HTTP 200–399, then try again." = "The %@ URL returned HTTP %d: %@. Update it to a public page that returns HTTP 200–399, then try again.";
 "The %@ URL could not be reached: %@ (%@). Check the URL and internet connection, then try again." = "The %@ URL could not be reached: %@ (%@). Check the URL and internet connection, then try again.";
 "Validating %d public App Store URL(s) before publishing…\n" = "Validating %d public App Store URL(s) before publishing…\n";
@@ -768,7 +763,6 @@
 "This release is already with Apple" = "This release is already with Apple";
 "Version %@ (%@) is %@. Wait for Apple or advance the source version before another upload." = "Version %@ (%@) is %@. Wait for Apple or advance the source version before another upload.";
 "Source version is ready" = "Source version is ready";
-"%@ (%@) is selected. The scheme may advance it once during archive." = "%@ (%@) is selected. The scheme may advance it once during archive.";
 "App Store Connect access" = "App Store Connect access";
 "Checking credentials and the live app record…" = "Checking credentials and the live app record…";
 "App Store Connect needs attention" = "App Store Connect needs attention";
@@ -1151,9 +1145,6 @@
 "No README release section or Git changes could be found after approved version %@." = "No README release section or Git changes could be found after approved version %@.";
 "Git changes after approved version %@ (%@)" = "Git changes after approved version %@ (%@)";
 "the 20 latest Git commits because approved version %@ has no matching tag or version commit" = "the 20 latest Git commits because approved version %@ has no matching tag or version commit";
-"Generating localized What’s New text with OpenAI for changes after approved version %@…\n" = "Generating localized What’s New text with OpenAI for changes after approved version %@…\n";
-"Generated What’s New text for %d language(s) using %@.\n" = "Generated What’s New text for %d language(s) using %@.\n";
-"Approved version %@ exists, but no OpenAI API key is saved; keeping the configured What’s New text.\n" = "Approved version %@ exists, but no OpenAI API key is saved; keeping the configured What’s New text.\n";
 "Generate What’s New with OpenAI" = "Generate What’s New with OpenAI";
 "Generating What’s New…" = "Generating What’s New…";
 "Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced." = "Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced.";
@@ -1161,3 +1152,27 @@
 "App Store Connect has no earlier approved version to use as the What’s New baseline." = "App Store Connect has no earlier approved version to use as the What’s New baseline.";
 "Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n" = "Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n";
 "Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment." = "Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment.";
+"The shared Xcode scheme %@ could not be found, so its build actions could not be checked." = "The shared Xcode scheme %@ could not be found, so its build actions could not be checked.";
+"Scheme script" = "Scheme script";
+"Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n" = "Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n";
+"Using the saved What’s New text exactly as reviewed; Publish does not generate or replace it.\n" = "Using the saved What’s New text exactly as reviewed; Publish does not generate or replace it.\n";
+"The archive changed the marketing version from %@ to %@. Publication stopped without uploading it." = "The archive changed the marketing version from %@ to %@. Publication stopped without uploading it.";
+"The archive changed the build number from %@ to %@. Publication stopped without uploading it." = "The archive changed the build number from %@ to %@. Publication stopped without uploading it.";
+"Preparing saved App Store metadata…" = "Preparing saved App Store metadata…";
+"Build method" = "Build method";
+"Development Management builds the selected macOS scheme without repository workflow scripts, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build." = "Development Management builds the selected macOS scheme without repository workflow scripts, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build.";
+"%@ (%@) is selected. Build and upload preserve this version." = "%@ (%@) is selected. Build and upload preserve this version.";
+"Checking the latest approved App Store version…" = "Checking the latest approved App Store version…";
+"What’s New could not be checked" = "What’s New could not be checked";
+"What’s New is not required" = "What’s New is not required";
+"No earlier approved App Store version was found." = "No earlier approved App Store version was found.";
+"What’s New needs review" = "What’s New needs review";
+"Add release notes describing changes after approved version %@." = "Add release notes describing changes after approved version %@.";
+"What’s New is empty for: %@. Generate or enter it, review it, and save before submitting." = "What’s New is empty for: %@. Generate or enter it, review it, and save before submitting.";
+"What’s New is ready" = "What’s New is ready";
+"Saved release notes for %d language(s) will be used exactly as shown. Publish does not generate or replace them." = "Saved release notes for %d language(s) will be used exactly as shown. Publish does not generate or replace them.";
+"Publish uses the saved What’s New text exactly as reviewed and does not generate or replace it. It synchronizes the complete localized listing, app declarations, free price and availability, subscriptions and territory prices, screenshots, TestFlight information, internal testers, and review details. It then archives and uploads the existing project version without running repository workflow scripts, attaches review assets, and submits the app version plus subscription group and subscription versions together." = "Publish uses the saved What’s New text exactly as reviewed and does not generate or replace it. It synchronizes the complete localized listing, app declarations, free price and availability, subscriptions and territory prices, screenshots, TestFlight information, internal testers, and review details. It then archives and uploads the existing project version without running repository workflow scripts, attaches review assets, and submits the app version plus subscription group and subscription versions together.";
+"The exact build is already in TestFlight. Publish uses the saved What’s New text exactly as reviewed, synchronizes the complete App Store and TestFlight setup, reuses that build, attaches review assets, and submits the app version plus subscription group and subscription versions together without another archive or upload." = "The exact build is already in TestFlight. Publish uses the saved What’s New text exactly as reviewed, synchronizes the complete App Store and TestFlight setup, reuses that build, attaches review assets, and submits the app version plus subscription group and subscription versions together without another archive or upload.";
+"App Store publishing requires a managed iOS application." = "App Store publishing requires a managed iOS application.";
+"Add a managed iOS application." = "Add a managed iOS application.";
+"Authenticating Xcode signing with the configured App Store Connect key.\n" = "Authenticating Xcode signing with the configured App Store Connect key.\n";

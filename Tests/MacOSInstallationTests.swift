@@ -34,10 +34,9 @@ final class MacOSInstallationTests: XCTestCase {
         XCTAssertFalse(arguments.contains(where: { $0.contains("platform=iOS") }))
         XCTAssertTrue(arguments.contains("DEVELOPMENT_TEAM=TEAM123"))
         XCTAssertTrue(arguments.contains("/tmp/MacDerivedData"))
-        XCTAssertTrue(arguments.contains(
-            "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) "
-                + InstallationService.managedInstallCompilationCondition
-        ))
+        XCTAssertFalse(arguments.contains(where: {
+            $0.hasPrefix("SWIFT_ACTIVE_COMPILATION_CONDITIONS=")
+        }))
     }
 
     func testMacOSPlatformAndDMGPathSurvivePersistence() throws {
@@ -53,7 +52,7 @@ final class MacOSInstallationTests: XCTestCase {
         XCTAssertEqual(restoredProject.macOSDMGURL.path, "/tmp/SampleMac/dist/Sample- Mac-App.dmg")
     }
 
-    func testLegacyProjectWithoutPlatformDefaultsToIOS() throws {
+    func testLegacyProjectWithObsoleteScriptFieldsDefaultsToIOS() throws {
         let json = #"""
         {
           "id": "00000000-0000-0000-0000-000000000001",
@@ -65,7 +64,8 @@ final class MacOSInstallationTests: XCTestCase {
           "configuration": "Debug",
           "availableSchemes": ["Legacy"],
           "availableConfigurations": ["Debug"],
-          "installMethod": "xcodebuild",
+          "installMethod": "installScript",
+          "installScriptPath": "/tmp/Legacy/install.sh",
           "isEnabled": true
         }
         """#
@@ -152,8 +152,6 @@ final class MacOSInstallationTests: XCTestCase {
             configuration: "Release",
             availableSchemes: ["SampleMac"],
             availableConfigurations: ["Debug", "Release"],
-            installMethod: .xcodebuild,
-            installScriptPath: nil,
             isEnabled: true,
             marketingVersion: "1.0.0",
             buildNumber: "1",

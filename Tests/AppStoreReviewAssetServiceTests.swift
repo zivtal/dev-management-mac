@@ -34,8 +34,6 @@ final class AppStoreReviewAssetServiceTests: XCTestCase {
             configuration: "Debug",
             availableSchemes: ["Sample"],
             availableConfigurations: ["Debug", "Release"],
-            installMethod: .xcodebuild,
-            installScriptPath: nil,
             isEnabled: true,
             marketingVersion: "1.0.0",
             buildNumber: "1",

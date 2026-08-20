@@ -14,20 +14,6 @@ enum ProjectContainerKind: String, Codable, CaseIterable, Identifiable, Sendable
     }
 }
 
-enum InstallMethod: String, Codable, CaseIterable, Identifiable, Sendable {
-    case installScript
-    case xcodebuild
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .installScript: L10n.text("install.sh (optional)")
-        case .xcodebuild: L10n.text("Direct Xcode build")
-        }
-    }
-}
-
 enum ApplicationPlatform: String, Codable, CaseIterable, Identifiable, Sendable {
     case iOS
     case macOS
@@ -54,8 +40,6 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
     var configuration: String
     var availableSchemes: [String]
     var availableConfigurations: [String]
-    var installMethod: InstallMethod
-    var installScriptPath: String?
     var isEnabled: Bool
     var marketingVersion: String?
     var buildNumber: String?
@@ -219,7 +203,6 @@ struct ProjectDescriptor: Equatable {
     let containerKind: ProjectContainerKind
     let schemes: [String]
     let configurations: [String]
-    let installScriptPath: String?
     var supportedDeviceFamilies: Set<MobileDeviceFamily>? = nil
     var bundleIdentifier: String? = nil
     var projectSigningTeamID: String? = nil
@@ -243,8 +226,6 @@ struct ProjectDescriptor: Equatable {
             configuration: preferredConfiguration,
             availableSchemes: schemes,
             availableConfigurations: configurations,
-            installMethod: .xcodebuild,
-            installScriptPath: installScriptPath,
             isEnabled: true,
             marketingVersion: nil,
             buildNumber: nil,

@@ -10,6 +10,8 @@ enum AppStorePublishingError: LocalizedError {
     case missingProjectContainer
     case missingArchiveApplication
     case archiveBundleIdentifierMismatch(String, String)
+    case archiveVersionMismatch(expected: String, actual: String)
+    case archiveBuildNumberMismatch(expected: String, actual: String)
     case noIPA
     case noScreenshots
     case noSimulatorApplication
@@ -23,7 +25,7 @@ enum AppStorePublishingError: LocalizedError {
         case .busy:
             return L10n.text("Another build, installation, publication, or offer-code request is already in progress.")
         case .unsupportedProject:
-            return L10n.text("App Store publishing requires an iOS application using Direct Xcode build.")
+            return L10n.text("App Store publishing requires a managed iOS application.")
         case .missingBundleIdentifier:
             return L10n.text("The selected Xcode scheme does not provide an application bundle identifier.")
         case .missingVersion:
@@ -36,6 +38,18 @@ enum AppStorePublishingError: LocalizedError {
             return L10n.text("Xcode created an archive, but its iOS application metadata could not be read.")
         case .archiveBundleIdentifierMismatch(let expected, let actual):
             return L10n.format("The archived app uses bundle identifier %@ instead of %@.", actual, expected)
+        case .archiveVersionMismatch(let expected, let actual):
+            return L10n.format(
+                "The archive changed the marketing version from %@ to %@. Publication stopped without uploading it.",
+                expected,
+                actual
+            )
+        case .archiveBuildNumberMismatch(let expected, let actual):
+            return L10n.format(
+                "The archive changed the build number from %@ to %@. Publication stopped without uploading it.",
+                expected,
+                actual
+            )
         case .noIPA:
             return L10n.text("Xcode exported the archive, but no .ipa file was found.")
         case .noScreenshots:
@@ -67,25 +81,26 @@ final class AppStorePublishingService {
     private let reviewAssetService: AppStoreReviewAssetService
     private let publicationURLValidator: AppStorePublicationURLValidator
     private let xcodeGenPreparationService: XcodeGenProjectPreparationService
+    private let xcodeSchemePreparationService: XcodeSchemeBuildPreparationService
     private let privacyPublishingService: AppStorePrivacyPublishingService
-    private let openAIStoreMetadataService: OpenAIStoreMetadataService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
         fileManager: FileManager = .default,
         subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService = StoreKitSubscriptionDiscoveryService(),
         reviewAssetService: AppStoreReviewAssetService = AppStoreReviewAssetService(),
-        publicationURLValidator: AppStorePublicationURLValidator = AppStorePublicationURLValidator(),
-        openAIStoreMetadataService: OpenAIStoreMetadataService = OpenAIStoreMetadataService()
+        publicationURLValidator: AppStorePublicationURLValidator = AppStorePublicationURLValidator()
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
         self.subscriptionDiscoveryService = subscriptionDiscoveryService
         self.reviewAssetService = reviewAssetService
         self.publicationURLValidator = publicationURLValidator
-        self.openAIStoreMetadataService = openAIStoreMetadataService
         self.xcodeGenPreparationService = XcodeGenProjectPreparationService(
             processRunner: processRunner,
+            fileManager: fileManager
+        )
+        self.xcodeSchemePreparationService = XcodeSchemeBuildPreparationService(
             fileManager: fileManager
         )
         self.privacyPublishingService = AppStorePrivacyPublishingService(
@@ -100,7 +115,7 @@ final class AppStorePublishingService {
         eventHandler: @escaping EventHandler
     ) async throws -> PublishingResult {
         let intent = configuration.intent
-        guard !project.isMacOSApplication, project.installMethod == .xcodebuild else {
+        guard !project.isMacOSApplication else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier, !bundleIdentifier.isEmpty else {
@@ -122,14 +137,6 @@ final class AppStorePublishingService {
             privateKeyPEM: configuration.appStoreConnectPrivateKey
         )
         let appID = try await appStoreConnect.applicationID(bundleIdentifier: bundleIdentifier)
-        let previousApprovedVersion: AppStoreConnectVersionReferenceSnapshot? = if intent.submitsForReview {
-            try await appStoreConnect.latestApprovedVersion(
-                appID: appID,
-                excluding: localVersion
-            )
-        } else {
-            nil
-        }
         let existingBuild = try await appStoreConnect.build(
             appID: appID,
             marketingVersion: localVersion,
@@ -266,45 +273,9 @@ final class AppStorePublishingService {
         } else {
             throw AppStorePublishingError.missingEditablePublishingDraft
         }
-        if let previousApprovedVersion {
-            if let apiKey = configuration.openAIAPIKey?.nilIfEmpty {
-                eventHandler(.output(L10n.format(
-                    "Generating localized What’s New text with OpenAI for changes after approved version %@…\n",
-                    previousApprovedVersion.versionString
-                )))
-                let generation = try await openAIStoreMetadataService.generateReleaseNotes(
-                    project: project,
-                    previousApprovedVersion: previousApprovedVersion.versionString,
-                    currentVersion: localVersion,
-                    locales: localizedMetadata.map(\.locale),
-                    apiKey: apiKey,
-                    model: configuration.openAIModel
-                )
-                localizedMetadata = Self.applyingReleaseNotes(
-                    generation.releaseNotes,
-                    to: localizedMetadata
-                )
-                let preferredLocale = AppStoreLocale.canonicalIdentifier(configuration.locale)
-                    ?? configuration.locale
-                let preferred = localizedMetadata.first(where: {
-                    $0.locale.caseInsensitiveCompare(preferredLocale) == .orderedSame
-                }) ?? localizedMetadata[0]
-                metadata = preferred.metadata(
-                    primaryCategory: metadata.primaryCategory,
-                    secondaryCategory: metadata.secondaryCategory
-                )
-                eventHandler(.output(L10n.format(
-                    "Generated What’s New text for %d language(s) using %@.\n",
-                    localizedMetadata.count,
-                    generation.evidence.sourceDescription
-                )))
-            } else {
-                eventHandler(.output(L10n.format(
-                    "Approved version %@ exists, but no OpenAI API key is saved; keeping the configured What’s New text.\n",
-                    previousApprovedVersion.versionString
-                )))
-            }
-        }
+        eventHandler(.output(L10n.text(
+            "Using the saved What’s New text exactly as reviewed; Publish does not generate or replace it.\n"
+        )))
         var applicationConfiguration = subscriptionCatalog.application
         if applicationConfiguration == nil,
            metadata.primaryCategory?.nilIfEmpty != nil || metadata.secondaryCategory?.nilIfEmpty != nil {
@@ -363,6 +334,9 @@ final class AppStorePublishingService {
             let archived = try await archiveAndExport(
                 project: project,
                 expectedBundleIdentifier: bundleIdentifier,
+                issuerID: configuration.appStoreConnectIssuerID,
+                keyID: configuration.appStoreConnectKeyID,
+                privateKey: configuration.appStoreConnectPrivateKey,
                 temporaryDirectory: directory,
                 eventHandler: eventHandler
             )
@@ -375,8 +349,17 @@ final class AppStorePublishingService {
                 archived.version,
                 archived.buildNumber
             )))
-            if archived.version != project.marketingVersion || archived.buildNumber != project.buildNumber {
-                eventHandler(.output(L10n.text("The Xcode scheme changed the version during archive; continuing with the archived version.\n")))
+            guard archived.version == localVersion else {
+                throw AppStorePublishingError.archiveVersionMismatch(
+                    expected: localVersion,
+                    actual: archived.version
+                )
+            }
+            guard archived.buildNumber == localBuildNumber else {
+                throw AppStorePublishingError.archiveBuildNumberMismatch(
+                    expected: localBuildNumber,
+                    actual: archived.buildNumber
+                )
             }
             if try await appStoreConnect.build(
                 appID: appID,
@@ -1037,6 +1020,9 @@ final class AppStorePublishingService {
     private func archiveAndExport(
         project: ManagedProject,
         expectedBundleIdentifier: String,
+        issuerID: String,
+        keyID: String,
+        privateKey: String,
         temporaryDirectory: URL,
         eventHandler: @escaping EventHandler
     ) async throws -> AppStoreBuildArtifact {
@@ -1044,21 +1030,42 @@ final class AppStorePublishingService {
             project: project,
             onOutput: { eventHandler(.output($0)) }
         )
+        let preparedScheme = try xcodeSchemePreparationService.prepare(project: project)
+        defer { preparedScheme.removeTemporaryFile(fileManager: fileManager) }
+        if !preparedScheme.removedActionTitles.isEmpty {
+            eventHandler(.output(L10n.format(
+                "Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n",
+                preparedScheme.removedActionTitles.count
+            )))
+        }
         let archiveURL = temporaryDirectory.appendingPathComponent("\(project.scheme).xcarchive")
         let exportURL = temporaryDirectory.appendingPathComponent("Export", isDirectory: true)
         let exportOptionsURL = temporaryDirectory.appendingPathComponent("ExportOptions.plist")
+        let authenticationKeyURL = try writeAppStoreConnectAuthenticationKey(
+            privateKey,
+            keyID: keyID,
+            temporaryDirectory: temporaryDirectory
+        )
+        let authenticationArguments = Self.xcodeAuthenticationArguments(
+            keyURL: authenticationKeyURL,
+            keyID: keyID,
+            issuerID: issuerID
+        )
+        eventHandler(.output(L10n.text(
+            "Authenticating Xcode signing with the configured App Store Connect key.\n"
+        )))
         let releaseConfiguration = project.availableConfigurations.first(where: {
             $0.caseInsensitiveCompare("Release") == .orderedSame
         }) ?? project.availableConfigurations.first(where: {
             $0.localizedCaseInsensitiveContains("release")
         }) ?? project.configuration
         var archiveArguments = xcodeContainerArguments(for: project) + [
-            "-scheme", project.scheme,
+            "-scheme", preparedScheme.name,
             "-configuration", releaseConfiguration,
             "-destination", "generic/platform=iOS",
             "-archivePath", archiveURL.path,
             "-allowProvisioningUpdates"
-        ]
+        ] + authenticationArguments
         if let teamID = project.signingTeamID ?? project.projectSigningTeamID, !teamID.isEmpty {
             archiveArguments.append("DEVELOPMENT_TEAM=\(teamID)")
         }
@@ -1100,7 +1107,7 @@ final class AppStorePublishingService {
                 "-exportPath", exportURL.path,
                 "-exportOptionsPlist", exportOptionsURL.path,
                 "-allowProvisioningUpdates"
-            ],
+            ] + authenticationArguments,
             workingDirectory: project.folderURL,
             onOutput: { eventHandler(.output($0)) }
         )
@@ -1160,6 +1167,34 @@ final class AppStorePublishingService {
         throw AppStorePublishingError.missingArchiveApplication
     }
 
+    static func xcodeAuthenticationArguments(
+        keyURL: URL,
+        keyID: String,
+        issuerID: String
+    ) -> [String] {
+        [
+            "-authenticationKeyPath", keyURL.path,
+            "-authenticationKeyID", keyID,
+            "-authenticationKeyIssuerID", issuerID
+        ]
+    }
+
+    private func writeAppStoreConnectAuthenticationKey(
+        _ privateKey: String,
+        keyID: String,
+        temporaryDirectory: URL
+    ) throws -> URL {
+        let keyDirectory = temporaryDirectory.appendingPathComponent(
+            "private_keys",
+            isDirectory: true
+        )
+        try fileManager.createDirectory(at: keyDirectory, withIntermediateDirectories: true)
+        let keyURL = keyDirectory.appendingPathComponent("AuthKey_\(keyID).p8")
+        try Data(privateKey.utf8).write(to: keyURL, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
+        return keyURL
+    }
+
     private func uploadBuild(
         ipaURL: URL,
         issuerID: String,
@@ -1168,11 +1203,12 @@ final class AppStorePublishingService {
         temporaryDirectory: URL,
         eventHandler: @escaping EventHandler
     ) async throws {
-        let keyDirectory = temporaryDirectory.appendingPathComponent("private_keys", isDirectory: true)
-        try fileManager.createDirectory(at: keyDirectory, withIntermediateDirectories: true)
-        let keyURL = keyDirectory.appendingPathComponent("AuthKey_\(keyID).p8")
-        try Data(privateKey.utf8).write(to: keyURL, options: .atomic)
-        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyURL.path)
+        let keyURL = try writeAppStoreConnectAuthenticationKey(
+            privateKey,
+            keyID: keyID,
+            temporaryDirectory: temporaryDirectory
+        )
+        let keyDirectory = keyURL.deletingLastPathComponent()
 
         let uploaderURL = try appStoreUploaderURL()
         eventHandler(.output(L10n.text("Validating the exported IPA with Apple's App Store upload tool…\n")))

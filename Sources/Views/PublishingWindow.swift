@@ -240,7 +240,7 @@ private struct PublishingWindowView: View {
                     ContentUnavailableView(
                         "No publishable application",
                         systemImage: "shippingbox",
-                        description: Text("Add an iOS application that uses Direct Xcode build.")
+                        description: Text("Add a managed iOS application.")
                     )
                 } else if let project = selectedProject {
                     Picker("Workspace", selection: $selectedWorkspace) {
@@ -1486,7 +1486,7 @@ private struct PublishingWindowView: View {
     }
 
     private var eligibleProjects: [ManagedProject] {
-        model.projects.filter { !$0.isMacOSApplication && $0.installMethod == .xcodebuild }
+        model.projects.filter { !$0.isMacOSApplication }
     }
 
     private var selectedProject: ManagedProject? {
@@ -1732,6 +1732,7 @@ private struct PublishingWindowView: View {
             sourceReadiness(for: project),
             accountReadiness,
             contentReadiness,
+            whatsNewReadiness,
             complianceReadiness,
             screenshotReadiness,
             reviewReadiness
@@ -1791,7 +1792,7 @@ private struct PublishingWindowView: View {
             id: "source",
             title: L10n.text("Source version is ready"),
             detail: L10n.format(
-                "%@ (%@) is selected. The scheme may advance it once during archive.",
+                "%@ (%@) is selected. Build and upload preserve this version.",
                 localVersion,
                 localBuild
             ),
@@ -1871,7 +1872,7 @@ private struct PublishingWindowView: View {
             id: "source",
             title: L10n.text("Source version is ready"),
             detail: L10n.format(
-                "%@ (%@) is selected. The scheme may advance it once during archive.",
+                "%@ (%@) is selected. Build and upload preserve this version.",
                 localVersion,
                 localBuild
             ),
@@ -1955,6 +1956,88 @@ private struct PublishingWindowView: View {
             ),
             state: .ready
         )
+    }
+
+    private var whatsNewReadiness: PublishingReadinessItem {
+        switch appStoreConfiguration {
+        case .loading:
+            return PublishingReadinessItem(
+                id: "whats-new",
+                title: L10n.text("What’s New"),
+                detail: L10n.text("Checking the latest approved App Store version…"),
+                state: .checking
+            )
+        case .error(let message):
+            return PublishingReadinessItem(
+                id: "whats-new",
+                title: L10n.text("What’s New could not be checked"),
+                detail: message,
+                state: .blocked
+            )
+        case .loaded(let snapshot):
+            guard let approvedVersion = snapshot.latestApprovedVersion else {
+                return PublishingReadinessItem(
+                    id: "whats-new",
+                    title: L10n.text("What’s New is not required"),
+                    detail: L10n.text("No earlier approved App Store version was found."),
+                    state: .ready
+                )
+            }
+            guard let publication = localPublishingPreview?.catalog.publication else {
+                return PublishingReadinessItem(
+                    id: "whats-new",
+                    title: L10n.text("What’s New needs review"),
+                    detail: L10n.format(
+                        "Add release notes describing changes after approved version %@.",
+                        approvedVersion.versionString
+                    ),
+                    state: .blocked
+                )
+            }
+
+            let savedNotes: [(locale: String, text: String)]
+            if let localizations = publication.localizations, !localizations.isEmpty {
+                savedNotes = localizations.map { ($0.locale, $0.whatsNew) }
+            } else if let metadata = publication.metadata {
+                savedNotes = [(
+                    publication.locale?.nilIfEmpty
+                        ?? model.preferences.appStoreLocale?.nilIfEmpty
+                        ?? "en-US",
+                    metadata.whatsNew
+                )]
+            } else {
+                savedNotes = []
+            }
+            let missingLocales = savedNotes.compactMap { note in
+                note.text.nilIfEmpty == nil ? note.locale : nil
+            }
+            guard !savedNotes.isEmpty, missingLocales.isEmpty else {
+                let detail = missingLocales.isEmpty
+                    ? L10n.format(
+                        "Add release notes describing changes after approved version %@.",
+                        approvedVersion.versionString
+                    )
+                    : L10n.format(
+                        "What’s New is empty for: %@. Generate or enter it, review it, and save before submitting.",
+                        missingLocales.joined(separator: ", ")
+                    )
+                return PublishingReadinessItem(
+                    id: "whats-new",
+                    title: L10n.text("What’s New needs review"),
+                    detail: detail,
+                    state: .blocked
+                )
+            }
+            return PublishingReadinessItem(
+                id: "whats-new",
+                title: L10n.text("What’s New is ready"),
+                detail: L10n.format(
+                    "Saved release notes for %d language(s) will be used exactly as shown. Publish does not generate or replace them.",
+                    savedNotes.count
+                ),
+                state: .ready
+            )
+        }
     }
 
     private var screenshotReadiness: PublishingReadinessItem {
@@ -2208,9 +2291,11 @@ private struct PublishingWindowView: View {
             let blockerIDs = Set(report.blockers.map(\.id))
             if blockerIDs.contains("privacy-account") {
                 openPublishingSettings()
-            } else if !blockerIDs.isDisjoint(with: ["review", "content", "compliance", "screenshots"]) {
+            } else if !blockerIDs.isDisjoint(with: ["review", "content", "whats-new", "compliance", "screenshots"]) {
                 configurationEditorStartsWithAI = model.hasOpenAIAPIKey && needsEditableAIDraft
-                configurationEditorInitialTab = firstConfigurationTabNeedingAttention
+                configurationEditorInitialTab = blockerIDs.contains("whats-new")
+                    ? .listing
+                    : firstConfigurationTabNeedingAttention
                 configurationEditorHighlightsMissingFields = true
                 selectedWorkspace = .configuration
             } else if blockerIDs.contains("account") {
@@ -2397,8 +2482,8 @@ private struct PublishingWindowView: View {
             )
         }
         return matchingTestFlightBuild == nil
-            ? L10n.text("Publish synchronizes the complete localized listing, app declarations, free price and availability, subscriptions and territory prices, screenshots, TestFlight information, internal testers, and review details. It then archives and uploads the build, attaches review assets, and submits the app version plus subscription group and subscription versions together.")
-            : L10n.text("The exact build is already in TestFlight. Publish will synchronize the complete App Store and TestFlight setup, reuse that build, attach review assets, and submit the app version plus subscription group and subscription versions together without another archive or upload.")
+            ? L10n.text("Publish uses the saved What’s New text exactly as reviewed and does not generate or replace it. It synchronizes the complete localized listing, app declarations, free price and availability, subscriptions and territory prices, screenshots, TestFlight information, internal testers, and review details. It then archives and uploads the existing project version without running repository workflow scripts, attaches review assets, and submits the app version plus subscription group and subscription versions together.")
+            : L10n.text("The exact build is already in TestFlight. Publish uses the saved What’s New text exactly as reviewed, synchronizes the complete App Store and TestFlight setup, reuses that build, attaches review assets, and submits the app version plus subscription group and subscription versions together without another archive or upload.")
     }
 
     private var earliestExpirationDate: Date {

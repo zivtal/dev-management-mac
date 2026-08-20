@@ -102,7 +102,6 @@
 "Pause application installations" = "השהה התקנות של האפליקציה";
 "Resume application installations" = "חדש התקנות של האפליקציה";
 "Current version" = "גרסה נוכחית";
-"Installation method" = "שיטת התקנה";
 "Scheme" = "Scheme";
 "Configuration" = "תצורה";
 "Platform" = "פלטפורמה";
@@ -119,7 +118,6 @@
 "Choose an iOS application folder" = "בחירת תיקיית אפליקציית iOS";
 "Choose an iOS or macOS application folder" = "בחירת תיקיית אפליקציית iOS או macOS";
 "Add" = "הוסף";
-"install.sh (optional)" = "install.sh (אופציונלי)";
 "Direct Xcode build" = "בנייה ישירה עם Xcode";
 "Select an application to edit its build settings." = "יש לבחור אפליקציה כדי לערוך את הגדרות הבנייה שלה.";
 "Status" = "מצב";
@@ -151,7 +149,6 @@
 "Installs on this Mac" = "מותקנת ב־Mac הזה";
 "Development Management builds the selected macOS scheme, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build." = "Development Management בונה את ה־scheme שנבחר ל־macOS, יוצרת ומאמתת קובץ DMG, עוצרת את האפליקציה הקיימת אם היא פועלת, מחליפה אותה בתיקיית Applications ומפעילה את הבנייה החדשה.";
 "DMG output: %@" = "פלט DMG: %@";
-"The selected install.sh runs locally with MACOS_INSTALL_TARGET=local." = "הקובץ install.sh שנבחר פועל מקומית עם MACOS_INSTALL_TARGET=local.";
 
 "Activity log" = "יומן פעילות";
 "The latest build, installation, and device events." = "אירועי הבנייה, ההתקנה והמכשירים האחרונים.";
@@ -191,7 +188,6 @@
 "No .xcodeproj or .xcworkspace was found in the selected folder." = "לא נמצא בתיקייה ‎.xcodeproj או ‎.xcworkspace.";
 "No shared schemes were found. Mark a scheme as Shared in Xcode." = "לא נמצאו schemes משותפים. יש לסמן scheme כ־Shared ב־Xcode.";
 "Could not read the project details from Xcode." = "לא ניתן לקרוא את פרטי הפרויקט מ־Xcode.";
-"install.sh was not found. Switch to Direct Xcode build in Settings." = "install.sh לא נמצא. אפשר לעבור לבנייה ישירה עם Xcode בהגדרות.";
 "The saved Xcode project or workspace no longer exists." = "פרויקט ה־Xcode או ה־workspace השמור כבר אינו קיים.";
 "The build finished, but no .app product was found to install." = "הבנייה הסתיימה, אך לא נמצא תוצר ‎.app להתקנה.";
 "Could not stop the running %@ application." = "לא ניתן לעצור את האפליקציה הפעילה %@.";
@@ -690,7 +686,6 @@
 "All configured public App Store URLs are reachable.\n" = "כל כתובות App Store הציבוריות שהוגדרו זמינות.\n";
 "Prepared %d App Review attachment(s) from the project.\n" = "הוכנו %d קבצים מצורפים לבדיקת האפליקציה מהפרויקט.\n";
 "Archive contains %@ %@ (%@).\n" = "הארכיון מכיל %@ %@ (%@).\n";
-"The Xcode scheme changed the version during archive; continuing with the archived version.\n" = "ערכת Xcode שינתה את הגרסה בזמן יצירת הארכיון; ממשיכים עם גרסת הארכיון.\n";
 "The %@ URL returned HTTP %d: %@. Update it to a public page that returns HTTP 200–399, then try again." = "הכתובת של %@ החזירה HTTP %d: %@. יש לעדכן אותה לדף ציבורי שמחזיר HTTP 200–399 ולנסות שוב.";
 "The %@ URL could not be reached: %@ (%@). Check the URL and internet connection, then try again." = "לא ניתן להגיע לכתובת של %@: %@ (%@). יש לבדוק את הכתובת ואת החיבור לאינטרנט ולנסות שוב.";
 "Validating %d public App Store URL(s) before publishing…\n" = "מתבצע אימות של %d כתובות App Store ציבוריות לפני הפרסום…\n";
@@ -768,7 +763,6 @@
 "This release is already with Apple" = "גרסה זו כבר נמצאת אצל Apple";
 "Version %@ (%@) is %@. Wait for Apple or advance the source version before another upload." = "גרסה %@ (%@) נמצאת במצב %@. יש להמתין ל־Apple או לקדם את גרסת המקור לפני העלאה נוספת.";
 "Source version is ready" = "גרסת המקור מוכנה";
-"%@ (%@) is selected. The scheme may advance it once during archive." = "נבחרה %@ (%@). ערכת הבנייה עשויה לקדם אותה פעם אחת במהלך יצירת הארכיון.";
 "App Store Connect access" = "גישה ל־App Store Connect";
 "Checking credentials and the live app record…" = "בודק הרשאות ואת רשומת האפליקציה הפעילה…";
 "App Store Connect needs attention" = "App Store Connect דורש טיפול";
@@ -1151,9 +1145,6 @@
 "No README release section or Git changes could be found after approved version %@." = "לא נמצא ב־README מקטע הפצה או שינויי Git לאחר הגרסה המאושרת %@.";
 "Git changes after approved version %@ (%@)" = "שינויי Git לאחר הגרסה המאושרת %@ ‏(%@)";
 "the 20 latest Git commits because approved version %@ has no matching tag or version commit" = "20 הקומיטים האחרונים ב־Git, מכיוון שלגרסה המאושרת %@ אין תג או קומיט גרסה תואם";
-"Generating localized What’s New text with OpenAI for changes after approved version %@…\n" = "יצירת טקסט מקומי של מה חדש באמצעות OpenAI עבור שינויים לאחר הגרסה המאושרת %@…\n";
-"Generated What’s New text for %d language(s) using %@.\n" = "נוצר טקסט מה חדש עבור %d שפות באמצעות %@.\n";
-"Approved version %@ exists, but no OpenAI API key is saved; keeping the configured What’s New text.\n" = "קיימת גרסה מאושרת %@, אך לא נשמר מפתח API של OpenAI; טקסט מה חדש שהוגדר נשמר.\n";
 "Generate What’s New with OpenAI" = "יצירת ״מה חדש״ באמצעות OpenAI";
 "Generating What’s New…" = "יצירת ״מה חדש״…";
 "Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced." = "הגרסה האחרונה שאושרה ב־App Store משמשת כנקודת הבסיס, והשינויים הגלויים למשתמשים מאז מסוכמים. רק הטקסט של ״מה חדש״ מוחלף.";
@@ -1161,3 +1152,27 @@
 "App Store Connect has no earlier approved version to use as the What’s New baseline." = "אין ב־App Store Connect גרסה מאושרת קודמת שתשמש כנקודת הבסיס עבור ״מה חדש״.";
 "Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n" = "Apple אינה מציעה מחיר מינוי %@ ב־%@ עבור %@; נעשה שימוש במחיר הזמין הקרוב ביותר %@.\n";
 "Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment." = "יש להזין את המחיר הרצוי באזור הבסיס. בעת הפרסום נעשה שימוש בנקודת המחיר הקרובה ביותר של Apple כאשר אין התאמה מדויקת, והשינוי מדווח.";
+"The shared Xcode scheme %@ could not be found, so its build actions could not be checked." = "סכימת Xcode המשותפת %@ לא נמצאה, ולכן לא ניתן היה לבדוק את פעולות הבנייה שלה.";
+"Scheme script" = "סקריפט סכימה";
+"Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n" = "בנייה ללא %d פעולות סקריפט של סכימת Xcode; ‏Development Management אינו מפעיל סקריפטים של תהליך עבודה ממאגר הקוד.\n";
+"Using the saved What’s New text exactly as reviewed; Publish does not generate or replace it.\n" = "נעשה שימוש בטקסט ״מה חדש״ שנשמר בדיוק כפי שנבדק; הפרסום אינו יוצר או מחליף אותו.\n";
+"The archive changed the marketing version from %@ to %@. Publication stopped without uploading it." = "הארכיון שינה את גרסת השיווק מ־%@ ל־%@. הפרסום הופסק בלי להעלות אותו.";
+"The archive changed the build number from %@ to %@. Publication stopped without uploading it." = "הארכיון שינה את מספר הבנייה מ־%@ ל־%@. הפרסום הופסק בלי להעלות אותו.";
+"Preparing saved App Store metadata…" = "הכנת נתוני ה־App Store שנשמרו…";
+"Build method" = "שיטת בנייה";
+"Development Management builds the selected macOS scheme without repository workflow scripts, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build." = "‏Development Management בונה את סכימת macOS שנבחרה ללא סקריפטים של תהליך עבודה ממאגר הקוד, יוצר ומאמת DMG, עוצר את היישום הקיים אם הוא פועל, מחליף אותו בתיקיית היישומים ומפעיל את הבנייה החדשה.";
+"%@ (%@) is selected. Build and upload preserve this version." = "נבחרה %@ ‏(%@). הבנייה וההעלאה שומרות על גרסה זו.";
+"Checking the latest approved App Store version…" = "בדיקת הגרסה האחרונה שאושרה ב־App Store…";
+"What’s New could not be checked" = "לא ניתן לבדוק את ״מה חדש״";
+"What’s New is not required" = "אין צורך ב״מה חדש״";
+"No earlier approved App Store version was found." = "לא נמצאה גרסת App Store מאושרת קודמת.";
+"What’s New needs review" = "יש לבדוק את ״מה חדש״";
+"Add release notes describing changes after approved version %@." = "יש להוסיף הערות הפצה המתארות את השינויים לאחר הגרסה המאושרת %@.";
+"What’s New is empty for: %@. Generate or enter it, review it, and save before submitting." = "הטקסט ״מה חדש״ ריק עבור: %@. יש ליצור או להזין אותו, לבדוק ולשמור לפני השליחה.";
+"What’s New is ready" = "״מה חדש״ מוכן";
+"Saved release notes for %d language(s) will be used exactly as shown. Publish does not generate or replace them." = "הערות ההפצה שנשמרו עבור %d שפות ישמשו בדיוק כפי שהן מוצגות. הפרסום אינו יוצר או מחליף אותן.";
+"Publish uses the saved What’s New text exactly as reviewed and does not generate or replace it. It synchronizes the complete localized listing, app declarations, free price and availability, subscriptions and territory prices, screenshots, TestFlight information, internal testers, and review details. It then archives and uploads the existing project version without running repository workflow scripts, attaches review assets, and submits the app version plus subscription group and subscription versions together." = "הפרסום משתמש בטקסט ״מה חדש״ שנשמר בדיוק כפי שנבדק ואינו יוצר או מחליף אותו. הוא מסנכרן את הרישום המקומי המלא, הצהרות היישום, מחיר חינם וזמינות, מינויים ומחירי אזורים, צילומי מסך, פרטי TestFlight, בודקים פנימיים ופרטי בדיקה. לאחר מכן הוא יוצר ארכיון ומעלה את גרסת הפרויקט הקיימת בלי להפעיל סקריפטים של תהליך עבודה ממאגר הקוד, מצרף נכסי בדיקה ושולח יחד את גרסת היישום, גרסת קבוצת המינויים וגרסאות המינויים.";
+"The exact build is already in TestFlight. Publish uses the saved What’s New text exactly as reviewed, synchronizes the complete App Store and TestFlight setup, reuses that build, attaches review assets, and submits the app version plus subscription group and subscription versions together without another archive or upload." = "הבנייה המדויקת כבר נמצאת ב־TestFlight. הפרסום משתמש בטקסט ״מה חדש״ שנשמר בדיוק כפי שנבדק, מסנכרן את הגדרות App Store ו־TestFlight המלאות, משתמש שוב בבנייה, מצרף נכסי בדיקה ושולח יחד את גרסת היישום, גרסת קבוצת המינויים וגרסאות המינויים ללא ארכיון או העלאה נוספים.";
+"App Store publishing requires a managed iOS application." = "פרסום ב־App Store דורש יישום iOS מנוהל.";
+"Add a managed iOS application." = "יש להוסיף יישום iOS מנוהל.";
+"Authenticating Xcode signing with the configured App Store Connect key.\n" = "מאמת את החתימה של Xcode באמצעות מפתח App Store Connect שהוגדר.\n";

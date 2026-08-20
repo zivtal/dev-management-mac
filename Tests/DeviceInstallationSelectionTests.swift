@@ -281,8 +281,6 @@ final class DeviceInstallationSelectionTests: XCTestCase {
             configuration: "Debug",
             availableSchemes: ["Example"],
             availableConfigurations: ["Debug"],
-            installMethod: .xcodebuild,
-            installScriptPath: nil,
             isEnabled: true,
             marketingVersion: nil,
             buildNumber: nil,

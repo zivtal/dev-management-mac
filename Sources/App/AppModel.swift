@@ -645,7 +645,7 @@ final class AppModel: ObservableObject {
         }
         refreshProjectVersions()
         guard let project = projects.first(where: { $0.id == projectID }) else { return }
-        guard !project.isMacOSApplication, project.installMethod == .xcodebuild else {
+        guard !project.isMacOSApplication else {
             presentedError = AppStorePublishingError.unsupportedProject.localizedDescription
             return
         }
@@ -805,11 +805,7 @@ final class AppModel: ObservableObject {
             replaceScreenshots: perAppConfiguration?.replaceScreenshots ?? false,
             releaseAutomatically: releaseAutomatically,
             replaceActiveReviewVersion: intent == .publish && replaceActiveReviewVersion,
-            testFlight: testFlightConfiguration,
-            openAIAPIKey: intent.submitsForReview
-                ? (try? credentialStore.string(for: .openAIAPIKey))?.nilIfEmpty
-                : nil,
-            openAIModel: preferences.openAIModel?.nilIfEmpty ?? "gpt-5.6-luna"
+            testFlight: testFlightConfiguration
         )
         beginPublishing(project: project, configuration: publishingConfiguration)
     }
@@ -925,8 +921,7 @@ final class AppModel: ObservableObject {
         projectID: UUID
     ) async throws -> AppStoreConnectConfigurationSnapshot {
         guard let project = projects.first(where: { $0.id == projectID }),
-              !project.isMacOSApplication,
-              project.installMethod == .xcodebuild else {
+              !project.isMacOSApplication else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
@@ -996,8 +991,7 @@ final class AppModel: ObservableObject {
         locales: [String]
     ) async throws -> AppStoreReleaseNotesGeneration {
         guard let project = projects.first(where: { $0.id == projectID }),
-              !project.isMacOSApplication,
-              project.installMethod == .xcodebuild else {
+              !project.isMacOSApplication else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
@@ -1087,8 +1081,7 @@ final class AppModel: ObservableObject {
 
         refreshProjectVersions()
         guard let project = projects.first(where: { $0.id == projectID }),
-              !project.isMacOSApplication,
-              project.installMethod == .xcodebuild else {
+              !project.isMacOSApplication else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
@@ -1139,8 +1132,7 @@ final class AppModel: ObservableObject {
         offerID: String
     ) async throws -> AppStoreConnectOfferCodeDetailSnapshot {
         guard let project = projects.first(where: { $0.id == projectID }),
-              !project.isMacOSApplication,
-              project.installMethod == .xcodebuild else {
+              !project.isMacOSApplication else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
@@ -1458,8 +1450,7 @@ final class AppModel: ObservableObject {
                     now: now,
                     intervalDays: preferences.reinstallAfterDays
                 )
-                let expirationDiscoveryIsDue = project.installMethod == .xcodebuild
-                    && installationRecord != nil
+                let expirationDiscoveryIsDue = installationRecord != nil
                     && installationRecord?.profileExpirationWasChecked != true
                 let installedVersionIsOlder: Bool
                 if let bundleIdentifier = project.bundleIdentifier,
@@ -1948,7 +1939,6 @@ final class AppModel: ObservableObject {
                     lastInstallationRecord(for: project.id, deviceUDID: $0)
                 }
                 if !project.isMacOSApplication,
-                   project.installMethod == .xcodebuild,
                    installationRecord != nil,
                    installationRecord?.profileExpirationWasChecked != true {
                     return TimeInterval(preferences.pollIntervalSeconds)

@@ -37,6 +37,23 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertTrue(AppStorePublishingService.requiresReachablePublicationURLs(for: .publish))
     }
 
+    func testXcodeSigningUsesConfiguredAppStoreConnectAuthenticationKey() {
+        let keyURL = URL(fileURLWithPath: "/temporary/AuthKey_ABC123.p8")
+
+        XCTAssertEqual(
+            AppStorePublishingService.xcodeAuthenticationArguments(
+                keyURL: keyURL,
+                keyID: "ABC123",
+                issuerID: "issuer-456"
+            ),
+            [
+                "-authenticationKeyPath", keyURL.path,
+                "-authenticationKeyID", "ABC123",
+                "-authenticationKeyIssuerID", "issuer-456"
+            ]
+        )
+    }
+
     func testUploadFailureDetectorStopsRepeatedChecksumLoopAcrossOutputChunks() {
         let detector = AppStoreUploadFailureDetector(checksumFailureLimit: 3)
 
@@ -1895,8 +1912,6 @@ final class AppStorePublishingTests: XCTestCase {
             configuration: "Debug",
             availableSchemes: ["Example"],
             availableConfigurations: ["Debug", "Release"],
-            installMethod: .xcodebuild,
-            installScriptPath: nil,
             isEnabled: true,
             marketingVersion: "1.0",
             buildNumber: "1",

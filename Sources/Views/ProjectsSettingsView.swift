@@ -226,7 +226,7 @@ struct ProjectsSettingsView: View {
                         || model.hasActiveWork
                 )
 
-                if !project.isMacOSApplication, project.installMethod == .xcodebuild {
+                if !project.isMacOSApplication {
                     Button {
                         PublishingWindowPresenter.shared.show(model: model, projectID: project.id)
                     } label: {
@@ -268,57 +268,44 @@ struct ProjectsSettingsView: View {
 
             settingsDivider
 
-            settingsPickerRow("Installation method") {
+            settingsPickerRow("Build method") {
+                Text("Direct Xcode build")
+            }
+
+            settingsDivider
+
+            settingsPickerRow("Scheme") {
                 Picker(
-                    "Installation method",
+                    "Scheme",
                     selection: Binding(
-                        get: { project.installMethod },
-                        set: { value in model.updateProject(id: project.id) { $0.installMethod = value } }
+                        get: { project.scheme },
+                        set: { model.setProjectScheme($0, for: project.id) }
                     )
                 ) {
-                    if project.installScriptPath != nil {
-                        Text(InstallMethod.installScript.title).tag(InstallMethod.installScript)
-                    }
-                    Text(InstallMethod.xcodebuild.title).tag(InstallMethod.xcodebuild)
+                    ForEach(project.availableSchemes, id: \.self) { Text($0).tag($0) }
                 }
                 .labelsHidden()
             }
 
-            if project.installMethod == .xcodebuild {
-                settingsDivider
+            settingsDivider
 
-                settingsPickerRow("Scheme") {
-                    Picker(
-                        "Scheme",
-                        selection: Binding(
-                            get: { project.scheme },
-                            set: { model.setProjectScheme($0, for: project.id) }
-                        )
-                    ) {
-                        ForEach(project.availableSchemes, id: \.self) { Text($0).tag($0) }
-                    }
-                    .labelsHidden()
+            settingsPickerRow("Configuration") {
+                Picker(
+                    "Configuration",
+                    selection: Binding(
+                        get: { project.configuration },
+                        set: { model.setProjectConfiguration($0, for: project.id) }
+                    )
+                ) {
+                    ForEach(project.availableConfigurations, id: \.self) { Text($0).tag($0) }
                 }
+                .labelsHidden()
+            }
 
-                settingsDivider
+            settingsDivider
 
-                settingsPickerRow("Configuration") {
-                    Picker(
-                        "Configuration",
-                        selection: Binding(
-                            get: { project.configuration },
-                            set: { model.setProjectConfiguration($0, for: project.id) }
-                        )
-                    ) {
-                        ForEach(project.availableConfigurations, id: \.self) { Text($0).tag($0) }
-                    }
-                    .labelsHidden()
-                }
-
-                settingsDivider
-
-                settingsPickerRow("Signing team") {
-                    HStack(spacing: 8) {
+            settingsPickerRow("Signing team") {
+                HStack(spacing: 8) {
                         Picker(
                             "Signing team",
                             selection: Binding(
@@ -353,18 +340,17 @@ struct ProjectsSettingsView: View {
                         .buttonStyle(.borderless)
                         .help("Refresh signing teams")
                         .disabled(model.isRefreshingDeveloperTeams || model.hasActiveWork)
-                    }
                 }
-
-                settingsDivider
-
-                Text(signingTeamGuidance(for: project))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
             }
+
+            settingsDivider
+
+            Text(signingTeamGuidance(for: project))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
         }
         .background(settingsCardBackground)
         .fixedSize(horizontal: false, vertical: true)
@@ -456,13 +442,9 @@ struct ProjectsSettingsView: View {
                 settingsDivider
 
                 VStack(alignment: .leading, spacing: 5) {
-                    if project.installMethod == .xcodebuild {
-                        Text("Development Management builds the selected macOS scheme, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build.")
-                        Text(L10n.format("DMG output: %@", project.macOSDMGURL.path))
-                            .textSelection(.enabled)
-                    } else {
-                        Text("The selected install.sh runs locally with MACOS_INSTALL_TARGET=local.")
-                    }
+                    Text("Development Management builds the selected macOS scheme without repository workflow scripts, creates and verifies a DMG, stops the existing application if it is running, replaces it in Applications, and launches the new build.")
+                    Text(L10n.format("DMG output: %@", project.macOSDMGURL.path))
+                        .textSelection(.enabled)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)

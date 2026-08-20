@@ -29,8 +29,6 @@ final class ProjectIconServiceTests: XCTestCase {
             configuration: "Debug",
             availableSchemes: ["Phone"],
             availableConfigurations: ["Debug"],
-            installMethod: .xcodebuild,
-            installScriptPath: nil,
             isEnabled: true,
             marketingVersion: nil,
             buildNumber: nil

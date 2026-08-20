@@ -10,13 +10,13 @@ Saved manifest values are authoritative. For a new app, the publishing editor
 can ask OpenAI to prepare a conservative, evidence-backed draft from bounded
 `README.md` and project-manifest excerpts. Every generated value is placed in a
 normal editable field and must be reviewed and saved before either release
-action can start. Upload never changes saved metadata. When Publish finds an
-earlier Apple-approved version and an OpenAI key is saved, it automatically
-refreshes only the localized **What’s New** text before submission. It prefers a
-current-version or release-notes section in the managed app's `README.md`; when
-none exists, it uses Git changes after the approved version's tag or version
-commit, falling back transparently to the 20 latest commits when no matching
-baseline exists. The draft is constrained by the current bounded source scan.
+action can start. Upload and Publish never generate or change saved metadata.
+The dedicated What’s New button looks up the earlier Apple-approved version and
+prefers a current-version or release-notes section in the managed app's
+`README.md`; when none exists, it uses Git changes after the approved version's
+tag or version commit, falling back transparently to the 20 latest commits when
+no matching baseline exists. The draft is constrained by the current bounded
+source scan and must be reviewed and saved before submission.
 
 ```json
 {
@@ -256,10 +256,13 @@ order:
 4. Prepare or capture App Store screenshots for each supported simulator family.
 5. Look for the exact selected marketing version and build in TestFlight. When
    it is already present, reuse it and skip the archive and upload. Otherwise,
-   archive and export the selected iOS scheme.
+   archive and export a temporary copy of the selected iOS scheme with repository
+   pre/post action scripts removed. The selected App Store Connect `.p8` key is
+   passed to Xcode for automatic signing and provisioning, so export does not
+   depend on an Apple Account session stored in Xcode.
 6. When an archive is required, read its bundle identifier, marketing version,
-   and build number. These archive values remain authoritative when a scheme
-   pre-action increments the source version during the build. A reused
+   and build number. They must exactly match the selected source version and
+   build; publication stops without uploading if either changed. A reused
    TestFlight build is confirmed as fully processed before the App Store version
    is changed.
 7. Create or update the App Store version and reconcile localized listing text,
@@ -314,8 +317,8 @@ review-only tail:
 When the managed folder contains a root `project.yml` and the selected container
 is a root-level Xcode project, Development Management regenerates the project
 with XcodeGen immediately before a direct build or archive. Newly added source
-files are therefore included before a scheme pre-action can advance the app
-version. If a command still fails, the alert shows the relevant compiler or
+files are therefore included, while scheme pre/post actions remain disabled and
+the app's existing version is preserved. If a command still fails, the alert shows the relevant compiler or
 archive diagnostics while Activity retains the complete command output.
 
 The menu-bar application list includes a paper-plane action for every eligible

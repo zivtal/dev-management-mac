@@ -289,6 +289,10 @@ final class AppStoreConnectService {
             testFlightBuild = nil
         }
         let activeReviewVersion = Self.activeReviewVersion(in: versions)
+        let latestApprovedVersion = Self.latestApprovedVersion(
+            in: versions,
+            excluding: preferredVersion?.nilIfEmpty ?? ""
+        )
         let hasReadyForDistributionVersion = Self.hasReadyForDistributionVersion(in: versions)
         let version: AppStoreConnectVersionSnapshot? = if let selectedVersion {
             try await versionSnapshot(selectedVersion)
@@ -328,6 +332,7 @@ final class AppStoreConnectService {
             version: version,
             testFlightBuild: testFlightBuild,
             activeReviewVersion: activeReviewVersion,
+            latestApprovedVersion: latestApprovedVersion,
             hasReadyForDistributionVersion: hasReadyForDistributionVersion,
             subscriptionGroups: groups.sorted {
                 $0.referenceName.localizedCaseInsensitiveCompare($1.referenceName) == .orderedAscending

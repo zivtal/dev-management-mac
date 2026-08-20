@@ -15,6 +15,7 @@
 		0EFCC40A31BDE64FC7DFCE67 /* SandboxTesterServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6EB9AF1E8FA9C94AAA2117 /* SandboxTesterServiceTests.swift */; };
 		10B73E068A2930D8B63CD51A /* PublishingExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEB7006C83FBE963AE4FD977 /* PublishingExperience.swift */; };
 		121804B98A7161635E126A7F /* ProjectVersionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 456F7738EAE617528B0F3D42 /* ProjectVersionServiceTests.swift */; };
+		13D1BC1DE58C277C97276348 /* XcodeSchemeBuildPreparationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A466250B1213AF0E709F70B /* XcodeSchemeBuildPreparationTests.swift */; };
 		1766C77D192322DDFE013B52 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D190FC0A3C788DB8CD0DA91D /* AppModel.swift */; };
 		186176281EFB29233526C564 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B9D31026AFB1960E78BA7E7B /* UserNotifications.framework */; };
 		1F60A97E4452BC3D63D176D6 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = D17B264A0F29A8D7C101F2E1 /* Localizable.strings */; };
@@ -49,6 +50,7 @@
 		838F0881E4A418BDF08E4B07 /* AppStoreReviewAssetServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA50B22EEA4F44C04C57D311 /* AppStoreReviewAssetServiceTests.swift */; };
 		83CFCF32E6A27D8E46FD0830 /* ProjectDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A274BABF591ED945D7895E6 /* ProjectDiscoveryService.swift */; };
 		888253A11CA00C81D01AEDC3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C19A08F5E6B9B95BCCBB61FB /* Assets.xcassets */; };
+		89D3B46308B7974D1158B4EE /* XcodeSchemeBuildPreparationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3FB8168F49AC5165CA13526 /* XcodeSchemeBuildPreparationService.swift */; };
 		8B000FE50BDAD47E586FDC95 /* PublishingPrivacyDraftFields.swift in Sources */ = {isa = PBXBuildFile; fileRef = 247CEE9CD0CC978A72B0A2E6 /* PublishingPrivacyDraftFields.swift */; };
 		8E203327032B650A64BF8924 /* ProjectLocalizationDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F58FBC7AF5A7D51D823487C5 /* ProjectLocalizationDiscoveryService.swift */; };
 		95B6832D1AD4A1A98A759720 /* PublishingReadinessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E6B368943210F206DF5C9E6 /* PublishingReadinessView.swift */; };
@@ -142,6 +144,7 @@
 		8648AB030DDA915B7137674A /* InstallationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationService.swift; sourceTree = "<group>"; };
 		86BBDE915B650D7851ACEB46 /* InstallationNotificationTextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstallationNotificationTextTests.swift; sourceTree = "<group>"; };
 		883000032D46600DD5CCFF08 /* String+NonEmpty.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+NonEmpty.swift"; sourceTree = "<group>"; };
+		8A466250B1213AF0E709F70B /* XcodeSchemeBuildPreparationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XcodeSchemeBuildPreparationTests.swift; sourceTree = "<group>"; };
 		8BE596EF36D4CA2839361964 /* DevManagement.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DevManagement.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F4D16DBF90639806C2952C8 /* AppStorePrivacyPublishingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStorePrivacyPublishingService.swift; sourceTree = "<group>"; };
 		913C295EE121D11D54FE3D0D /* ProjectIconService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIconService.swift; sourceTree = "<group>"; };
@@ -156,6 +159,7 @@
 		A59E1559E63A3643555DC751 /* ProjectIconServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectIconServiceTests.swift; sourceTree = "<group>"; };
 		AA50B22EEA4F44C04C57D311 /* AppStoreReviewAssetServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreReviewAssetServiceTests.swift; sourceTree = "<group>"; };
 		AC02EA04969F48B7CB14ED49 /* PublishingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingWindow.swift; sourceTree = "<group>"; };
+		B3FB8168F49AC5165CA13526 /* XcodeSchemeBuildPreparationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XcodeSchemeBuildPreparationService.swift; sourceTree = "<group>"; };
 		B4BD224F76E01A19DEBB6020 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		B9D31026AFB1960E78BA7E7B /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 		BFEE7B1D2C50ED2BB83B31D1 /* AppStoreCopyrightNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreCopyrightNormalizer.swift; sourceTree = "<group>"; };
@@ -225,6 +229,7 @@
 				25055FBACD7B5FDD275AF0E0 /* StoreKitSubscriptionDiscoveryService.swift */,
 				1EE52232D5DB1CF4FF3954EE /* USBConnectionMonitor.swift */,
 				CC031DD8C8850B95D5E78916 /* XcodeGenProjectPreparationService.swift */,
+				B3FB8168F49AC5165CA13526 /* XcodeSchemeBuildPreparationService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -350,6 +355,7 @@
 				0E6EB9AF1E8FA9C94AAA2117 /* SandboxTesterServiceTests.swift */,
 				7EB3B7AB29B4412F47C54292 /* SchedulingPolicyTests.swift */,
 				13FDDF9F48698084B25CFFA3 /* XcodeGenProjectPreparationTests.swift */,
+				8A466250B1213AF0E709F70B /* XcodeSchemeBuildPreparationTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -517,6 +523,7 @@
 				B83A4EAA414165468AF70F69 /* SubscriptionPricingCardsView.swift in Sources */,
 				586865366583D21C8E8EF961 /* USBConnectionMonitor.swift in Sources */,
 				72A1881F1249603B754F89AB /* XcodeGenProjectPreparationService.swift in Sources */,
+				89D3B46308B7974D1158B4EE /* XcodeSchemeBuildPreparationService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -542,6 +549,7 @@
 				0EFCC40A31BDE64FC7DFCE67 /* SandboxTesterServiceTests.swift in Sources */,
 				9632C4EDAFFF50F0AA2F4FEE /* SchedulingPolicyTests.swift in Sources */,
 				D62324A78C666F5EF8101F39 /* XcodeGenProjectPreparationTests.swift in Sources */,
+				13D1BC1DE58C277C97276348 /* XcodeSchemeBuildPreparationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -662,7 +670,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 88;
+				CURRENT_PROJECT_VERSION = 89;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -682,7 +690,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.8.7;
+				MARKETING_VERSION = 1.8.8;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -729,7 +737,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 88;
+				CURRENT_PROJECT_VERSION = 89;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -743,7 +751,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.8.7;
+				MARKETING_VERSION = 1.8.8;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

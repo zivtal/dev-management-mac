@@ -13,8 +13,6 @@ final class InstallationNotificationTextTests: XCTestCase {
             configuration: "Debug",
             availableSchemes: ["TestApp"],
             availableConfigurations: ["Debug"],
-            installMethod: .xcodebuild,
-            installScriptPath: nil,
             isEnabled: true,
             marketingVersion: "1.2.3",
             buildNumber: "8"

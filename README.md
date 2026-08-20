@@ -20,8 +20,8 @@ configurable number of days.
   available transport, including USB and local-network/Wi-Fi connections.
 - Installation schedules are tracked independently for every application and
   every iPhone or iPad.
-- A project-level `install.sh` is supported but never required. Direct Xcode
-  build and device installation is a first-class workflow.
+- Managed applications are built directly with Xcode. Repository workflow
+  scripts are never executed by Development Management.
 - When installation work is pending, discovery is retried every five minutes.
   After all work succeeds, the app sleeps until the next scheduled date.
 
@@ -37,7 +37,6 @@ configurable number of days.
 - Direct `xcodebuild` build, signing, provisioning, and CoreDevice installation.
 - Direct macOS build, verified DMG creation, running-process shutdown, atomic
   replacement in `/Applications`, and relaunch.
-- Optional custom installation through a root-level `install.sh`.
 - iPhone, iPad, and Apple Watch discovery; iOS and iPadOS devices are install
   targets, while Apple Watch is displayed as a companion device.
 - Per-application device selection in Settings, persisted by application and
@@ -181,7 +180,7 @@ Settings contains six tabs and is the only ordinary app window.
 - Enable, pause, or resume each managed application from its table row or
   detail view. Pausing prevents new automatic, manual, and Install All work;
   an installation already in progress is allowed to finish.
-- Choose `install.sh` or direct Xcode installation when a script exists.
+- Use the selected shared scheme and configuration for a direct Xcode build.
 - Choose the shared scheme and build configuration for direct builds.
 - View the detected platform. macOS schemes target this Mac and show their DMG
   output path; iOS schemes provide the compatible-device selector.
@@ -204,10 +203,10 @@ Settings contains six tabs and is the only ordinary app window.
   copyright, age rating, and an App Privacy checklist. Public URLs, legal
   agreements, subscription prices, review contacts, credentials, and publisher
   attestations remain manual fields.
-- When an app has an earlier Apple-approved version, automatically draft each
-  localized **What’s New** field during Publish from the current-version README
-  release section or Git changes after that approved version, verified against
-  the bounded current source snapshot.
+- When an app has an earlier Apple-approved version, use the dedicated button to
+  draft each localized **What’s New** field from the current-version README
+  release section or Git changes after that approved version. Review and save
+  the draft before Publish.
 - Store a Fastlane App Store Connect session in Keychain to publish an explicitly
   authorized **Data Not Collected** App Privacy declaration automatically.
 - Configure a default App Store Connect API and any number of named additional
@@ -271,14 +270,17 @@ submission. Review attachments are prepared and uploaded before that boundary.
 A hard intent guard prevents the TestFlight path from
 submitting review items. If the exact selected version and build are already in
 TestFlight, either action reuses it without another archive or upload.
-Before a review submission for an app with an earlier approved version, OpenAI
-automatically refreshes only the localized **What’s New** text. A matching
-current-version or release-notes section in `README.md` is preferred; otherwise
-Git commits and changed-file summaries after the approved version are used.
-The publishing configuration editor also provides a dedicated **Generate What’s
-New with OpenAI** button beside that field. It detects the latest approved App
-Store version, generates a short customer-facing summary for each configured
-locale, and replaces only the editable What’s New values.
+When an archive is needed, Xcode uses the selected App Store Connect `.p8` key
+for automatic distribution signing and provisioning; publishing does not rely
+on an Apple Account session stored in Xcode.
+The publishing configuration editor provides a dedicated **Generate What’s New
+with OpenAI** button beside that field. It detects the latest approved App Store
+version, prefers a matching current-version or release-notes section in
+`README.md`, otherwise uses Git commits and changed-file summaries after that
+version, and generates a short customer-facing summary for each configured
+locale. Only the editable What’s New values are replaced. Generation never runs
+inside Publish; readiness requires saved release notes for every configured
+locale when an earlier approved version exists.
 When another App Store version is in review, TestFlight upload continues while
 Apple's locked version-scoped storefront metadata, screenshots, review assets,
 and App Store build attachment are deferred until that version is released or
@@ -294,9 +296,8 @@ documentation—and can draft localized listing text, categories, content-rights
 free-download and demo-account status, copyright, age-rating answers, and an App
 Privacy checklist. Unsupported age-rating answers default to No or None; positive
 answers require repository evidence. The user must review and save the draft
-before Upload or Publish. Publish's sole automatic metadata exception is the
-approved-version **What’s New** refresh described above. Because Apple does not
-expose App Privacy through its public API,
+before Upload or Publish. Publish uses the saved listing and What’s New text
+exactly as reviewed. Because Apple does not expose App Privacy through its public API,
 an authorized no-data declaration is published through the Fastlane session in
 Publishing Settings. Collected-data declarations retain a manual App Store
 Connect confirmation path. Support and
@@ -351,8 +352,8 @@ Discovery follows these rules:
    `Watch`, or `Share`.
 6. Prefer the `Debug` configuration, then a configuration containing `debug`,
    then the first available configuration.
-7. Select direct Xcode installation by default. If `install.sh` exists at the
-   selected folder's root, keep it available as an optional installation method.
+7. Configure direct Xcode installation. Repository `install.sh` files are not
+   discovered or executed.
 8. Query the selected scheme and configuration with `xcodebuild
    -showBuildSettings -json`, trying generic iOS and macOS destinations. Persist
    the detected application platform, `PRODUCT_BUNDLE_IDENTIFIER`, and whether
@@ -391,12 +392,14 @@ Direct installation does not require any repository-specific script. For the
 selected project/workspace, scheme, configuration, and device, Development Management:
 
 1. Regenerates a root-level XcodeGen project when `project.yml` is present.
-2. Creates a temporary Derived Data directory.
-3. Runs `xcodebuild` for `platform=iOS,id=<device-udid>` with a 45-second
+2. Creates a temporary copy of the selected scheme without pre/post action
+   scripts, so workflow scripts cannot mutate the repository or its version.
+3. Creates a temporary Derived Data directory.
+4. Runs `xcodebuild` for `platform=iOS,id=<device-udid>` with a 45-second
    destination timeout.
-4. Passes `-allowProvisioningUpdates` and
+5. Passes `-allowProvisioningUpdates` and
    `-allowProvisioningDeviceRegistration`.
-5. Uses the project's resolved signing team when it has one. Otherwise,
+6. Uses the project's resolved signing team when it has one. Otherwise,
    automatically selects a unique team whose valid Xcode provisioning profiles
    match the application's bundle-ID namespace. A team selected explicitly for
    the managed application overrides `DEVELOPMENT_TEAM` and enables Xcode
@@ -404,14 +407,11 @@ selected project/workspace, scheme, configuration, and device, Development Manag
    from local Apple Development identities and valid Xcode provisioning profiles
    and can be refreshed in Settings. If no unique match exists, Settings requires
    an explicit per-application selection before the build starts.
-6. Resolves the built application with `xcodebuild -showBuildSettings -json`,
+7. Resolves the built application with `xcodebuild -showBuildSettings -json`,
    with a Derived Data scan as fallback.
-7. Defines the `DEVELOPMENT_MANAGEMENT_MANAGED_INSTALL` Swift compilation
-   condition so an application can recognize this local managed build without
-   affecting its ordinary Xcode, archive, or App Store builds.
 8. Runs `xcrun devicectl device install app --device <device-udid>
    --timeout 180 <built-app>`.
-9. Removes the temporary build directory.
+9. Removes the temporary build directory and temporary scheme.
 
 Paired devices reported by CoreDevice remain visible and keep their per-application
 selection while their developer tunnel is connecting. Development Management actively
@@ -422,8 +422,8 @@ starting a build against an ineligible destination. If that probe specifically t
 out, Development Management restarts the user-owned CoreDevice service and retries once
 per app session so a stale service does not leave every device stuck at Connecting.
 
-The build uses the source tree's current contents and the developer account and
-signing configuration available to Xcode.
+The build uses the source tree's current contents, marketing version, build
+number, and the developer account and signing configuration available to Xcode.
 
 For a macOS scheme, direct installation instead:
 
@@ -442,29 +442,6 @@ Successful-installation notifications may show the installed application's
 icon as an attachment. Development Management always creates a temporary copy first,
 because macOS moves notification attachment files into its own data store; files
 inside the managed source project are never handed to the notification system.
-
-### Optional `install.sh`
-
-If the selected folder contains `install.sh`, Development Management can execute it
-with `/bin/bash`. The executable bit is not required.
-
-Script contract:
-
-- Working directory: the selected project folder.
-- Environment variable: `IOS_DEVICE_UDID`, containing the target device UDID.
-- For a macOS target, `MACOS_INSTALL_TARGET=local` is supplied instead.
-- `DEVELOPMENT_MANAGEMENT_MANAGED_INSTALL=1` identifies both iOS and macOS
-  script executions as local managed installs. A project may translate it into
-  a build setting or compilation condition when it needs build-specific local
-  behavior.
-- Standard output and standard error are merged into the activity log and live
-  progress display.
-- Exit status `0` means the complete build-and-install operation succeeded.
-- Any nonzero exit status means it failed and its output is recorded.
-- The script is responsible for both building and installing the app.
-
-The direct Xcode method remains available whenever an Xcode container was
-successfully discovered, even if `install.sh` exists.
 
 ## Device discovery and transport support
 
@@ -594,11 +571,11 @@ New user-visible text must be added to both:
 - Device discovery and installation are delegated to the active Xcode
   toolchain.
 - The app is intentionally not sandboxed so it can access user-selected source
-  trees, execute their scripts and build tools, and work with Xcode/CoreDevice.
+  trees and work with Xcode/CoreDevice.
 - Hardened Runtime is enabled.
 - Launch at login is managed with `SMAppService.mainApp`.
-- Project scripts run with the current user's privileges. Add only trusted
-  source folders and review their `install.sh` before using it.
+- Development Management does not execute repository `install.sh` files or
+  Xcode scheme pre/post action scripts.
 - Build and installation output may contain local paths or tool diagnostics and
   is stored in the local Activity history.
 - Publishing metadata generation sends the managed app's name, version,
@@ -747,9 +724,9 @@ Current unit coverage verifies:
 - Named App Store Connect profile persistence, separate Keychain accounts,
   attribute-only existence checks, per-app selection, and legacy decoding.
 
-Manual release validation should also cover USB and Wi-Fi discovery, direct and
-script-based installation, Settings persistence, launch at login, notifications,
-and the absence of a Dock icon.
+Manual release validation should also cover USB and Wi-Fi discovery, direct
+Xcode installation, Settings persistence, launch at login, notifications, and
+the absence of a Dock icon.
 
 ## Versioning, packaging, and local deployment
 
@@ -820,14 +797,6 @@ launch around this script.
   and `devicectl` output.
 - Confirm the selected scheme produces an installable iOS `.app`, not only a
   test, extension, or Watch product.
-
-### `install.sh` fails
-
-- Run the script with `/bin/bash` from the project folder.
-- Confirm it reads `IOS_DEVICE_UDID` and performs both build and installation.
-- Return exit status `0` only after installation has succeeded.
-- Switch the project to **Direct Xcode build** if the script is stale or no
-  longer needed.
 
 ### No notification appears
 

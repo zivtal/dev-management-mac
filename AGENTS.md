@@ -37,5 +37,9 @@ an `LSUIElement` accessory app: no Dock icon and no ordinary main window.
   the compatible-device rows scroll when their list exceeds the available space.
 - When work is due, retry discovery every five minutes. Once all work succeeds,
   sleep until the next scheduled reinstall date.
-- A project folder may use `install.sh`, but it must never be required; direct
-  Xcode project/workspace build and installation is a first-class path.
+- Managed applications are always built directly with Xcode. Never execute an
+  app repository's `install.sh` or Xcode scheme pre/post action scripts.
+- Building, installing, testing, and publishing must preserve the managed
+  application's existing marketing version and build number. Version bumps are
+  repository delivery changes performed exactly once by an agent, never a build
+  side effect.

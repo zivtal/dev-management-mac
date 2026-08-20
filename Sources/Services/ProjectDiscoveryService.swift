@@ -113,8 +113,6 @@ final class ProjectDiscoveryService {
         let configurations = (summary.configurations ?? ["Debug"]).sorted {
             $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         }
-        let scriptURL = folderURL.appendingPathComponent("install.sh")
-        let scriptPath = fileManager.fileExists(atPath: scriptURL.path) ? scriptURL.path : nil
         let displayName = summary.name?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         var descriptor = ProjectDescriptor(
@@ -124,8 +122,7 @@ final class ProjectDiscoveryService {
             containerPath: containerURL.standardizedFileURL.path,
             containerKind: containerKind,
             schemes: schemes,
-            configurations: configurations,
-            installScriptPath: scriptPath
+            configurations: configurations
         )
         if let metadata = try? await applicationMetadata(for: descriptor.makeManagedProject()) {
             descriptor.supportedDeviceFamilies = metadata.supportedDeviceFamilies

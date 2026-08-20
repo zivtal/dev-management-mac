@@ -306,6 +306,7 @@ final class PublishingExperienceTests: XCTestCase {
             ),
             testFlightBuild: nil,
             activeReviewVersion: nil,
+            latestApprovedVersion: nil,
             hasReadyForDistributionVersion: false,
             subscriptionGroups: [],
             loadedAt: Date()

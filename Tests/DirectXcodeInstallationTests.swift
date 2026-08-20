@@ -17,18 +17,17 @@ final class DirectXcodeInstallationTests: XCTestCase {
         XCTAssertNil(project.configurationMatchingScheme("ShekelExchange"))
     }
 
-    func testNewProjectUsesDirectXcodeEvenWhenInstallScriptExists() {
+    func testNewProjectUsesDirectXcodeOnly() {
         let descriptor = ProjectDescriptor(
             displayName: "Example",
             folderPath: "/tmp/Example",
             containerPath: "/tmp/Example/Example.xcodeproj",
             containerKind: .project,
             schemes: ["Example"],
-            configurations: ["Debug"],
-            installScriptPath: "/tmp/Example/install.sh"
+            configurations: ["Debug"]
         )
 
-        XCTAssertEqual(descriptor.makeManagedProject().installMethod, .xcodebuild)
+        XCTAssertEqual(descriptor.makeManagedProject().scheme, "Example")
     }
 
     func testSelectedTeamOverridesSigningForDirectBuild() {
@@ -58,17 +57,16 @@ final class DirectXcodeInstallationTests: XCTestCase {
         XCTAssertFalse(arguments.contains(where: { $0.hasPrefix("PROVISIONING_PROFILE") }))
     }
 
-    func testDirectIOSBuildIdentifiesManagedInstallToSwiftTargets() {
+    func testDirectIOSBuildDoesNotOverrideSwiftCompilationConditions() {
         let arguments = InstallationService.xcodeArguments(
             project: makeProject(),
             device: makeDevice(),
             derivedDataURL: URL(fileURLWithPath: "/tmp/DerivedData")
         )
 
-        XCTAssertTrue(arguments.contains(
-            "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) "
-                + InstallationService.managedInstallCompilationCondition
-        ))
+        XCTAssertFalse(arguments.contains(where: {
+            $0.hasPrefix("SWIFT_ACTIVE_COMPILATION_CONDITIONS=")
+        }))
     }
 
     func testSigningTeamPersistsWithManagedProject() throws {
@@ -291,8 +289,6 @@ final class DirectXcodeInstallationTests: XCTestCase {
             configuration: configuration,
             availableSchemes: availableSchemes,
             availableConfigurations: availableConfigurations,
-            installMethod: .xcodebuild,
-            installScriptPath: nil,
             isEnabled: true,
             marketingVersion: nil,
             buildNumber: nil

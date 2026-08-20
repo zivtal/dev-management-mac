@@ -498,6 +498,7 @@ struct AppStoreConnectConfigurationSnapshot: Equatable, Sendable {
     let version: AppStoreConnectVersionSnapshot?
     let testFlightBuild: AppStoreConnectBuildReference?
     let activeReviewVersion: AppStoreConnectVersionReferenceSnapshot?
+    let latestApprovedVersion: AppStoreConnectVersionReferenceSnapshot?
     let hasReadyForDistributionVersion: Bool
     let subscriptionGroups: [AppStoreConnectSubscriptionGroupSnapshot]
     let loadedAt: Date
@@ -951,8 +952,6 @@ struct PublishingConfiguration: Sendable {
     let releaseAutomatically: Bool
     let replaceActiveReviewVersion: Bool
     let testFlight: AppStoreTestFlightConfiguration?
-    var openAIAPIKey: String? = nil
-    var openAIModel: String = "gpt-5.6-luna"
 }
 
 struct PublishingResult: Equatable, Sendable {
@@ -997,7 +996,7 @@ struct PublishingProgress: Equatable {
             case .preparing: L10n.text("Preparing App Store publication…")
             case .discoveringSubscriptions: L10n.text("Inspecting StoreKit subscriptions…")
             case .publishingPrivacy: L10n.text("Publishing App Privacy answers…")
-            case .generatingMetadata: L10n.text("Generating App Store description…")
+            case .generatingMetadata: L10n.text("Preparing saved App Store metadata…")
             case .collectingScreenshots: L10n.text("Collecting App Store screenshots…")
             case .archiving: L10n.text("Archiving and exporting the application…")
             case .uploadingMetadata: L10n.text("Updating App Store metadata…")

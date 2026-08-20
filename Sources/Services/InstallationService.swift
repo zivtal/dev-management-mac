@@ -106,7 +106,6 @@ struct InstallationOutcome {
 }
 
 enum InstallationServiceError: LocalizedError {
-    case missingInstallScript
     case missingProjectContainer
     case missingDevelopmentTeam
     case noBuiltApplication
@@ -115,8 +114,6 @@ enum InstallationServiceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingInstallScript:
-            L10n.text("install.sh was not found. Switch to Direct Xcode build in Settings.")
         case .missingProjectContainer:
             L10n.text("The saved Xcode project or workspace no longer exists.")
         case .missingDevelopmentTeam:
@@ -134,15 +131,11 @@ enum InstallationServiceError: LocalizedError {
 final class InstallationService {
     typealias EventHandler = @Sendable (InstallationEvent) -> Void
 
-    static let managedInstallCompilationCondition =
-        "DEVELOPMENT_MANAGEMENT_MANAGED_INSTALL"
-    static let managedInstallEnvironmentVariable =
-        "DEVELOPMENT_MANAGEMENT_MANAGED_INSTALL"
-
     private let processRunner: ProcessRunner
     private let fileManager: FileManager
     private let developerTeamService: DeveloperTeamService
     private let xcodeGenPreparationService: XcodeGenProjectPreparationService
+    private let xcodeSchemePreparationService: XcodeSchemeBuildPreparationService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
@@ -156,6 +149,9 @@ final class InstallationService {
             processRunner: processRunner,
             fileManager: fileManager
         )
+        self.xcodeSchemePreparationService = XcodeSchemeBuildPreparationService(
+            fileManager: fileManager
+        )
     }
 
     func install(
@@ -165,12 +161,7 @@ final class InstallationService {
     ) async throws -> InstallationOutcome {
         eventHandler(.phase(.preparing))
 
-        switch project.installMethod {
-        case .installScript:
-            return try await installUsingScript(project: project, device: device, eventHandler: eventHandler)
-        case .xcodebuild:
-            return try await buildAndInstall(project: project, device: device, eventHandler: eventHandler)
-        }
+        return try await buildAndInstall(project: project, device: device, eventHandler: eventHandler)
     }
 
     func install(
@@ -179,74 +170,10 @@ final class InstallationService {
     ) async throws -> InstallationOutcome {
         eventHandler(.phase(.preparing))
 
-        switch project.installMethod {
-        case .installScript:
-            return try await installUsingScript(project: project, eventHandler: eventHandler)
-        case .xcodebuild:
-            return try await buildPackageAndInstallMacApplication(
-                project: project,
-                eventHandler: eventHandler
-            )
-        }
-    }
-
-    private func installUsingScript(
-        project: ManagedProject,
-        device: ConnectedDevice,
-        eventHandler: @escaping EventHandler
-    ) async throws -> InstallationOutcome {
-        guard let scriptPath = project.installScriptPath,
-              fileManager.fileExists(atPath: scriptPath)
-        else {
-            throw InstallationServiceError.missingInstallScript
-        }
-
-        eventHandler(.phase(.building))
-        let result = try await processRunner.runAndRequireSuccess(
-            executable: URL(fileURLWithPath: "/bin/bash"),
-            arguments: [scriptPath],
-            workingDirectory: project.folderURL,
-            additionalEnvironment: [
-                "IOS_DEVICE_UDID": device.udid,
-                Self.managedInstallEnvironmentVariable: "1"
-            ],
-            onOutput: { text in
-                if text.localizedCaseInsensitiveContains("installing") {
-                    eventHandler(.phase(.installing))
-                }
-                eventHandler(.output(text))
-            }
+        return try await buildPackageAndInstallMacApplication(
+            project: project,
+            eventHandler: eventHandler
         )
-        return InstallationOutcome(log: Self.trimmedLog(result.output))
-    }
-
-    private func installUsingScript(
-        project: ManagedProject,
-        eventHandler: @escaping EventHandler
-    ) async throws -> InstallationOutcome {
-        guard let scriptPath = project.installScriptPath,
-              fileManager.fileExists(atPath: scriptPath)
-        else {
-            throw InstallationServiceError.missingInstallScript
-        }
-
-        eventHandler(.phase(.building))
-        let result = try await processRunner.runAndRequireSuccess(
-            executable: URL(fileURLWithPath: "/bin/bash"),
-            arguments: [scriptPath],
-            workingDirectory: project.folderURL,
-            additionalEnvironment: [
-                "MACOS_INSTALL_TARGET": "local",
-                Self.managedInstallEnvironmentVariable: "1"
-            ],
-            onOutput: { text in
-                if text.localizedCaseInsensitiveContains("installing") {
-                    eventHandler(.phase(.installing))
-                }
-                eventHandler(.output(text))
-            }
-        )
-        return InstallationOutcome(log: Self.trimmedLog(result.output))
     }
 
     private func buildAndInstall(
@@ -277,11 +204,20 @@ final class InstallationService {
         let derivedDataURL = temporaryDirectory.appendingPathComponent("DerivedData", isDirectory: true)
         try fileManager.createDirectory(at: derivedDataURL, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: temporaryDirectory) }
+        let preparedScheme = try xcodeSchemePreparationService.prepare(project: buildProject)
+        defer { preparedScheme.removeTemporaryFile(fileManager: fileManager) }
+        if !preparedScheme.removedActionTitles.isEmpty {
+            eventHandler(.output(L10n.format(
+                "Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n",
+                preparedScheme.removedActionTitles.count
+            )))
+        }
 
         let commonArguments = Self.xcodeArguments(
             project: buildProject,
             device: device,
-            derivedDataURL: derivedDataURL
+            derivedDataURL: derivedDataURL,
+            scheme: preparedScheme.name
         )
 
         eventHandler(.phase(.building))
@@ -345,10 +281,19 @@ final class InstallationService {
         let mountURL = temporaryDirectory.appendingPathComponent("MountedDMG", isDirectory: true)
         try fileManager.createDirectory(at: derivedDataURL, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: temporaryDirectory) }
+        let preparedScheme = try xcodeSchemePreparationService.prepare(project: project)
+        defer { preparedScheme.removeTemporaryFile(fileManager: fileManager) }
+        if !preparedScheme.removedActionTitles.isEmpty {
+            eventHandler(.output(L10n.format(
+                "Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n",
+                preparedScheme.removedActionTitles.count
+            )))
+        }
 
         let commonArguments = Self.macOSXcodeArguments(
             project: project,
-            derivedDataURL: derivedDataURL
+            derivedDataURL: derivedDataURL,
+            scheme: preparedScheme.name
         )
         eventHandler(.phase(.building))
         let buildResult = try await processRunner.runAndRequireSuccess(
@@ -605,16 +550,16 @@ final class InstallationService {
     static func xcodeArguments(
         project: ManagedProject,
         device: ConnectedDevice,
-        derivedDataURL: URL
+        derivedDataURL: URL,
+        scheme: String? = nil
     ) -> [String] {
         var arguments = [
             project.containerKind.xcodebuildFlag, project.containerPath,
-            "-scheme", project.scheme,
+            "-scheme", scheme ?? project.scheme,
             "-configuration", project.configuration,
             "-destination", "platform=iOS,id=\(device.udid)",
             "-destination-timeout", "45",
-            "-derivedDataPath", derivedDataURL.path,
-            managedInstallSwiftConditionArgument
+            "-derivedDataPath", derivedDataURL.path
         ]
         if let teamID = project.signingTeamID?.trimmingCharacters(in: .whitespacesAndNewlines),
            !teamID.isEmpty {
@@ -630,15 +575,15 @@ final class InstallationService {
 
     static func macOSXcodeArguments(
         project: ManagedProject,
-        derivedDataURL: URL
+        derivedDataURL: URL,
+        scheme: String? = nil
     ) -> [String] {
         var arguments = [
             project.containerKind.xcodebuildFlag, project.containerPath,
-            "-scheme", project.scheme,
+            "-scheme", scheme ?? project.scheme,
             "-configuration", project.configuration,
             "-destination", "generic/platform=macOS",
-            "-derivedDataPath", derivedDataURL.path,
-            managedInstallSwiftConditionArgument
+            "-derivedDataPath", derivedDataURL.path
         ]
         if let teamID = project.signingTeamID?.trimmingCharacters(in: .whitespacesAndNewlines),
            !teamID.isEmpty {
@@ -650,11 +595,6 @@ final class InstallationService {
             ])
         }
         return arguments
-    }
-
-    private static var managedInstallSwiftConditionArgument: String {
-        "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) "
-            + managedInstallCompilationCondition
     }
 
     private func locateBuiltApplication(

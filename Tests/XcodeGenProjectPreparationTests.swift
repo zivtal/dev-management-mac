@@ -64,8 +64,6 @@ final class XcodeGenProjectPreparationTests: XCTestCase {
             configuration: "Release",
             availableSchemes: ["Sample"],
             availableConfigurations: ["Release"],
-            installMethod: .xcodebuild,
-            installScriptPath: nil,
             isEnabled: true,
             marketingVersion: "1.0.0",
             buildNumber: "1"

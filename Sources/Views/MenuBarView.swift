@@ -478,7 +478,7 @@ struct MenuBarView: View {
             .disabled(
                 model.hasActiveWork || isOpeningPublishingWindow
                     || !model.projects.contains {
-                        !$0.isMacOSApplication && $0.installMethod == .xcodebuild
+                        !$0.isMacOSApplication
                     }
             )
 
@@ -520,7 +520,7 @@ struct MenuBarView: View {
     }
 
     private func canPublish(_ project: ManagedProject) -> Bool {
-        !project.isMacOSApplication && project.installMethod == .xcodebuild
+        !project.isMacOSApplication
     }
 
     private func hasSubscriptions(_ project: ManagedProject) -> Bool {
@@ -529,7 +529,7 @@ struct MenuBarView: View {
 
     private var subscriptionDiscoveryKey: String {
         let projects = model.projects
-            .map { "\($0.id.uuidString)|\($0.folderPath)|\($0.installMethod.rawValue)|\($0.applicationPlatform?.rawValue ?? "")" }
+            .map { "\($0.id.uuidString)|\($0.folderPath)|\($0.applicationPlatform?.rawValue ?? "")" }
             .joined(separator: ";")
         return "\(model.preferences.appStoreLocale ?? "")|\(projects)"
     }

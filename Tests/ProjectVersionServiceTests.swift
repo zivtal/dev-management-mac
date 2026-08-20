@@ -26,8 +26,6 @@ final class ProjectVersionServiceTests: XCTestCase {
             configuration: "Debug",
             availableSchemes: ["Sample"],
             availableConfigurations: ["Debug"],
-            installMethod: .xcodebuild,
-            installScriptPath: nil,
             isEnabled: true,
             marketingVersion: nil,
             buildNumber: nil
@@ -56,8 +54,6 @@ final class ProjectVersionServiceTests: XCTestCase {
             configuration: "Debug",
             availableSchemes: ["Sample"],
             availableConfigurations: ["Debug"],
-            installMethod: .xcodebuild,
-            installScriptPath: nil,
             isEnabled: true,
             marketingVersion: nil,
             buildNumber: nil
