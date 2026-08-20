@@ -275,6 +275,10 @@ Before a review submission for an app with an earlier approved version, OpenAI
 automatically refreshes only the localized **What’s New** text. A matching
 current-version or release-notes section in `README.md` is preferred; otherwise
 Git commits and changed-file summaries after the approved version are used.
+The publishing configuration editor also provides a dedicated **Generate What’s
+New with OpenAI** button beside that field. It detects the latest approved App
+Store version, generates a short customer-facing summary for each configured
+locale, and replaces only the editable What’s New values.
 When another App Store version is in review, TestFlight upload continues while
 Apple's locked version-scoped storefront metadata, screenshots, review assets,
 and App Store build attachment are deferred until that version is released or

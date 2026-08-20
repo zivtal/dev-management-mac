@@ -1154,5 +1154,10 @@
 "Generating localized What’s New text with OpenAI for changes after approved version %@…\n" = "Generating localized What’s New text with OpenAI for changes after approved version %@…\n";
 "Generated What’s New text for %d language(s) using %@.\n" = "Generated What’s New text for %d language(s) using %@.\n";
 "Approved version %@ exists, but no OpenAI API key is saved; keeping the configured What’s New text.\n" = "Approved version %@ exists, but no OpenAI API key is saved; keeping the configured What’s New text.\n";
+"Generate What’s New with OpenAI" = "Generate What’s New with OpenAI";
+"Generating What’s New…" = "Generating What’s New…";
+"Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced." = "Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced.";
+"Generated What’s New for %d language(s) from changes after approved version %@ using %@." = "Generated What’s New for %d language(s) from changes after approved version %@ using %@.";
+"App Store Connect has no earlier approved version to use as the What’s New baseline." = "App Store Connect has no earlier approved version to use as the What’s New baseline.";
 "Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n" = "Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n";
 "Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment." = "Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment.";

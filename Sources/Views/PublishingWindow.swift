@@ -2581,6 +2581,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var validationMessage: String?
     @State private var isLoading = true
     @State private var isGeneratingAI = false
+    @State private var isGeneratingWhatsNew = false
     @State private var isGeneratingAgeRating = false
     @State private var isGeneratingPrivacy = false
     @State private var aiGenerationNotice: String?
@@ -2646,6 +2647,10 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var subscriptionReviewScreenshot = ""
     @State private var subscriptionGroups: [PublishingSubscriptionGroupForm] = []
 
+    private var isGeneratingAnyAI: Bool {
+        isGeneratingAI || isGeneratingWhatsNew || isGeneratingAgeRating || isGeneratingPrivacy
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -2666,7 +2671,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                             Label("Generate Listing and App Answers with OpenAI", systemImage: "sparkles")
                         }
                     }
-                    .disabled(isLoading || isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
+                    .disabled(isLoading || isGeneratingAnyAI)
                 }
             }
 
@@ -2722,7 +2727,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 Button("Validate, Save, and Return") { save() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isLoading || isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
+                    .disabled(isLoading || isGeneratingAnyAI)
             }
         }
         .padding(20)
@@ -2939,7 +2944,39 @@ private struct PerAppPublishingConfigurationEditor: View {
             configurationTextEditor("Description", text: $description, height: 130)
             TextField("Keywords", text: $keywords)
             TextField("Promotional text", text: $promotionalText)
-            configurationTextEditor("What’s New", text: $whatsNew, height: 80)
+            whatsNewEditor
+        }
+    }
+
+    private var whatsNewEditor: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text("What’s New")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    Task { await generateAIWhatsNew() }
+                } label: {
+                    if isGeneratingWhatsNew {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Generating What’s New…")
+                        }
+                    } else {
+                        Label("Generate What’s New with OpenAI", systemImage: "sparkles")
+                    }
+                }
+                .disabled(isLoading || isGeneratingAnyAI)
+            }
+            TextEditor(text: $whatsNew)
+                .font(.body)
+                .frame(height: 80)
+                .padding(5)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+            Text("Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -3137,7 +3174,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                     Label("Fill Age Ratings with OpenAI", systemImage: "sparkles")
                 }
             }
-            .disabled(isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
+            .disabled(isGeneratingAnyAI)
             PublishingAgeRatingFields(ageRating: $ageRating)
             Text("OpenAI scans the source repository and defaults unsupported age-rating answers to No or None. Positive answers require repository evidence; review every field before publishing.")
                 .font(.caption)
@@ -3159,7 +3196,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                     Label("Fill App Privacy with OpenAI", systemImage: "sparkles")
                 }
             }
-            .disabled(isGeneratingAI || isGeneratingAgeRating || isGeneratingPrivacy)
+            .disabled(isGeneratingAnyAI)
             PublishingPrivacyDraftFields(
                 isSpecified: Binding(
                     get: { privacyDraftIsSpecified },
@@ -3914,6 +3951,51 @@ private struct PerAppPublishingConfigurationEditor: View {
             complianceEvidence = compliance.evidence
             complianceConfidence = compliance.confidence
             validationMessage = nil
+        } catch {
+            validationMessage = error.localizedDescription
+        }
+    }
+
+    private func generateAIWhatsNew() async {
+        isGeneratingWhatsNew = true
+        defer { isGeneratingWhatsNew = false }
+        aiGenerationNotice = nil
+        validationMessage = nil
+
+        do {
+            let localizations = [
+                AppStoreLocalizedMetadata(
+                    locale: locale,
+                    appName: appName,
+                    subtitle: subtitle,
+                    description: description,
+                    keywords: keywords,
+                    promotionalText: promotionalText,
+                    whatsNew: whatsNew
+                )
+            ] + additionalLocalizations
+            let generation = try await model.generateAppStoreReleaseNotes(
+                projectID: project.id,
+                locales: localizations.map(\.locale)
+            )
+            let updated = AppStorePublishingService.applyingReleaseNotes(
+                generation.releaseNotes,
+                to: localizations
+            )
+            guard let primary = updated.first else {
+                throw OpenAIStoreMetadataError.missingGeneratedText
+            }
+
+            whatsNew = primary.whatsNew
+            for index in additionalLocalizations.indices {
+                additionalLocalizations[index].whatsNew = updated[index + 1].whatsNew
+            }
+            aiGenerationNotice = L10n.format(
+                "Generated What’s New for %d language(s) from changes after approved version %@ using %@.",
+                updated.count,
+                generation.previousApprovedVersion,
+                generation.evidence.sourceDescription
+            )
         } catch {
             validationMessage = error.localizedDescription
         }

@@ -821,7 +821,9 @@ final class AppStorePublishingService {
             ($0.locale.lowercased(), $0.whatsNew)
         })
         return localizations.map { localization in
-            guard let whatsNew = values[localization.locale.lowercased()] else {
+            let locale = AppStoreLocale.canonicalIdentifier(localization.locale)
+                ?? localization.locale
+            guard let whatsNew = values[locale.lowercased()] else {
                 return localization
             }
             var updated = localization

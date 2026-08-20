@@ -991,6 +991,52 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func generateAppStoreReleaseNotes(
+        projectID: UUID,
+        locales: [String]
+    ) async throws -> AppStoreReleaseNotesGeneration {
+        guard let project = projects.first(where: { $0.id == projectID }),
+              !project.isMacOSApplication,
+              project.installMethod == .xcodebuild else {
+            throw AppStorePublishingError.unsupportedProject
+        }
+        guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
+            throw AppStorePublishingError.missingBundleIdentifier
+        }
+        guard let currentVersion = project.marketingVersion?.nilIfEmpty else {
+            throw AppStorePublishingError.missingVersion
+        }
+        guard let apiKey = try credentialStore.string(for: .openAIAPIKey)?.nilIfEmpty else {
+            throw OpenAIStoreMetadataError.requestFailed(
+                0,
+                L10n.text("Save an OpenAI API key in Publishing settings before generating metadata.")
+            )
+        }
+
+        let credential = try appStoreConnectCredentialMaterial(for: project)
+        let appStoreConnect = try AppStoreConnectService(
+            issuerID: credential.issuerID,
+            keyID: credential.keyID,
+            privateKeyPEM: credential.privateKey
+        )
+        let appID = try await appStoreConnect.applicationID(bundleIdentifier: bundleIdentifier)
+        guard let previousApprovedVersion = try await appStoreConnect.latestApprovedVersion(
+            appID: appID,
+            excluding: currentVersion
+        ) else {
+            throw OpenAIStoreMetadataError.missingApprovedVersion
+        }
+
+        return try await OpenAIStoreMetadataService().generateReleaseNotes(
+            project: project,
+            previousApprovedVersion: previousApprovedVersion.versionString,
+            currentVersion: currentVersion,
+            locales: locales,
+            apiKey: apiKey,
+            model: preferences.openAIModel?.nilIfEmpty ?? "gpt-5.6-luna"
+        )
+    }
+
     func generateAppStoreComplianceDraft(
         projectID: UUID
     ) async throws -> AppStoreComplianceDraft {

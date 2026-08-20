@@ -775,7 +775,7 @@ final class AppStorePublishingTests: XCTestCase {
         let decoded = try OpenAIStoreMetadataService.decodeReleaseNotes(from: responseData)
         let listings = [
             AppStoreLocalizedMetadata(
-                locale: "en-US",
+                locale: "en",
                 appName: "Example",
                 subtitle: "Plan trips",
                 description: "Description",
@@ -800,7 +800,18 @@ final class AppStorePublishingTests: XCTestCase {
             "View routes offline.",
             "צפייה במסלולים ללא חיבור."
         ])
+        XCTAssertEqual(updated.map(\.appName), ["Example", "Example"])
+        XCTAssertEqual(updated.map(\.subtitle), ["Plan trips", "תכנון טיולים"])
         XCTAssertEqual(updated.map(\.description), ["Description", "תיאור"])
+        XCTAssertEqual(updated.map(\.keywords), ["travel", "טיולים"])
+        XCTAssertEqual(updated.map(\.promotionalText), ["Plan now.", "תכננו עכשיו."])
+    }
+
+    func testMissingApprovedVersionExplainsWhyWhatsNewCannotBeGenerated() {
+        XCTAssertEqual(
+            OpenAIStoreMetadataError.missingApprovedVersion.errorDescription,
+            L10n.text("App Store Connect has no earlier approved version to use as the What’s New baseline.")
+        )
     }
 
     func testLocalizedOpenAIResponseRequiresAndDecodesAppAnswers() throws {

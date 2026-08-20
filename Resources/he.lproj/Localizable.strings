@@ -1154,5 +1154,10 @@
 "Generating localized What’s New text with OpenAI for changes after approved version %@…\n" = "יצירת טקסט מקומי של מה חדש באמצעות OpenAI עבור שינויים לאחר הגרסה המאושרת %@…\n";
 "Generated What’s New text for %d language(s) using %@.\n" = "נוצר טקסט מה חדש עבור %d שפות באמצעות %@.\n";
 "Approved version %@ exists, but no OpenAI API key is saved; keeping the configured What’s New text.\n" = "קיימת גרסה מאושרת %@, אך לא נשמר מפתח API של OpenAI; טקסט מה חדש שהוגדר נשמר.\n";
+"Generate What’s New with OpenAI" = "יצירת ״מה חדש״ באמצעות OpenAI";
+"Generating What’s New…" = "יצירת ״מה חדש״…";
+"Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced." = "הגרסה האחרונה שאושרה ב־App Store משמשת כנקודת הבסיס, והשינויים הגלויים למשתמשים מאז מסוכמים. רק הטקסט של ״מה חדש״ מוחלף.";
+"Generated What’s New for %d language(s) from changes after approved version %@ using %@." = "נוצר טקסט ״מה חדש״ עבור %d שפות מהשינויים שלאחר הגרסה המאושרת %@ באמצעות %@.";
+"App Store Connect has no earlier approved version to use as the What’s New baseline." = "אין ב־App Store Connect גרסה מאושרת קודמת שתשמש כנקודת הבסיס עבור ״מה חדש״.";
 "Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n" = "Apple אינה מציעה מחיר מינוי %@ ב־%@ עבור %@; נעשה שימוש במחיר הזמין הקרוב ביותר %@.\n";
 "Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment." = "יש להזין את המחיר הרצוי באזור הבסיס. בעת הפרסום נעשה שימוש בנקודת המחיר הקרובה ביותר של Apple כאשר אין התאמה מדויקת, והשינוי מדווח.";

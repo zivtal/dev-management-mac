@@ -148,6 +148,12 @@ credentials, provider capabilities, legal agreements, release behavior, or
 offer-code terms. Copyright input such as `Company Name` is normalized to
 `<current year> Company Name`; an existing leading year is preserved.
 
+The Store Description section has a dedicated **Generate What’s New with
+OpenAI** button. It looks up the latest earlier Apple-approved version, uses its
+matching release tag or version commit as the Git baseline (with bounded recent
+history as a fallback), and drafts a short localized customer-facing summary.
+Only the primary and existing localized What’s New fields are replaced.
+
 Optional map, AI, imported-document, flight, hotel, or other provider content is
 treated as third-party content when the project documentation says the app may
 show or access it. That produces `USES_THIRD_PARTY_CONTENT` even when the feature
