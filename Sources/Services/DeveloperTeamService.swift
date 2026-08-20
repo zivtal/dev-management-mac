@@ -366,12 +366,25 @@ final class DeveloperTeamService {
     }
 
     private static func subjectValue(_ oid: CFString, certificate: SecCertificate) -> String? {
-        guard let values = SecCertificateCopyValues(certificate, [oid] as CFArray, nil) as NSDictionary?,
-              let property = values[oid] as? NSDictionary,
-              let value = property[kSecPropertyKeyValue] as? String
+        guard let values = SecCertificateCopyValues(
+            certificate,
+            [kSecOIDX509V1SubjectName] as CFArray,
+            nil
+        ) as? [String: Any],
+              let subject = values[kSecOIDX509V1SubjectName as String] as? [String: Any],
+              let components = subject[kSecPropertyKeyValue as String] as? [[String: Any]]
         else {
             return nil
         }
-        return value
+        return certificateSubjectValue(oid as String, components: components)
+    }
+
+    static func certificateSubjectValue(
+        _ oid: String,
+        components: [[String: Any]]
+    ) -> String? {
+        components.first(where: {
+            ($0[kSecPropertyKeyLabel as String] as? String) == oid
+        })?[kSecPropertyKeyValue as String] as? String
     }
 }

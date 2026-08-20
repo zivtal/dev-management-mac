@@ -181,6 +181,26 @@ final class DirectXcodeInstallationTests: XCTestCase {
         ))
     }
 
+    func testCertificateSubjectValueReadsNestedSecuritySubjectComponents() {
+        let components: [[String: Any]] = [
+            ["label": "2.5.4.3", "value": "Apple Distribution: Example"],
+            ["label": "2.5.4.11", "value": "TEAM123"],
+            ["label": "2.5.4.10", "value": "Example Organization"]
+        ]
+
+        XCTAssertEqual(
+            DeveloperTeamService.certificateSubjectValue(
+                "2.5.4.11",
+                components: components
+            ),
+            "TEAM123"
+        )
+        XCTAssertNil(DeveloperTeamService.certificateSubjectValue(
+            "2.5.4.6",
+            components: components
+        ))
+    }
+
     func testBuiltApplicationVersionMustMatchKnownProjectVersion() throws {
         let applicationURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("BuiltVersionTests-\(UUID().uuidString).app", isDirectory: true)
