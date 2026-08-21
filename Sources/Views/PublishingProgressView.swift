@@ -29,16 +29,16 @@ enum PublishingLogWindowSizing {
 final class PublishingLogWindowPresenter {
     static let shared = PublishingLogWindowPresenter()
 
-    private var windowController: NSWindowController?
+    private var windowControllers = PerProjectWindowRegistry<NSWindowController>()
+    private var closeObservers: [UUID: NSObjectProtocol] = [:]
 
     private init() {}
 
     func show(model: AppModel, projectID: UUID? = nil) {
-        if let projectID {
-            model.selectPublishingLog(projectID: projectID)
-        }
-        if windowController == nil {
-            let rootView = PublishingLogWindowView()
+        guard let projectID = projectID ?? model.publishingLog?.projectID else { return }
+        PublishingWindowPresenter.shared.close(projectID: projectID)
+        if windowControllers[projectID] == nil {
+            let rootView = PublishingLogWindowView(projectID: projectID)
                 .environmentObject(model)
             let hostingController = NSHostingController(rootView: rootView)
             let screen = NSApplication.shared.keyWindow?.screen
@@ -60,7 +60,6 @@ final class PublishingLogWindowPresenter {
                 backing: .buffered,
                 defer: false
             )
-            panel.title = L10n.text("Publishing Log")
             panel.contentViewController = hostingController
             panel.isFloatingPanel = true
             panel.level = .floating
@@ -71,51 +70,96 @@ final class PublishingLogWindowPresenter {
                 width: PublishingLogWindowSizing.preferredContentSize.width,
                 height: initialContentHeight
             ))
-            panel.center()
-            windowController = NSWindowController(window: panel)
+            if let screen {
+                panel.setFrame(
+                    PerProjectWindowPlacement.cascadedFrame(
+                        size: panel.frame.size,
+                        in: screen.visibleFrame,
+                        openWindowCount: windowControllers.projectIDs.count
+                    ),
+                    display: false
+                )
+            } else {
+                panel.center()
+            }
+            let windowController = NSWindowController(window: panel)
+            windowControllers.register(windowController, for: projectID)
+            closeObservers[projectID] = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification,
+                object: panel,
+                queue: .main
+            ) { [weak self, weak windowController] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let windowController else { return }
+                    self.removeWindow(projectID: projectID, matching: windowController)
+                }
+            }
         }
 
+        windowControllers[projectID]?.window?.title = model.projects.first(where: {
+            $0.id == projectID
+        })?.displayName
+            ?? model.publishingLog(for: projectID)?.projectName
+            ?? L10n.text("Publishing Log")
         NSApplication.shared.activate(ignoringOtherApps: true)
-        if let window = windowController?.window,
+        if let window = windowControllers[projectID]?.window,
            let correctedSize = PublishingLogWindowSizing.correctedContentSize(
                for: window.contentLayoutRect.size
            ) {
             window.setContentSize(correctedSize)
-            window.center()
         }
-        windowController?.showWindow(nil)
-        windowController?.window?.makeKeyAndOrderFront(nil)
+        windowControllers[projectID]?.showWindow(nil)
+        windowControllers[projectID]?.window?.makeKeyAndOrderFront(nil)
     }
 
-    func close() {
-        windowController?.close()
+    func close(projectID: UUID) {
+        guard let controller = windowControllers[projectID] else { return }
+        removeWindow(projectID: projectID, matching: controller)
+        controller.close()
+    }
+
+    private func removeWindow(projectID: UUID, matching controller: NSWindowController) {
+        guard windowControllers.remove(projectID: projectID, matching: controller) != nil else { return }
+        if let observer = closeObservers.removeValue(forKey: projectID) {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 }
 
 private struct PublishingLogWindowView: View {
     @EnvironmentObject private var model: AppModel
+    let projectID: UUID
 
     var body: some View {
-        if let log = model.publishingLog {
-            PublishingProgressView(
-                log: log,
-                progress: model.publishingProgress,
-                onCancel: { model.cancelPublishing(projectID: log.projectID) },
-                onBackToReview: {
-                    let projectID = log.projectID
-                    model.presentedError = nil
-                    PublishingLogWindowPresenter.shared.close()
-                    PublishingWindowPresenter.shared.show(model: model, projectID: projectID)
-                },
-                onDone: PublishingLogWindowPresenter.shared.close
-            )
-        } else {
-            ContentUnavailableView(
-                "No publishing log",
-                systemImage: "doc.text.magnifyingglass",
-                description: Text("Start an App Store publication or TestFlight upload to see its live output here.")
-            )
-            .frame(minWidth: 720, minHeight: 520)
+        Group {
+            if let log = model.publishingLog(for: projectID) {
+                PublishingProgressView(
+                    log: log,
+                    progress: model.publishingProgress(for: projectID),
+                    onCancel: { model.cancelPublishing(projectID: log.projectID) },
+                    onBackToReview: {
+                        model.presentedError = nil
+                        PublishingLogWindowPresenter.shared.close(projectID: projectID)
+                        PublishingWindowPresenter.shared.show(model: model, projectID: projectID)
+                    },
+                    onDone: { PublishingLogWindowPresenter.shared.close(projectID: projectID) }
+                )
+            } else {
+                ContentUnavailableView(
+                    "No publishing log",
+                    systemImage: "doc.text.magnifyingglass",
+                    description: Text("Start an App Store publication or TestFlight upload to see its live output here.")
+                )
+                .frame(minWidth: 720, minHeight: 520)
+            }
+        }
+        .onChange(of: model.projects.map(\.id)) { _, projectIDs in
+            if !projectIDs.contains(projectID) {
+                Task { @MainActor in
+                    await Task.yield()
+                    PublishingLogWindowPresenter.shared.close(projectID: projectID)
+                }
+            }
         }
     }
 }

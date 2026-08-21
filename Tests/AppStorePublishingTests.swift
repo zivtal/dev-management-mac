@@ -5,6 +5,44 @@ import XCTest
 @testable import DevManagement
 
 final class AppStorePublishingTests: XCTestCase {
+    func testPerProjectWindowRegistryKeepsOneWindowPerApp() {
+        let tripFlowID = UUID()
+        let anotherAppID = UUID()
+        let tripFlowWindow = NSObject()
+        let anotherAppWindow = NSObject()
+        var registry = PerProjectWindowRegistry<NSObject>()
+
+        XCTAssertTrue(registry.register(tripFlowWindow, for: tripFlowID) === tripFlowWindow)
+        XCTAssertTrue(registry.register(anotherAppWindow, for: anotherAppID) === anotherAppWindow)
+        XCTAssertEqual(registry.projectIDs, [tripFlowID, anotherAppID])
+        XCTAssertTrue(registry[tripFlowID] === tripFlowWindow)
+
+        XCTAssertNil(registry.remove(projectID: tripFlowID, matching: NSObject()))
+        XCTAssertTrue(registry.remove(projectID: tripFlowID, matching: tripFlowWindow) === tripFlowWindow)
+        XCTAssertNil(registry[tripFlowID])
+        XCTAssertTrue(registry[anotherAppID] === anotherAppWindow)
+    }
+
+    func testPerProjectPublishingWindowsCascadeWithinTheVisibleScreen() {
+        let screen = NSRect(x: 0, y: 0, width: 1_800, height: 1_200)
+        let size = NSSize(width: 1_100, height: 790)
+        let first = PerProjectWindowPlacement.cascadedFrame(
+            size: size,
+            in: screen,
+            openWindowCount: 0
+        )
+        let second = PerProjectWindowPlacement.cascadedFrame(
+            size: size,
+            in: screen,
+            openWindowCount: 1
+        )
+
+        XCTAssertEqual(first.size, size)
+        XCTAssertEqual(second.origin.x, first.origin.x + PerProjectWindowPlacement.cascadeStep)
+        XCTAssertEqual(second.origin.y, first.origin.y - PerProjectWindowPlacement.cascadeStep)
+        XCTAssertTrue(screen.contains(second))
+    }
+
     func testPublishingLogWindowStartsAtPreferredSizeOrFitsShorterScreens() {
         XCTAssertEqual(
             PublishingLogWindowSizing.preferredContentSize,
@@ -1494,6 +1532,122 @@ final class AppStorePublishingTests: XCTestCase {
             AppStoreConnectService.reusableSubscriptionVersionID(in: versions),
             "inflight-version"
         )
+    }
+
+    func testDeveloperRejectedSubscriptionVersionIsReusedAfterReviewCancellation() {
+        let versions: [[String: Any]] = [[
+            "id": "b1fc29ff-956f-45bb-b399-aad0392367f9",
+            "attributes": ["state": "DEVELOPER_REJECTED", "version": 2]
+        ]]
+
+        XCTAssertEqual(
+            AppStoreConnectService.reusableSubscriptionVersionID(in: versions),
+            "b1fc29ff-956f-45bb-b399-aad0392367f9"
+        )
+    }
+
+    func testSubscriptionGroupCreationConflictRefreshesAndReusesDeveloperRejectedVersion() async throws {
+        var versionListRequestCount = 0
+        let inflightVersionID = "b1fc29ff-956f-45bb-b399-aad0392367f9"
+        let service = try appStoreConnectTestService { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/apps/app-id/subscriptionGroups"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [[
+                        "type": "subscriptionGroups",
+                        "id": "22314227",
+                        "attributes": ["referenceName": "TripFlow Itinerary Premium"]
+                    ]]]
+                )
+            case ("GET", "/v1/subscriptionGroups/22314227/subscriptions"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": []]
+                )
+            case ("GET", "/v1/subscriptionGroups/22314227/versions"):
+                versionListRequestCount += 1
+                let data: [[String: Any]] = versionListRequestCount == 1 ? [] : [[
+                    "type": "subscriptionGroupVersions",
+                    "id": inflightVersionID,
+                    "attributes": ["state": "DEVELOPER_REJECTED", "version": 2]
+                ], [
+                    "type": "subscriptionGroupVersions",
+                    "id": "different-newer-version",
+                    "attributes": ["state": "DEVELOPER_REJECTED", "version": 3]
+                ]]
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": data]
+                )
+            case ("POST", "/v1/subscriptionGroupVersions"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 409,
+                    json: ["errors": [[
+                        "detail": "There is already an inflight version with id '\(inflightVersionID)' for subscriptionGroup 22314227"
+                    ]]]
+                )
+            case ("GET", "/v1/subscriptionGroupVersions/\(inflightVersionID)/localizations"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": []]
+                )
+            default:
+                XCTFail("Unexpected App Store Connect request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
+                return try Self.appStoreConnectResponse(for: request, status: 500, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+
+        let catalog = AppStoreSubscriptionCatalog(
+            publication: nil,
+            application: nil,
+            compliance: nil,
+            groups: [AppStoreSubscriptionGroupDefinition(
+                referenceName: "TripFlow Itinerary Premium",
+                localizations: [],
+                subscriptions: []
+            )],
+            detectedProductIDs: [],
+            sourceFiles: [],
+            projectDirectory: FileManager.default.temporaryDirectory
+        )
+
+        let reviewItems = try await service.reconcileSubscriptions(
+            appID: "app-id",
+            catalog: catalog,
+            requiresReviewAssets: true,
+            onOutput: { _ in }
+        )
+
+        XCTAssertEqual(versionListRequestCount, 2)
+        XCTAssertEqual(reviewItems, [AppStoreConnectReviewItem(
+            relationship: "subscriptionGroupVersion",
+            resourceType: "subscriptionGroupVersions",
+            id: inflightVersionID,
+            label: "TripFlow Itinerary Premium"
+        )])
+    }
+
+    func testInflightSubscriptionGroupVersionIDMustMatchTheExpectedGroup() {
+        let message = "There is already an inflight version with id 'version-id' for subscriptionGroup 22314227"
+
+        XCTAssertEqual(
+            AppStoreConnectService.inflightSubscriptionGroupVersionID(
+                in: message,
+                groupID: "22314227"
+            ),
+            "version-id"
+        )
+        XCTAssertNil(AppStoreConnectService.inflightSubscriptionGroupVersionID(
+            in: message,
+            groupID: "different-group"
+        ))
     }
 
     func testManifestDecodesTerritoryPricesAndTestFlightAutomation() throws {

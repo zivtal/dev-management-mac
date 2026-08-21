@@ -315,11 +315,14 @@ struct PublishingSettingsView: View {
                         }
                         Spacer()
                         Button("View Log") {
-                            PublishingLogWindowPresenter.shared.show(model: model)
+                            PublishingLogWindowPresenter.shared.show(
+                                model: model,
+                                projectID: log.projectID
+                            )
                         }
                         if log.state == .inProgress {
                             Button("Cancel Publication", role: .destructive) {
-                                model.cancelPublishing()
+                                model.cancelPublishing(projectID: log.projectID)
                             }
                         }
                     }

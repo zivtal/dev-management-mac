@@ -1239,3 +1239,5 @@
 "the certificate's common name was read as %@" = "השם המשותף של התעודה נקרא כ־%@";
 "the certificate's team was read as %@" = "הצוות של התעודה נקרא כ־%@";
 "the locally generated test certificate was empty" = "תעודת הבדיקה שנוצרה מקומית הייתה ריקה";
+"%@ — Publishing…" = "%@ — בפרסום…";
+"Show publishing progress for %@" = "הצגת התקדמות הפרסום עבור %@";

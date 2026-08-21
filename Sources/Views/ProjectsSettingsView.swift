@@ -249,7 +249,6 @@ struct ProjectsSettingsView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(
                         model.isInstalling(projectID: project.id)
-                            || model.isPublishing(projectID: project.id)
                             || model.isGeneratingOfferCodes
                     )
                     .help("Build, upload, and submit this application to the App Store")

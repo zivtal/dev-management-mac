@@ -3023,11 +3023,20 @@ final class AppStoreConnectService {
             )
             return try Self.identifier(in: created, named: "subscription group version")
         } catch let error as AppStoreConnectError {
-            guard case .requestFailed(let status, _) = error, status == 409 else { throw error }
+            guard case .requestFailed(let status, let message) = error, status == 409 else {
+                throw error
+            }
             let refreshed = try await pagedData(
                 path: "/v1/subscriptionGroups/\(groupID)/versions",
                 query: ["limit": "200"]
             )
+            if let inflightID = Self.inflightSubscriptionGroupVersionID(
+                in: message,
+                groupID: groupID
+            ), let inflightVersion = refreshed.first(where: { $0["id"] as? String == inflightID }),
+               Self.reusableSubscriptionVersionID(in: [inflightVersion]) == inflightID {
+                return inflightID
+            }
             guard let id = Self.reusableSubscriptionVersionID(in: refreshed) else { throw error }
             return id
         }
@@ -3076,7 +3085,8 @@ final class AppStoreConnectService {
             "READY_FOR_REVIEW",
             "WAITING_FOR_REVIEW",
             "IN_REVIEW",
-            "REJECTED"
+            "REJECTED",
+            "DEVELOPER_REJECTED"
         ]
         return versions.filter {
             guard let state = Self.attributes($0)["state"] as? String else { return false }
@@ -3086,6 +3096,19 @@ final class AppStoreConnectService {
             let right = Self.attributes($1)["version"] as? Int ?? 0
             return left < right
         }?["id"] as? String
+    }
+
+    static func inflightSubscriptionGroupVersionID(
+        in message: String,
+        groupID: String
+    ) -> String? {
+        guard message.contains("for subscriptionGroup \(groupID)") else { return nil }
+        let marker = "inflight version with id '"
+        guard let markerRange = message.range(of: marker) else { return nil }
+        let remainder = message[markerRange.upperBound...]
+        guard let closingQuote = remainder.firstIndex(of: "'") else { return nil }
+        let identifier = String(remainder[..<closingQuote])
+        return identifier.isEmpty ? nil : identifier
     }
 
     private func upsertGroupLocalizations(

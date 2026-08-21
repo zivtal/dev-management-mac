@@ -82,18 +82,33 @@ private enum PublishingConfigurationEditorAnchor: Hashable {
 final class PublishingWindowPresenter {
     static let shared = PublishingWindowPresenter()
 
-    private var windowController: NSWindowController?
+    private var windowControllers = PerProjectWindowRegistry<NSWindowController>()
+    private var closeObservers: [UUID: NSObjectProtocol] = [:]
 
     private init() {}
 
     func show(
         model: AppModel,
-        projectID: UUID? = nil,
+        projectID: UUID,
         action: PublishingAction = .release
     ) {
-        windowController?.close()
+        if model.isPublishing(projectID: projectID) {
+            PublishingLogWindowPresenter.shared.show(model: model, projectID: projectID)
+            return
+        }
+        guard let project = model.projects.first(where: { $0.id == projectID }) else {
+            close(projectID: projectID)
+            PublishingLogWindowPresenter.shared.close(projectID: projectID)
+            return
+        }
+        PublishingLogWindowPresenter.shared.close(projectID: projectID)
+        if let existingController = windowControllers[projectID] {
+            existingController.window?.title = project.displayName
+            bringToFront(existingController)
+            return
+        }
         let loadingController = NSHostingController(
-            rootView: PublishingWindowLoadingView(projectName: projectName(for: projectID, in: model))
+            rootView: PublishingWindowLoadingView(projectName: project.displayName)
         )
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 680, height: 720),
@@ -101,28 +116,48 @@ final class PublishingWindowPresenter {
             backing: .buffered,
             defer: false
         )
-        panel.title = L10n.text("Publish to the App Store")
+        panel.title = project.displayName
         panel.contentViewController = loadingController
         panel.isFloatingPanel = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.minSize = NSSize(width: 600, height: 580)
         if let screen = NSApplication.shared.keyWindow?.screen ?? NSScreen.main ?? NSScreen.screens.first {
-            panel.setFrame(screen.visibleFrame, display: false)
+            let preferredSize = NSSize(
+                width: max(panel.minSize.width, screen.visibleFrame.width * 0.92),
+                height: max(panel.minSize.height, screen.visibleFrame.height * 0.92)
+            )
+            panel.setFrame(
+                PerProjectWindowPlacement.cascadedFrame(
+                    size: preferredSize,
+                    in: screen.visibleFrame,
+                    openWindowCount: windowControllers.projectIDs.count
+                ),
+                display: false
+            )
         } else {
             panel.center()
         }
-        windowController = NSWindowController(window: panel)
+        let windowController = NSWindowController(window: panel)
+        windowControllers.register(windowController, for: projectID)
+        closeObservers[projectID] = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self, weak windowController] _ in
+            MainActor.assumeIsolated {
+                guard let self, let windowController else { return }
+                self.removeWindow(projectID: projectID, matching: windowController)
+            }
+        }
 
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        windowController?.showWindow(nil)
-        panel.makeKeyAndOrderFront(nil)
+        bringToFront(windowController)
 
         Task { @MainActor [weak self, weak panel] in
             await Task.yield()
             guard let self,
                   let panel,
-                  self.windowController?.window === panel
+                  self.windowControllers[projectID]?.window === panel
             else {
                 return
             }
@@ -135,18 +170,28 @@ final class PublishingWindowPresenter {
         }
     }
 
-    func close() {
-        windowController?.close()
+    func close(projectID: UUID) {
+        guard let controller = windowControllers[projectID] else { return }
+        removeWindow(projectID: projectID, matching: controller)
+        controller.close()
     }
 
-    private func projectName(for projectID: UUID?, in model: AppModel) -> String? {
-        guard let projectID else { return nil }
-        return model.projects.first(where: { $0.id == projectID })?.displayName
+    private func bringToFront(_ windowController: NSWindowController) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        windowController.showWindow(nil)
+        windowController.window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func removeWindow(projectID: UUID, matching controller: NSWindowController) {
+        guard windowControllers.remove(projectID: projectID, matching: controller) != nil else { return }
+        if let observer = closeObservers.removeValue(forKey: projectID) {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 }
 
 private struct PublishingWindowLoadingView: View {
-    let projectName: String?
+    let projectName: String
 
     var body: some View {
         VStack(spacing: 16) {
@@ -154,8 +199,7 @@ private struct PublishingWindowLoadingView: View {
                 .controlSize(.large)
             Text("Opening Publish…")
                 .font(.title2.weight(.semibold))
-            Text(projectName.map { L10n.format("Preparing %@ for publishing…", $0) }
-                ?? L10n.text("Preparing your applications for publishing…"))
+            Text(L10n.format("Preparing %@ for publishing…", projectName))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -206,12 +250,12 @@ private struct PublishingWindowView: View {
     @State private var releaseAutomaticallySelection = true
     @State private var pendingPublishingIntent = PublishingIntent.publish
     @State private var showsPublicationStatus = false
-    private let locksProjectSelection: Bool
+    private let projectID: UUID
 
-    init(initialProjectID: UUID?, initialAction: PublishingAction = .release) {
+    init(initialProjectID: UUID, initialAction: PublishingAction = .release) {
         _selectedProjectID = State(initialValue: initialProjectID)
         _selectedAction = State(initialValue: initialAction)
-        locksProjectSelection = initialProjectID != nil
+        projectID = initialProjectID
     }
 
     var body: some View {
@@ -229,7 +273,7 @@ private struct PublishingWindowView: View {
                     },
                     onDone: {
                         model.presentedError = nil
-                        PublishingWindowPresenter.shared.close()
+                        PublishingWindowPresenter.shared.close(projectID: log.projectID)
                     }
                 )
                 .padding(-20)
@@ -319,11 +363,15 @@ private struct PublishingWindowView: View {
                 Task { @MainActor in
                     await Task.yield()
                     PublishingLogWindowPresenter.shared.show(model: model, projectID: log.projectID)
-                    PublishingWindowPresenter.shared.close()
                 }
             }
-            if selectedProject == nil {
-                selectedProjectID = eligibleProjects.first?.id
+        }
+        .onChange(of: eligibleProjects.map(\.id)) { _, projectIDs in
+            if !projectIDs.contains(projectID) {
+                Task { @MainActor in
+                    await Task.yield()
+                    PublishingWindowPresenter.shared.close(projectID: projectID)
+                }
             }
         }
         .task(id: configurationTaskID) {
@@ -358,7 +406,6 @@ private struct PublishingWindowView: View {
                 )
                 if model.isPublishing(projectID: projectID) {
                     PublishingLogWindowPresenter.shared.show(model: model, projectID: projectID)
-                    PublishingWindowPresenter.shared.close()
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -444,12 +491,7 @@ private struct PublishingWindowView: View {
 
     private func applicationSection(_ project: ManagedProject) -> some View {
         Section("Application") {
-            Picker("Application", selection: $selectedProjectID) {
-                ForEach(eligibleProjects) { candidate in
-                    Text(candidate.displayName).tag(Optional(candidate.id))
-                }
-            }
-            .disabled(locksProjectSelection)
+            LabeledContent("Application", value: project.displayName)
             Picker(
                 "App Store Connect API",
                 selection: appStoreConnectCredentialProfileBinding(for: project)
@@ -1452,7 +1494,7 @@ private struct PublishingWindowView: View {
             }
             Spacer()
             Button("Cancel") {
-                PublishingWindowPresenter.shared.close()
+                PublishingWindowPresenter.shared.close(projectID: project.id)
             }
             if selectedAction == .release {
                 if showsAppStoreReleaseAction {

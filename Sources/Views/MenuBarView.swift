@@ -467,6 +467,9 @@ struct MenuBarView: View {
                                             ProgressView()
                                                 .controlSize(.small)
                                                 .frame(width: 14)
+                                        } else if model.isPublishing(projectID: project.id) {
+                                            Image(systemName: "arrow.triangle.2.circlepath")
+                                                .frame(width: 14)
                                         } else {
                                             Image(systemName: "paperplane.fill")
                                                 .frame(width: 14)
@@ -474,11 +477,14 @@ struct MenuBarView: View {
                                     }
                                     .buttonStyle(.borderless)
                                     .foregroundStyle(.blue)
-                                    .help(L10n.format("Publish %@…", project.displayName))
-                                    .accessibilityLabel(L10n.format("Publish %@…", project.displayName))
+                                    .help(model.isPublishing(projectID: project.id)
+                                        ? L10n.format("Show publishing progress for %@", project.displayName)
+                                        : L10n.format("Publish %@…", project.displayName))
+                                    .accessibilityLabel(model.isPublishing(projectID: project.id)
+                                        ? L10n.format("Show publishing progress for %@", project.displayName)
+                                        : L10n.format("Publish %@…", project.displayName))
                                     .disabled(
                                         model.isInstalling(projectID: project.id)
-                                            || model.isPublishing(projectID: project.id)
                                             || isOpeningPublishingWindow
                                     )
                                 } else {
@@ -544,8 +550,22 @@ struct MenuBarView: View {
             }
             .disabled(model.isRefreshingDevices)
 
-            Button {
-                openPublishing(projectID: nil, action: .release)
+            Menu {
+                ForEach(model.projects.filter(canPublish)) { project in
+                    Button {
+                        openPublishing(projectID: project.id, action: .release)
+                    } label: {
+                        if model.isPublishing(projectID: project.id) {
+                            Label(
+                                L10n.format("%@ — Publishing…", project.displayName),
+                                systemImage: "arrow.triangle.2.circlepath"
+                            )
+                        } else {
+                            Text(project.displayName)
+                        }
+                    }
+                    .disabled(model.isInstalling(projectID: project.id))
+                }
             } label: {
                 if isOpeningPublishingWindow {
                     HStack(spacing: 5) {
@@ -640,7 +660,7 @@ struct MenuBarView: View {
     }
 
     private func openPublishing(
-        projectID: UUID?,
+        projectID: UUID,
         action: PublishingAction
     ) {
         guard !isOpeningPublishingWindow else { return }
@@ -650,7 +670,7 @@ struct MenuBarView: View {
         let menuWindow = NSApplication.shared.keyWindow
         Task { @MainActor in
             await Task.yield()
-            if action == .offerCodes, let projectID {
+            if action == .offerCodes {
                 RedeemCodesWindowPresenter.shared.show(
                     model: model,
                     projectID: projectID

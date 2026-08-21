@@ -1239,3 +1239,5 @@
 "the certificate's common name was read as %@" = "the certificate's common name was read as %@";
 "the certificate's team was read as %@" = "the certificate's team was read as %@";
 "the locally generated test certificate was empty" = "the locally generated test certificate was empty";
+"%@ — Publishing…" = "%@ — Publishing…";
+"Show publishing progress for %@" = "Show publishing progress for %@";
