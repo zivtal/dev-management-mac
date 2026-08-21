@@ -135,7 +135,6 @@ struct SimulatorRunWindowView: View {
                     locationSection
                     dateTimeSection
                     languageSection
-                    filesSection
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -151,6 +150,15 @@ struct SimulatorRunWindowView: View {
                 .padding(16)
         }
         .frame(minWidth: 760, minHeight: 600)
+        .dropDestination(for: URL.self) { urls, _ in
+            guard session.isSessionActive else { return false }
+            session.importFiles(urls.filter(\.isFileURL))
+            return true
+        }
+        .onChange(of: currentSettings) {
+            guard didLoadSettings else { return }
+            saveSettings()
+        }
         .task {
             loadSettingsIfNeeded()
             await session.refreshDevices()
@@ -169,11 +177,12 @@ struct SimulatorRunWindowView: View {
                     Text("Automatic (booted or newest iPhone)")
                         .tag(Self.automaticDeviceTag)
                     ForEach(session.availableDevices) { device in
-                        Text(deviceTitle(device)).tag(device.udid)
+                        Text(verbatim: deviceTitle(device)).tag(device.udid)
                     }
                 } label: {
                     Text("Simulator device")
                 }
+                .help(L10n.text("✓ marks a Simulator this app was run on before."))
                 if session.isRefreshingDevices {
                     ProgressView().controlSize(.small)
                 } else {
@@ -313,41 +322,6 @@ struct SimulatorRunWindowView: View {
         }
     }
 
-    private var filesSection: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Button {
-                        presentFileImportPanel()
-                    } label: {
-                        Label("Import files…", systemImage: "square.and.arrow.down.on.square")
-                    }
-                    .disabled(!session.isSessionActive)
-                    Text("Or drop files here.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Text("Images and videos go to the Photos library; other files are copied into the app's Documents folder for the app to import.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if !session.isSessionActive {
-                    Text("Run the app in the Simulator before importing files.")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-            }
-            .padding(4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } label: {
-            Label("Files", systemImage: "folder.fill")
-        }
-        .dropDestination(for: URL.self) { urls, _ in
-            guard session.isSessionActive else { return false }
-            session.importFiles(urls.filter(\.isFileURL))
-            return true
-        }
-    }
-
     private func presentFileImportPanel() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -407,6 +381,15 @@ struct SimulatorRunWindowView: View {
 
     private var controlBar: some View {
         HStack(spacing: 10) {
+            Button {
+                presentFileImportPanel()
+            } label: {
+                Label("Import files…", systemImage: "square.and.arrow.down.on.square")
+            }
+            .disabled(!session.isSessionActive)
+            .help(session.isSessionActive
+                ? L10n.text("Images and videos go to the Photos library; other files are copied into the app's Documents folder for the app to import.")
+                : L10n.text("Run the app in the Simulator before importing files."))
             if session.isSessionActive {
                 Button(role: .destructive) {
                     session.stop()
@@ -513,9 +496,13 @@ struct SimulatorRunWindowView: View {
     }
 
     private func deviceTitle(_ device: SimulatorDevice) -> String {
-        device.isBooted
+        var title = device.isBooted
             ? L10n.format("%@ (booted)", device.displayTitle)
             : device.displayTitle
+        if project?.simulatorTestedDeviceUDIDs?.contains(device.udid) == true {
+            title += " ✓"
+        }
+        return title
     }
 
     private func loadSettingsIfNeeded() {

@@ -52,6 +52,7 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
     var applicationPlatform: ApplicationPlatform? = nil
     var appStoreConnectCredentialProfileID: UUID? = nil
     var simulatorRunSettings: SimulatorRunSettings? = nil
+    var simulatorTestedDeviceUDIDs: Set<String>? = nil
 
     var folderURL: URL { URL(fileURLWithPath: folderPath, isDirectory: true) }
     var containerURL: URL { URL(fileURLWithPath: containerPath) }

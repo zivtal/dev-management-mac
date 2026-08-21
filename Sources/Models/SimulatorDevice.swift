@@ -5,6 +5,7 @@ struct SimulatorDevice: Identifiable, Equatable, Sendable {
     let name: String
     let state: String
     let runtimeIdentifier: String
+    var deviceTypeIdentifier: String? = nil
 
     var id: String { udid }
 
@@ -16,7 +17,20 @@ struct SimulatorDevice: Identifiable, Equatable, Sendable {
 
     var mobileDeviceFamily: MobileDeviceFamily? {
         guard isIOS else { return nil }
+        if let deviceTypeIdentifier {
+            if deviceTypeIdentifier.contains("iPad") { return .iPad }
+            if deviceTypeIdentifier.contains("iPhone") { return .iPhone }
+        }
         return name.localizedCaseInsensitiveContains("iPad") ? .iPad : .iPhone
+    }
+
+    /// Devices created programmatically by test scripts (e.g. "ios_sim_1756199254",
+    /// "test_flow_1756199150") that clutter the picker without being real targets.
+    var isEphemeralTestDevice: Bool {
+        name.range(
+            of: #"^[a-z][a-z0-9_]*_[0-9]{6,}$"#,
+            options: .regularExpression
+        ) != nil
     }
 
     var runtimeVersion: [Int] {
@@ -50,7 +64,8 @@ struct SimulatorDevice: Identifiable, Equatable, Sendable {
                     udid: udid,
                     name: name,
                     state: value["state"] as? String ?? "Shutdown",
-                    runtimeIdentifier: runtime
+                    runtimeIdentifier: runtime,
+                    deviceTypeIdentifier: value["deviceTypeIdentifier"] as? String
                 )
             }
         }
@@ -62,7 +77,8 @@ struct SimulatorDevice: Identifiable, Equatable, Sendable {
     ) -> [SimulatorDevice] {
         devices
             .filter { device in
-                device.mobileDeviceFamily.map(supportedFamilies.contains) == true
+                !device.isEphemeralTestDevice
+                    && device.mobileDeviceFamily.map(supportedFamilies.contains) == true
             }
             .sorted { lhs, rhs in
                 if lhs.runtimeVersion != rhs.runtimeVersion {

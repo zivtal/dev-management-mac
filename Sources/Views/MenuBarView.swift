@@ -928,22 +928,48 @@ private final class MenuBarOpenObserverView: NSView {
     private func reportOpening() {
         guard !didReportCurrentVisibility else { return }
         didReportCurrentVisibility = true
+        anchorCenterX = currentAnchorCenterX()
         repositionUnderStatusItem()
+        // MenuBarExtra can apply its own (stale) frame after the window becomes
+        // visible, so keep re-centering through the first moments of the open.
+        for delay in [0.0, 0.05, 0.15, 0.3] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.repositionUnderStatusItem()
+            }
+        }
         onOpen?()
+    }
+
+    private var anchorCenterX: CGFloat?
+
+    /// The horizontal center to anchor to: the status item's window when it
+    /// can be found, otherwise the mouse location — the click that opened the
+    /// popover happened on the menu-bar icon.
+    private func currentAnchorCenterX() -> CGFloat? {
+        let statusWindow = NSApplication.shared.windows.first {
+            $0.className.contains("StatusBarWindow")
+        }
+        NSLog(
+            "MenuBar anchor: windows=%@ statusMidX=%@ mouseX=%.1f",
+            NSApplication.shared.windows.map(\.className).joined(separator: ","),
+            statusWindow.map { String(format: "%.1f", $0.frame.midX) } ?? "none",
+            NSEvent.mouseLocation.x
+        )
+        if let statusWindow {
+            return statusWindow.frame.midX
+        }
+        let mouseX = NSEvent.mouseLocation.x
+        return mouseX.isFinite && mouseX > 0 ? mouseX : nil
     }
 
     /// MenuBarExtra keeps a stale horizontal anchor when the popover's width
     /// changes between opens, drifting it away from the menu-bar icon. Center
     /// the window under the status item on every open.
     private func repositionUnderStatusItem() {
-        guard let window,
-              let statusWindow = NSApplication.shared.windows.first(where: {
-                  String(describing: type(of: $0)).contains("StatusBarWindow")
-              })
-        else { return }
+        guard let window, window.isVisible, let anchorCenterX else { return }
         var frame = window.frame
-        var x = statusWindow.frame.midX - frame.width / 2
-        if let screen = statusWindow.screen ?? window.screen {
+        var x = anchorCenterX - frame.width / 2
+        if let screen = window.screen ?? NSScreen.main {
             let visibleFrame = screen.visibleFrame
             x = min(max(visibleFrame.minX + 8, x), visibleFrame.maxX - frame.width - 8)
         }

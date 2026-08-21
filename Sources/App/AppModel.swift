@@ -396,6 +396,12 @@ final class AppModel: ObservableObject {
             installationService: installationService,
             derivedDataURL: Self.simulatorDerivedDataURL(projectID: projectID)
         )
+        controller.onDeviceTested = { [weak self] deviceUDID in
+            self?.updateProject(id: projectID) { project in
+                project.simulatorTestedDeviceUDIDs =
+                    (project.simulatorTestedDeviceUDIDs ?? []).union([deviceUDID])
+            }
+        }
         simulatorSessions[projectID] = controller
         return controller
     }

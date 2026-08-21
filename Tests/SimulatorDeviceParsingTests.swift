@@ -11,7 +11,10 @@ final class SimulatorDeviceParsingTests: XCTestCase {
         ],
         "com.apple.CoreSimulator.SimRuntime.iOS-18-2": [
           {"udid": "NEW-IPHONE", "name": "iPhone 17 Pro", "state": "Shutdown", "isAvailable": true},
-          {"udid": "NEW-IPAD", "name": "iPad Pro 13-inch (M4)", "state": "Shutdown", "isAvailable": true}
+          {"udid": "NEW-IPAD", "name": "iPad Pro 13-inch (M4)", "state": "Shutdown", "isAvailable": true},
+          {"udid": "SCRIPT-SIM", "name": "ios_sim_1756199254", "state": "Shutdown", "isAvailable": true},
+          {"udid": "SCRIPT-TEST", "name": "test_auto_delete_1756199100", "state": "Shutdown", "isAvailable": true},
+          {"udid": "RENAMED-IPAD", "name": "Ziv's tablet", "state": "Shutdown", "isAvailable": true, "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-11-inch-M4"}
         ],
         "com.apple.CoreSimulator.SimRuntime.watchOS-11-0": [
           {"udid": "WATCH", "name": "Apple Watch Ultra 2", "state": "Shutdown", "isAvailable": true}
@@ -28,7 +31,24 @@ final class SimulatorDeviceParsingTests: XCTestCase {
         let parsed = devices
         XCTAssertEqual(
             Set(parsed.map(\.udid)),
-            ["OLD-IPHONE", "NEW-IPHONE", "NEW-IPAD", "WATCH"]
+            ["OLD-IPHONE", "NEW-IPHONE", "NEW-IPAD", "WATCH", "SCRIPT-SIM", "SCRIPT-TEST", "RENAMED-IPAD"]
+        )
+    }
+
+    func testScriptCreatedDevicesAreExcludedFromCompatibleList() {
+        let compatible = SimulatorDevice.compatibleIOSDevices(
+            in: devices,
+            supportedFamilies: [.iPhone, .iPad]
+        )
+        XCTAssertFalse(compatible.contains { $0.udid == "SCRIPT-SIM" })
+        XCTAssertFalse(compatible.contains { $0.udid == "SCRIPT-TEST" })
+        XCTAssertTrue(compatible.contains { $0.udid == "RENAMED-IPAD" })
+    }
+
+    func testDeviceTypeIdentifierDrivesFamilyForRenamedDevices() {
+        XCTAssertEqual(
+            devices.first { $0.udid == "RENAMED-IPAD" }?.mobileDeviceFamily,
+            .iPad
         )
     }
 

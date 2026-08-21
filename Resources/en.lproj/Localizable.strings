@@ -1302,3 +1302,4 @@
 "Could not add media to the Photos library: %@\n" = "Could not add media to the Photos library: %@\n";
 "Copied %@ into the app's Documents folder.\n" = "Copied %@ into the app's Documents folder.\n";
 "Could not copy files into the app's Documents folder: %@\n" = "Could not copy files into the app's Documents folder: %@\n";
+"✓ marks a Simulator this app was run on before." = "✓ marks a Simulator this app was run on before.";

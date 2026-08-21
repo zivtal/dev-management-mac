@@ -34,6 +34,10 @@ final class SimulatorSessionController: ObservableObject {
     @Published private(set) var activeDevice: SimulatorDevice?
     @Published private(set) var isSessionActive = false
 
+    /// Reports a device the app was successfully launched on, so the owner can
+    /// persist it as a tested device for this project.
+    var onDeviceTested: ((String) -> Void)?
+
     private(set) var project: ManagedProject
     private let simulatorService: SimulatorService
     private let installationService: InstallationService
@@ -332,6 +336,7 @@ final class SimulatorSessionController: ObservableObject {
         }
         phase = .running
         statusMessage = L10n.text("Watching for changes.")
+        onDeviceTested?(deviceUDID)
     }
 
     private static let photoLibraryExtensions: Set<String> = [
