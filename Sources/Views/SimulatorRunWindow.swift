@@ -275,18 +275,30 @@ struct SimulatorRunWindowView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Simulate the current date (Debug builds only)", isOn: $isDateSimulated)
                 if isDateSimulated {
-                    DatePicker(
-                        "Date",
-                        selection: $simulatedDate,
-                        displayedComponents: .date
-                    )
+                    HStack(spacing: 10) {
+                        Text("Date")
+                        DatePicker(
+                            "Date",
+                            selection: $simulatedDate,
+                            displayedComponents: .date
+                        )
+                        .labelsHidden()
+                        .controlSize(.large)
+                        .frame(minWidth: 180, alignment: .leading)
+                    }
                     Toggle("Also simulate the time of day", isOn: $isTimeSimulated)
                     if isTimeSimulated {
-                        DatePicker(
-                            "Time",
-                            selection: $simulatedTime,
-                            displayedComponents: .hourAndMinute
-                        )
+                        HStack(spacing: 10) {
+                            Text("Time")
+                            DatePicker(
+                                "Time",
+                                selection: $simulatedTime,
+                                displayedComponents: .hourAndMinute
+                            )
+                            .labelsHidden()
+                            .controlSize(.large)
+                            .frame(minWidth: 120, alignment: .leading)
+                        }
                     }
                     HStack(spacing: 8) {
                         Text("Environment variable")
