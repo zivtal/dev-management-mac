@@ -5,6 +5,7 @@ struct MenuBarView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openSettings) private var openSettings
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.displayScale) private var displayScale
     @State private var isDeviceListExpanded = false
     @State private var showsCancelInstallationConfirmation = false
     @State private var cancellationProjectID: UUID?
@@ -12,54 +13,29 @@ struct MenuBarView: View {
     @State private var openingPublishingProjectID: UUID?
     @State private var openingPublishingAction = PublishingAction.release
     @State private var subscriptionProjectIDs: Set<UUID> = []
+    @State private var measuredHeaderHeight: CGFloat = 40
+    @State private var measuredScrollableContentHeight: CGFloat = 100
+    @State private var measuredFooterHeight: CGFloat = 28
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
+                .reportMenuBarHeight(.header)
 
-            if model.isGeneratingOfferCodes {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Generating subscription offer codes…")
-                        .font(.subheadline.weight(.medium))
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
-            } else if !model.activePublishingProgresses.isEmpty
-                        || !model.activeInstallationProgresses.isEmpty {
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(model.activePublishingProgresses, id: \.projectID) {
-                            publishingProgressSection($0)
-                        }
-                        ForEach(model.activeInstallationProgresses, id: \.projectID) {
-                            progressSection($0)
-                        }
-                    }
-                }
-                .frame(
-                    minHeight: MenuBarLayoutPolicy.minimumActiveWorkHeight,
-                    idealHeight: MenuBarLayoutPolicy.activeWorkHeight(
-                        publishingCount: model.activePublishingProgresses.count,
-                        installationCount: model.activeInstallationProgresses.count
-                    ),
-                    maxHeight: MenuBarLayoutPolicy.maximumActiveWorkHeight
-                )
-                .layoutPriority(2)
-            } else if isDeviceListExpanded
-                        || (model.connectedDevices.isEmpty && model.hasIOSProjects) {
-                deviceSection
+            ScrollView {
+                scrollableContent
+                    .reportMenuBarHeight(.scrollableContent)
             }
+            .frame(height: popoverSizing.scrollableHeight)
+            .layoutPriority(1)
 
-            Divider()
-            projectSectionContainer
             Divider()
             footer
+                .reportMenuBarHeight(.footer)
         }
         .padding(14)
         .frame(width: showsGitBranchColumn ? 715 : 615)
-        .frame(maxHeight: MenuBarLayoutPolicy.maximumPopoverHeight, alignment: .top)
+        .frame(height: popoverSizing.popoverHeight, alignment: .top)
         .background {
             MenuBarOpenObserver {
                 Task {
@@ -82,6 +58,17 @@ struct MenuBarView: View {
                 showsCancelInstallationConfirmation = false
             }
         }
+        .onPreferenceChange(MenuBarHeightPreferenceKey.self) { heights in
+            if let height = heights[.header] {
+                measuredHeaderHeight = height
+            }
+            if let height = heights[.scrollableContent] {
+                measuredScrollableContentHeight = height
+            }
+            if let height = heights[.footer] {
+                measuredFooterHeight = height
+            }
+        }
         .overlay {
             if showsCancelInstallationConfirmation {
                 cancelInstallationConfirmation
@@ -96,6 +83,47 @@ struct MenuBarView: View {
             actions: { Button("OK") { model.presentedError = nil } },
             message: { Text(model.presentedError ?? "") }
         )
+    }
+
+    private var popoverSizing: MenuBarLayoutPolicy.Sizing {
+        MenuBarLayoutPolicy.sizing(
+            contentHeight: measuredScrollableContentHeight,
+            headerHeight: measuredHeaderHeight,
+            footerHeight: measuredFooterHeight,
+            displayScale: displayScale
+        )
+    }
+
+    private var scrollableContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if model.isGeneratingOfferCodes {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Generating subscription offer codes…")
+                        .font(.subheadline.weight(.medium))
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
+            } else if !model.activePublishingProgresses.isEmpty
+                        || !model.activeInstallationProgresses.isEmpty {
+                LazyVStack(spacing: 8) {
+                    ForEach(model.activePublishingProgresses, id: \.projectID) {
+                        publishingProgressSection($0)
+                    }
+                    ForEach(model.activeInstallationProgresses, id: \.projectID) {
+                        progressSection($0)
+                    }
+                }
+            } else if isDeviceListExpanded
+                        || (model.connectedDevices.isEmpty && model.hasIOSProjects) {
+                deviceSection
+            }
+
+            Divider()
+            projectSection
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
@@ -500,26 +528,6 @@ struct MenuBarView: View {
         }
     }
 
-    @ViewBuilder
-    private var projectSectionContainer: some View {
-        ScrollView {
-            projectSection
-        }
-        .frame(
-            minHeight: model.hasActiveWork
-                ? MenuBarLayoutPolicy.minimumProjectListHeight
-                : nil,
-            idealHeight: MenuBarLayoutPolicy.projectListIdealHeight(
-                projectCount: model.projects.count,
-                hasActiveWork: model.hasActiveWork
-            ),
-            maxHeight: model.hasActiveWork
-                ? MenuBarLayoutPolicy.maximumProjectListHeight
-                : MenuBarLayoutPolicy.maximumIdleProjectListHeight
-        )
-        .layoutPriority(1)
-    }
-
     private var footer: some View {
         HStack {
             Button {
@@ -741,39 +749,80 @@ struct MenuBarView: View {
 }
 
 enum MenuBarLayoutPolicy {
-    static let maximumPopoverHeight: CGFloat = 600
-    static let maximumIdleProjectListHeight = maximumPopoverHeight - 150
-    static let minimumActiveWorkHeight: CGFloat = 88
-    static let maximumActiveWorkHeight: CGFloat = 170
-    static let minimumProjectListHeight: CGFloat = 105
-    static let maximumProjectListHeight: CGFloat = 210
-
-    static func projectListIdealHeight(
-        projectCount: Int,
-        hasActiveWork: Bool
-    ) -> CGFloat {
-        let contentHeight = projectCount > 0
-            ? 23 + CGFloat(projectCount) * 35
-            : 24
-        let maximumHeight = hasActiveWork
-            ? maximumProjectListHeight
-            : maximumIdleProjectListHeight
-        let minimumHeight = hasActiveWork ? minimumProjectListHeight : 0
-        return min(maximumHeight, max(minimumHeight, contentHeight))
+    struct Sizing: Equatable {
+        let popoverHeight: CGFloat
+        let scrollableHeight: CGFloat
     }
 
-    static func activeWorkHeight(
-        publishingCount: Int,
-        installationCount: Int
-    ) -> CGFloat {
-        let publishingHeight = CGFloat(max(0, publishingCount)) * 136
-        let installationHeight = CGFloat(max(0, installationCount)) * 88
-        let taskCount = max(0, publishingCount) + max(0, installationCount)
-        let spacing = CGFloat(max(0, taskCount - 1)) * 8
-        return min(
-            maximumActiveWorkHeight,
-            max(minimumActiveWorkHeight, publishingHeight + installationHeight + spacing)
+    static let minimumPopoverPixelHeight: CGFloat = 400
+    static let maximumPopoverPixelHeight: CGFloat = 600
+
+    // Header, footer, one divider, three 12-point VStack gaps, and 14-point
+    // vertical padding on each edge remain outside the scrolling viewport.
+    private static let fixedVerticalChromeHeight: CGFloat = 65
+
+    static func sizing(
+        contentHeight: CGFloat,
+        headerHeight: CGFloat,
+        footerHeight: CGFloat,
+        displayScale: CGFloat
+    ) -> Sizing {
+        let resolvedScale = displayScale.isFinite && displayScale > 0 ? displayScale : 1
+        let minimumHeight = minimumPopoverPixelHeight / resolvedScale
+        let maximumHeight = maximumPopoverPixelHeight / resolvedScale
+        let resolvedHeaderHeight = max(0, headerHeight.isFinite ? headerHeight : 0)
+        let resolvedFooterHeight = max(0, footerHeight.isFinite ? footerHeight : 0)
+        let chromeHeight = resolvedHeaderHeight
+            + resolvedFooterHeight
+            + fixedVerticalChromeHeight
+        let minimumScrollableHeight = max(0, minimumHeight - chromeHeight)
+        let maximumScrollableHeight = max(
+            minimumScrollableHeight,
+            maximumHeight - chromeHeight
         )
+        let resolvedContentHeight = max(0, contentHeight.isFinite ? contentHeight : 0)
+        let scrollableHeight = min(
+            maximumScrollableHeight,
+            max(minimumScrollableHeight, resolvedContentHeight)
+        )
+        let popoverHeight = min(
+            maximumHeight,
+            max(minimumHeight, chromeHeight + scrollableHeight)
+        )
+        return Sizing(
+            popoverHeight: popoverHeight,
+            scrollableHeight: scrollableHeight
+        )
+    }
+}
+
+private enum MenuBarMeasuredRegion: Hashable {
+    case header
+    case scrollableContent
+    case footer
+}
+
+private struct MenuBarHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: [MenuBarMeasuredRegion: CGFloat] = [:]
+
+    static func reduce(
+        value: inout [MenuBarMeasuredRegion: CGFloat],
+        nextValue: () -> [MenuBarMeasuredRegion: CGFloat]
+    ) {
+        value.merge(nextValue(), uniquingKeysWith: { _, newValue in newValue })
+    }
+}
+
+private extension View {
+    func reportMenuBarHeight(_ region: MenuBarMeasuredRegion) -> some View {
+        background {
+            GeometryReader { geometry in
+                Color.clear.preference(
+                    key: MenuBarHeightPreferenceKey.self,
+                    value: [region: geometry.size.height]
+                )
+            }
+        }
     }
 }
 

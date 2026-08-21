@@ -2,75 +2,64 @@ import XCTest
 @testable import DevManagement
 
 final class MenuBarLayoutPolicyTests: XCTestCase {
-    func testPopoverHeightIsCappedAtSixHundredPoints() {
-        XCTAssertEqual(MenuBarLayoutPolicy.maximumPopoverHeight, 600)
+    func testRetinaHeightUsesFourHundredToSixHundredPhysicalPixels() {
+        let minimum = MenuBarLayoutPolicy.sizing(
+            contentHeight: 0,
+            headerHeight: 35,
+            footerHeight: 20,
+            displayScale: 2
+        )
+        let maximum = MenuBarLayoutPolicy.sizing(
+            contentHeight: 1_000,
+            headerHeight: 35,
+            footerHeight: 20,
+            displayScale: 2
+        )
+
+        XCTAssertEqual(minimum.popoverHeight, 200)
+        XCTAssertEqual(maximum.popoverHeight, 300)
+        XCTAssertEqual(minimum.popoverHeight * 2, 400)
+        XCTAssertEqual(maximum.popoverHeight * 2, 600)
     }
 
-    func testIdleProjectListLeavesRoomForFixedPopoverControls() {
-        XCTAssertEqual(MenuBarLayoutPolicy.maximumIdleProjectListHeight, 450)
-        XCTAssertLessThan(
-            MenuBarLayoutPolicy.maximumIdleProjectListHeight,
-            MenuBarLayoutPolicy.maximumPopoverHeight
+    func testShortContentFitsBetweenHeightBounds() {
+        let sizing = MenuBarLayoutPolicy.sizing(
+            contentHeight: 100,
+            headerHeight: 35,
+            footerHeight: 20,
+            displayScale: 2
         )
+
+        XCTAssertEqual(sizing.scrollableHeight, 100)
+        XCTAssertEqual(sizing.popoverHeight, 220)
     }
 
-    func testShortIdleProjectListFitsItsContent() {
-        XCTAssertEqual(
-            MenuBarLayoutPolicy.projectListIdealHeight(
-                projectCount: 2,
-                hasActiveWork: false
-            ),
-            93
+    func testOneTimesDisplayUsesRequestedPixelBoundsDirectly() {
+        let minimum = MenuBarLayoutPolicy.sizing(
+            contentHeight: 0,
+            headerHeight: 35,
+            footerHeight: 20,
+            displayScale: 1
         )
+        let maximum = MenuBarLayoutPolicy.sizing(
+            contentHeight: 1_000,
+            headerHeight: 35,
+            footerHeight: 20,
+            displayScale: 1
+        )
+
+        XCTAssertEqual(minimum.popoverHeight, 400)
+        XCTAssertEqual(maximum.popoverHeight, 600)
     }
 
-    func testLongIdleProjectListUsesScrollableHeightLimit() {
-        XCTAssertEqual(
-            MenuBarLayoutPolicy.projectListIdealHeight(
-                projectCount: 20,
-                hasActiveWork: false
-            ),
-            MenuBarLayoutPolicy.maximumIdleProjectListHeight
+    func testInvalidDisplayScaleFallsBackToOne() {
+        let sizing = MenuBarLayoutPolicy.sizing(
+            contentHeight: 0,
+            headerHeight: 35,
+            footerHeight: 20,
+            displayScale: 0
         )
-    }
 
-    func testActiveWorkKeepsMinimumProjectListVisible() {
-        XCTAssertEqual(
-            MenuBarLayoutPolicy.projectListIdealHeight(
-                projectCount: 1,
-                hasActiveWork: true
-            ),
-            MenuBarLayoutPolicy.minimumProjectListHeight
-        )
-    }
-
-    func testSingleInstallationKeepsAVisibleProgressCardHeight() {
-        XCTAssertEqual(
-            MenuBarLayoutPolicy.activeWorkHeight(
-                publishingCount: 0,
-                installationCount: 1
-            ),
-            88
-        )
-    }
-
-    func testPublishingReceivesMoreRoomThanCompactInstallationProgress() {
-        XCTAssertEqual(
-            MenuBarLayoutPolicy.activeWorkHeight(
-                publishingCount: 1,
-                installationCount: 0
-            ),
-            136
-        )
-    }
-
-    func testMultipleJobsUseBoundedScrollableProgressArea() {
-        XCTAssertEqual(
-            MenuBarLayoutPolicy.activeWorkHeight(
-                publishingCount: 2,
-                installationCount: 2
-            ),
-            MenuBarLayoutPolicy.maximumActiveWorkHeight
-        )
+        XCTAssertEqual(sizing.popoverHeight, 400)
     }
 }
