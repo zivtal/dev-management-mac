@@ -1291,3 +1291,14 @@
 "Search for a place or address" = "חיפוש מקום או כתובת";
 "Search Apple Maps" = "חיפוש במפות Apple";
 "No places found." = "לא נמצאו מקומות.";
+"Files" = "קבצים";
+"Import files…" = "ייבוא קבצים…";
+"Import" = "ייבוא";
+"Or drop files here." = "או גררו קבצים לכאן.";
+"Images and videos go to the Photos library; other files are copied into the app's Documents folder for the app to import." = "תמונות וסרטונים נוספים לספריית התמונות; קבצים אחרים מועתקים לתיקיית Documents של האפליקציה לצורך ייבוא.";
+"Run the app in the Simulator before importing files." = "יש להריץ את האפליקציה בסימולטור לפני ייבוא קבצים.";
+"Run the app in the Simulator before importing files.\n" = "יש להריץ את האפליקציה בסימולטור לפני ייבוא קבצים.\n";
+"Added %d file(s) to the Photos library.\n" = "%d קבצים נוספו לספריית התמונות.\n";
+"Could not add media to the Photos library: %@\n" = "לא ניתן להוסיף מדיה לספריית התמונות: %@\n";
+"Copied %@ into the app's Documents folder.\n" = "%@ הועתק לתיקיית Documents של האפליקציה.\n";
+"Could not copy files into the app's Documents folder: %@\n" = "לא ניתן להעתיק קבצים לתיקיית Documents של האפליקציה: %@\n";

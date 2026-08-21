@@ -135,6 +135,7 @@ struct SimulatorRunWindowView: View {
                     locationSection
                     dateTimeSection
                     languageSection
+                    filesSection
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -309,6 +310,57 @@ struct SimulatorRunWindowView: View {
             .padding(4)
         } label: {
             Label("Language", systemImage: "globe")
+        }
+    }
+
+    private var filesSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Button {
+                        presentFileImportPanel()
+                    } label: {
+                        Label("Import files…", systemImage: "square.and.arrow.down.on.square")
+                    }
+                    .disabled(!session.isSessionActive)
+                    Text("Or drop files here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Images and videos go to the Photos library; other files are copied into the app's Documents folder for the app to import.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if !session.isSessionActive {
+                    Text("Run the app in the Simulator before importing files.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+            .padding(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Label("Files", systemImage: "folder.fill")
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard session.isSessionActive else { return false }
+            session.importFiles(urls.filter(\.isFileURL))
+            return true
+        }
+    }
+
+    private func presentFileImportPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = L10n.text("Import")
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        panel.begin { [weak session] response in
+            guard response == .OK else { return }
+            let urls = panel.urls
+            Task { @MainActor in
+                session?.importFiles(urls)
+            }
         }
     }
 

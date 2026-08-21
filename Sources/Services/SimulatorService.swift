@@ -90,6 +90,26 @@ final class SimulatorService: Sendable {
         )
     }
 
+    /// Adds images and videos to the simulator's Photos library.
+    func addMedia(udid: String, fileURLs: [URL]) async throws {
+        guard !fileURLs.isEmpty else { return }
+        _ = try await processRunner.runAndRequireSuccess(
+            executable: Self.xcrunURL,
+            arguments: ["simctl", "addmedia", udid] + fileURLs.map(\.path)
+        )
+    }
+
+    /// The app's writable data container on the simulator, whose Documents
+    /// folder is where imported files become visible to the app.
+    func appDataContainer(udid: String, bundleIdentifier: String) async throws -> URL {
+        let result = try await processRunner.runAndRequireSuccess(
+            executable: Self.xcrunURL,
+            arguments: ["simctl", "get_app_container", udid, bundleIdentifier, "data"]
+        )
+        let path = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return URL(fileURLWithPath: path, isDirectory: true)
+    }
+
     func clearLocation(udid: String) async {
         _ = try? await run(
             executable: Self.xcrunURL,

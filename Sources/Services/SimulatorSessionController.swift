@@ -334,6 +334,77 @@ final class SimulatorSessionController: ObservableObject {
         statusMessage = L10n.text("Watching for changes.")
     }
 
+    private static let photoLibraryExtensions: Set<String> = [
+        "jpg", "jpeg", "png", "heic", "heif", "gif", "webp", "bmp", "tiff",
+        "mov", "mp4", "m4v"
+    ]
+
+    /// Injects files into the booted simulator: images and videos land in the
+    /// Photos library, everything else is copied into the app's Documents
+    /// folder so the app can import it (visible in Files for apps with file
+    /// sharing enabled).
+    func importFiles(_ fileURLs: [URL]) {
+        guard !fileURLs.isEmpty else { return }
+        guard let deviceUDID = activeDevice?.udid else {
+            appendOutput(L10n.text("Run the app in the Simulator before importing files.\n"))
+            return
+        }
+        let mediaURLs = fileURLs.filter {
+            Self.photoLibraryExtensions.contains($0.pathExtension.lowercased())
+        }
+        let documentURLs = fileURLs.filter {
+            !Self.photoLibraryExtensions.contains($0.pathExtension.lowercased())
+        }
+        let bundleIdentifier = buildProduct?.bundleIdentifier
+        Task { [weak self] in
+            guard let self else { return }
+            if !mediaURLs.isEmpty {
+                do {
+                    try await self.simulatorService.addMedia(udid: deviceUDID, fileURLs: mediaURLs)
+                    self.appendOutput(L10n.format(
+                        "Added %d file(s) to the Photos library.\n",
+                        mediaURLs.count
+                    ))
+                } catch {
+                    self.appendOutput(L10n.format(
+                        "Could not add media to the Photos library: %@\n",
+                        error.localizedDescription
+                    ))
+                }
+            }
+            guard !documentURLs.isEmpty else { return }
+            guard let bundleIdentifier else {
+                self.appendOutput(L10n.text("Run the app in the Simulator before importing files.\n"))
+                return
+            }
+            do {
+                let container = try await self.simulatorService.appDataContainer(
+                    udid: deviceUDID,
+                    bundleIdentifier: bundleIdentifier
+                )
+                let documentsURL = container.appendingPathComponent("Documents", isDirectory: true)
+                let fileManager = FileManager.default
+                try fileManager.createDirectory(at: documentsURL, withIntermediateDirectories: true)
+                for fileURL in documentURLs {
+                    let destination = documentsURL.appendingPathComponent(fileURL.lastPathComponent)
+                    if fileManager.fileExists(atPath: destination.path) {
+                        try fileManager.removeItem(at: destination)
+                    }
+                    try fileManager.copyItem(at: fileURL, to: destination)
+                    self.appendOutput(L10n.format(
+                        "Copied %@ into the app's Documents folder.\n",
+                        fileURL.lastPathComponent
+                    ))
+                }
+            } catch {
+                self.appendOutput(L10n.format(
+                    "Could not copy files into the app's Documents folder: %@\n",
+                    error.localizedDescription
+                ))
+            }
+        }
+    }
+
     private func applyLocationIfNeeded(
         settings: SimulatorRunSettings,
         changed: Bool

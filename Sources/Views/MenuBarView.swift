@@ -928,6 +928,27 @@ private final class MenuBarOpenObserverView: NSView {
     private func reportOpening() {
         guard !didReportCurrentVisibility else { return }
         didReportCurrentVisibility = true
+        repositionUnderStatusItem()
         onOpen?()
+    }
+
+    /// MenuBarExtra keeps a stale horizontal anchor when the popover's width
+    /// changes between opens, drifting it away from the menu-bar icon. Center
+    /// the window under the status item on every open.
+    private func repositionUnderStatusItem() {
+        guard let window,
+              let statusWindow = NSApplication.shared.windows.first(where: {
+                  String(describing: type(of: $0)).contains("StatusBarWindow")
+              })
+        else { return }
+        var frame = window.frame
+        var x = statusWindow.frame.midX - frame.width / 2
+        if let screen = statusWindow.screen ?? window.screen {
+            let visibleFrame = screen.visibleFrame
+            x = min(max(visibleFrame.minX + 8, x), visibleFrame.maxX - frame.width - 8)
+        }
+        guard abs(frame.origin.x - x) > 0.5 else { return }
+        frame.origin.x = x
+        window.setFrame(frame, display: true)
     }
 }
