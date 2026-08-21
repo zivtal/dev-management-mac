@@ -37,36 +37,20 @@ final class SimulatorRunSettingsTests: XCTestCase {
         XCTAssertEqual(settings.simulatedNowValue(), "2026-03-15")
     }
 
-    func testSimulatedNowWithDateAndTimeCarriesUTCOffset() throws {
+    func testSimulatedNowWithDateAndTimeIsUTC() {
         var settings = SimulatorRunSettings()
         settings.simulatedDate = "2026-03-15"
         settings.simulatedTime = "08:30"
-        let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 2 * 3600))
-        XCTAssertEqual(
-            settings.simulatedNowValue(timeZone: timeZone),
-            "2026-03-15T08:30:00+02:00"
-        )
+        XCTAssertEqual(settings.simulatedNowValue(), "2026-03-15T08:30:00Z")
     }
 
-    func testSimulatedNowWithNegativeOffsetTimeZone() throws {
-        var settings = SimulatorRunSettings()
-        settings.simulatedDate = "2026-03-15"
-        settings.simulatedTime = "22:05"
-        let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: -(5 * 3600 + 30 * 60)))
-        XCTAssertEqual(
-            settings.simulatedNowValue(timeZone: timeZone),
-            "2026-03-15T22:05:00-05:30"
-        )
-    }
-
-    func testSimulatedNowWithTimeOnlyDefaultsDateToToday() throws {
+    func testSimulatedNowWithTimeOnlyDefaultsDateToTodayInUTC() {
         var settings = SimulatorRunSettings()
         settings.simulatedTime = "12:00"
-        let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
         let now = Date(timeIntervalSince1970: 1_700_000_000) // 2023-11-14 UTC
         XCTAssertEqual(
-            settings.simulatedNowValue(timeZone: timeZone, now: now),
-            "2023-11-14T12:00:00+00:00"
+            settings.simulatedNowValue(now: now),
+            "2023-11-14T12:00:00Z"
         )
     }
 
@@ -74,13 +58,15 @@ final class SimulatorRunSettingsTests: XCTestCase {
         XCTAssertNil(SimulatorRunSettings().simulatedNowValue())
     }
 
-    func testLaunchEnvironmentUsesSimctlChildPrefix() throws {
+    func testLaunchEnvironmentUsesSimctlChildPrefixAndPinsUTC() {
         var settings = SimulatorRunSettings()
         settings.simulatedDate = "2026-01-02"
-        let timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
         XCTAssertEqual(
-            settings.launchEnvironment(forScheme: "TripFlow", timeZone: timeZone),
-            ["SIMCTL_CHILD_TRIPFLOW_DEBUG_NOW": "2026-01-02"]
+            settings.launchEnvironment(forScheme: "TripFlow"),
+            [
+                "SIMCTL_CHILD_TRIPFLOW_DEBUG_NOW": "2026-01-02",
+                "SIMCTL_CHILD_TZ": "UTC"
+            ]
         )
         XCTAssertTrue(
             SimulatorRunSettings().launchEnvironment(forScheme: "TripFlow").isEmpty

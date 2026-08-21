@@ -1303,3 +1303,4 @@
 "Copied %@ into the app's Documents folder.\n" = "%@ הועתק לתיקיית Documents של האפליקציה.\n";
 "Could not copy files into the app's Documents folder: %@\n" = "לא ניתן להעתיק קבצים לתיקיית Documents של האפליקציה: %@\n";
 "✓ marks a Simulator this app was run on before." = "✓ מסמן סימולטור שהאפליקציה כבר הורצה עליו.";
+"The simulated date and time are UTC; the app also runs with its timezone set to UTC." = "התאריך והשעה המדומים הם ב־UTC; האפליקציה גם רצה עם אזור זמן UTC.";

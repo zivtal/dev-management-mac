@@ -185,6 +185,15 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
         installationDeviceOrder = updatedOrder.isEmpty ? nil : updatedOrder
     }
 
+    /// Simulator sessions must build Debug like run-emulator.sh: debug-only
+    /// affordances (e.g. simulated-date environment variables) are compiled
+    /// out of Release builds.
+    var simulatorBuildConfiguration: String {
+        if availableConfigurations.contains("Debug") { return "Debug" }
+        return availableConfigurations.first { $0.localizedCaseInsensitiveContains("debug") }
+            ?? configuration
+    }
+
     func configurationMatchingScheme(_ selectedScheme: String) -> String? {
         let normalizedScheme = selectedScheme.lowercased()
         return availableConfigurations.first { configuration in

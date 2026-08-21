@@ -724,7 +724,7 @@ final class InstallationService {
         [
             project.containerKind.xcodebuildFlag, project.containerPath,
             "-scheme", scheme ?? project.scheme,
-            "-configuration", project.configuration,
+            "-configuration", project.simulatorBuildConfiguration,
             "-destination", "platform=iOS Simulator,id=\(simulatorUDID)",
             "-destination-timeout", "30",
             "-derivedDataPath", derivedDataURL.path

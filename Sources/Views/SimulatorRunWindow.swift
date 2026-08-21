@@ -297,6 +297,9 @@ struct SimulatorRunWindowView: View {
                     Text("The app reads this variable in Debug builds to fake the current date.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Text("The simulated date and time are UTC; the app also runs with its timezone set to UTC.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding(4)

@@ -38,10 +38,11 @@ struct SimulatorRunSettings: Codable, Equatable, Sendable {
         return Self.defaultDebugNowVariableName(forScheme: scheme)
     }
 
-    /// The simulated "now" the Debug app should believe in, mirroring
-    /// run-emulator.sh: a bare date, or an ISO date-time carrying the Mac's
-    /// current UTC offset. Returns nil when no date or time is configured.
-    func simulatedNowValue(timeZone: TimeZone = .current, now: Date = Date()) -> String? {
+    /// The simulated "now" the Debug app should believe in: a bare date, or
+    /// an ISO date-time in UTC. The launch environment also pins the app's
+    /// timezone to UTC, so the entered time is exactly what the app shows.
+    /// Returns nil when no date or time is configured.
+    func simulatedNowValue(now: Date = Date()) -> String? {
         let trimmedDate = simulatedDate?.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedTime = simulatedTime?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasDate = trimmedDate?.isEmpty == false
@@ -54,22 +55,12 @@ struct SimulatorRunSettings: Codable, Equatable, Sendable {
         } else {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.timeZone = timeZone
+            formatter.timeZone = TimeZone(identifier: "UTC")
             formatter.dateFormat = "yyyy-MM-dd"
             date = formatter.string(from: now)
         }
         guard let trimmedTime, hasTime else { return date }
-
-        let offsetSeconds = timeZone.secondsFromGMT(for: now)
-        let sign = offsetSeconds < 0 ? "-" : "+"
-        let absoluteOffset = abs(offsetSeconds)
-        let offset = String(
-            format: "%@%02d:%02d",
-            sign,
-            absoluteOffset / 3600,
-            (absoluteOffset % 3600) / 60
-        )
-        return "\(date)T\(trimmedTime):00\(offset)"
+        return "\(date)T\(trimmedTime):00Z"
     }
 
     /// Extra arguments for `simctl launch`, mirroring run-emulator.sh's
@@ -83,17 +74,18 @@ struct SimulatorRunSettings: Codable, Equatable, Sendable {
     }
 
     /// Environment for the `simctl launch` process. simctl forwards only
-    /// SIMCTL_CHILD_-prefixed variables into the launched app.
-    func launchEnvironment(
-        forScheme scheme: String,
-        timeZone: TimeZone = .current,
-        now: Date = Date()
-    ) -> [String: String] {
-        guard let simulatedNow = simulatedNowValue(timeZone: timeZone, now: now) else {
+    /// SIMCTL_CHILD_-prefixed variables into the launched app. When a date or
+    /// time is simulated, TZ pins the app's timezone to UTC so the entered
+    /// time and the app's local clock agree.
+    func launchEnvironment(forScheme scheme: String, now: Date = Date()) -> [String: String] {
+        guard let simulatedNow = simulatedNowValue(now: now) else {
             return [:]
         }
         let variable = effectiveDebugNowVariableName(forScheme: scheme)
-        return [Self.simctlChildEnvironmentPrefix + variable: simulatedNow]
+        return [
+            Self.simctlChildEnvironmentPrefix + variable: simulatedNow,
+            Self.simctlChildEnvironmentPrefix + "TZ": "UTC"
+        ]
     }
 
     static func isValidDate(_ value: String) -> Bool {

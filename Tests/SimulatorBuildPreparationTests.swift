@@ -31,6 +31,42 @@ final class SimulatorBuildPreparationTests: XCTestCase {
         ])
     }
 
+    func testSimulatorBuildsUseDebugEvenWhenProjectInstallsRelease() {
+        var releaseProject = ProjectDescriptor(
+            displayName: "TripFlow",
+            folderPath: "/tmp/tripflow",
+            containerPath: "/tmp/tripflow/TripFlow.xcodeproj",
+            containerKind: .project,
+            schemes: ["TripFlow"],
+            configurations: ["Debug", "Release"]
+        ).makeManagedProject()
+        releaseProject.configuration = "Release"
+
+        let arguments = InstallationService.simulatorXcodeArguments(
+            project: releaseProject,
+            simulatorUDID: "SIM-UDID",
+            derivedDataURL: URL(fileURLWithPath: "/tmp/derived")
+        )
+        let configurationIndex = arguments.firstIndex(of: "-configuration")
+        XCTAssertEqual(configurationIndex.map { arguments[$0 + 1] }, "Debug")
+    }
+
+    func testSimulatorConfigurationFallsBackWhenNoDebugExists() {
+        var project = ProjectDescriptor(
+            displayName: "App",
+            folderPath: "/tmp/app",
+            containerPath: "/tmp/app/App.xcodeproj",
+            containerKind: .project,
+            schemes: ["App"],
+            configurations: ["Development-Debugging", "Production"]
+        ).makeManagedProject()
+        project.configuration = "Production"
+        XCTAssertEqual(project.simulatorBuildConfiguration, "Development-Debugging")
+
+        project.availableConfigurations = ["Production"]
+        XCTAssertEqual(project.simulatorBuildConfiguration, "Production")
+    }
+
     func testSimulatorArgumentsNeverCarrySigningOverrides() {
         let arguments = InstallationService.simulatorXcodeArguments(
             project: project,
