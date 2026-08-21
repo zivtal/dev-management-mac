@@ -118,6 +118,33 @@ struct AppStoreConnectCertificate: Equatable, Sendable {
     }
 }
 
+struct AppStoreConnectBundleID: Equatable, Sendable {
+    let id: String
+    let identifier: String
+    let name: String?
+}
+
+struct AppStoreConnectProfile: Equatable, Sendable {
+    let id: String
+    let name: String
+    let profileType: String
+    let profileState: String?
+    let uuid: String?
+    let profileContent: Data?
+    let expirationDate: Date?
+    /// The bundle identifier the profile is bound to, resolved from the
+    /// `bundleId` relationship when the request included it.
+    let bundleIdentifier: String?
+    /// App Store Connect identifiers of the certificates this profile authorizes.
+    let certificateIDs: [String]
+
+    static let appStoreProfileType = "IOS_APP_STORE"
+
+    func isActive(at date: Date = Date()) -> Bool {
+        profileState != "INVALID" && expirationDate.map { $0 > date } != false
+    }
+}
+
 struct AppStoreLocalizedNamePreservation: Equatable, Sendable {
     let locale: String
     let requestedName: String
@@ -214,10 +241,188 @@ final class AppStoreConnectService {
         else {
             throw AppStoreConnectError.invalidResponse
         }
-        if certificate.certificateContent != nil {
-            return certificate
+        // Return the issued resource immediately, even if Apple omitted its content.
+        // The provisioning layer first persists this ID, then performs any follow-up
+        // fetch. Folding that fetch into this method could report a 401/403 after the
+        // POST succeeded and make the caller delete the certificate's only private key.
+        return certificate
+    }
+
+    func certificate(id: String) async throws -> AppStoreConnectCertificate {
+        try await certificateDetails(id: id)
+    }
+
+    /// Revokes a certificate. Development Management only ever calls this for a
+    /// certificate it created moments earlier in the same provisioning attempt;
+    /// pre-existing certificates are never revoked automatically.
+    func revokeCertificate(id: String) async throws {
+        _ = try await request(method: "DELETE", path: "/v1/certificates/\(id)")
+    }
+
+    func bundleIDs() async throws -> [AppStoreConnectBundleID] {
+        try await pagedData(
+            path: "/v1/bundleIds",
+            query: [
+                "fields[bundleIds]": "identifier,name,platform",
+                "limit": "200"
+            ]
+        ).compactMap(Self.bundleID)
+    }
+
+    /// Registers one exact iOS bundle identifier. Never given a wildcard: a wildcard
+    /// identifier cannot back an App Store profile for a concrete bundle.
+    func createIOSBundleID(
+        identifier: String,
+        name: String
+    ) async throws -> AppStoreConnectBundleID {
+        let response = try await request(
+            method: "POST",
+            path: "/v1/bundleIds",
+            body: Self.bundleIDCreateBody(identifier: identifier, name: name)
+        )
+        guard let data = response["data"] as? [String: Any],
+              let bundleID = Self.bundleID(data)
+        else {
+            throw AppStoreConnectError.invalidResponse
         }
-        return try await certificateDetails(id: certificate.id)
+        return bundleID
+    }
+
+    static func bundleIDCreateBody(identifier: String, name: String) -> [String: Any] {
+        [
+            "data": [
+                "type": "bundleIds",
+                "attributes": [
+                    "identifier": identifier,
+                    "name": name,
+                    "platform": "IOS"
+                ]
+            ]
+        ]
+    }
+
+    /// App Store Connect only fills in a relationship's `data` linkage for
+    /// relationships named in `include`. Without `certificates` there, every profile
+    /// comes back reporting no certificates at all and none can ever be reused.
+    static let profilesQuery: [String: String] = [
+        "fields[profiles]": "name,profileType,profileState,uuid,profileContent,expirationDate,bundleId,certificates",
+        "include": "bundleId,certificates",
+        "fields[bundleIds]": "identifier",
+        "fields[certificates]": "certificateType",
+        "limit": "200"
+    ]
+
+    func profiles() async throws -> [AppStoreConnectProfile] {
+        let (data, included) = try await pagedResources(
+            path: "/v1/profiles",
+            query: Self.profilesQuery
+        )
+        let identifiersByID = Dictionary(
+            included
+                .filter { $0["type"] as? String == "bundleIds" }
+                .compactMap { resource -> (String, String)? in
+                    guard let id = resource["id"] as? String,
+                          let identifier = Self.attributes(resource)["identifier"] as? String
+                    else { return nil }
+                    return (id, identifier)
+                },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return data.compactMap { Self.profile($0, bundleIdentifiersByID: identifiersByID) }
+    }
+
+    func createAppStoreProfile(
+        name: String,
+        bundleIDResourceID: String,
+        certificateID: String
+    ) async throws -> AppStoreConnectProfile {
+        let response = try await request(
+            method: "POST",
+            path: "/v1/profiles",
+            body: Self.appStoreProfileCreateBody(
+                name: name,
+                bundleIDResourceID: bundleIDResourceID,
+                certificateID: certificateID
+            )
+        )
+        guard let data = response["data"] as? [String: Any],
+              let profile = Self.profile(data, bundleIdentifiersByID: [:])
+        else {
+            throw AppStoreConnectError.invalidResponse
+        }
+        return profile
+    }
+
+    static func appStoreProfileCreateBody(
+        name: String,
+        bundleIDResourceID: String,
+        certificateID: String
+    ) -> [String: Any] {
+        [
+            "data": [
+                "type": "profiles",
+                "attributes": [
+                    "name": name,
+                    "profileType": AppStoreConnectProfile.appStoreProfileType
+                ],
+                "relationships": [
+                    "bundleId": [
+                        "data": ["type": "bundleIds", "id": bundleIDResourceID]
+                    ],
+                    "certificates": [
+                        "data": [["type": "certificates", "id": certificateID]]
+                    ]
+                ]
+            ]
+        ]
+    }
+
+    static func bundleID(_ resource: [String: Any]) -> AppStoreConnectBundleID? {
+        guard let id = resource["id"] as? String,
+              let identifier = attributes(resource)["identifier"] as? String,
+              !identifier.isEmpty
+        else {
+            return nil
+        }
+        return AppStoreConnectBundleID(
+            id: id,
+            identifier: identifier,
+            name: attributes(resource)["name"] as? String
+        )
+    }
+
+    static func profile(
+        _ resource: [String: Any],
+        bundleIdentifiersByID: [String: String]
+    ) -> AppStoreConnectProfile? {
+        guard let id = resource["id"] as? String else { return nil }
+        let attributes = attributes(resource)
+        guard let name = attributes["name"] as? String,
+              let profileType = attributes["profileType"] as? String
+        else {
+            return nil
+        }
+        let relationships = resource["relationships"] as? [String: Any]
+        let bundleRelationship = (relationships?["bundleId"] as? [String: Any])?["data"]
+            as? [String: Any]
+        let bundleIdentifier = (bundleRelationship?["id"] as? String)
+            .flatMap { bundleIdentifiersByID[$0] }
+        let certificateIDs = ((relationships?["certificates"] as? [String: Any])?["data"]
+            as? [[String: Any]] ?? [])
+            .compactMap { $0["id"] as? String }
+        return AppStoreConnectProfile(
+            id: id,
+            name: name,
+            profileType: profileType,
+            profileState: attributes["profileState"] as? String,
+            uuid: attributes["uuid"] as? String,
+            profileContent: (attributes["profileContent"] as? String)
+                .flatMap { Data(base64Encoded: $0, options: [.ignoreUnknownCharacters]) },
+            expirationDate: (attributes["expirationDate"] as? String)
+                .flatMap(certificateDate),
+            bundleIdentifier: bundleIdentifier,
+            certificateIDs: certificateIDs
+        )
     }
 
     private func certificateDetails(id: String) async throws -> AppStoreConnectCertificate {

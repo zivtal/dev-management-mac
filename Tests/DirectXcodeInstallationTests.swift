@@ -401,6 +401,110 @@ final class DirectXcodeInstallationTests: XCTestCase {
         )
     }
 
+    func testProvisioningProfileRecordReadsAppStoreProfileMetadata() throws {
+        let certificate = Data("distribution-certificate".utf8)
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "UUID": "2dadbedf-692b-42ab-a2c8-f895b5dc97fc",
+                "Name": "iOS Team Store Provisioning Profile: com.example.app",
+                "TeamIdentifier": ["TEAM123"],
+                "TeamName": "Example",
+                "ExpirationDate": Date(timeIntervalSince1970: 2_000_000),
+                "DeveloperCertificates": [certificate],
+                "Entitlements": [
+                    "application-identifier": "TEAM123.com.example.app",
+                    "beta-reports-active": true
+                ]
+            ] as [String: Any],
+            format: .xml,
+            options: 0
+        )
+
+        let record = try XCTUnwrap(
+            DeveloperTeamService.provisioningProfileRecord(fromPropertyListData: data)
+        )
+
+        XCTAssertEqual(record.uuid, "2dadbedf-692b-42ab-a2c8-f895b5dc97fc")
+        XCTAssertEqual(record.name, "iOS Team Store Provisioning Profile: com.example.app")
+        XCTAssertEqual(record.bundleIdentifier, "com.example.app")
+        XCTAssertEqual(
+            record.certificateSHA1Fingerprints,
+            [DeveloperTeamService.sha1Fingerprint(ofCertificateData: certificate)]
+        )
+        // No ProvisionedDevices list plus beta-reports-active is what distinguishes an
+        // App Store profile from a development, ad-hoc, or in-house one.
+        XCTAssertFalse(record.hasProvisionedDevices)
+        XCTAssertFalse(record.provisionsAllDevices)
+        XCTAssertTrue(record.isBetaReportsActive)
+        XCTAssertTrue(record.isAppStoreProfile)
+    }
+
+    func testProvisioningProfileRecordDetectsEnterpriseInHouseProfile() throws {
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "UUID": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+                "Name": "In-house Profile: com.example.app",
+                "TeamIdentifier": ["TEAM123"],
+                "ProvisionsAllDevices": true,
+                "Entitlements": ["application-identifier": "TEAM123.com.example.app"]
+            ] as [String: Any],
+            format: .xml,
+            options: 0
+        )
+
+        let record = try XCTUnwrap(
+            DeveloperTeamService.provisioningProfileRecord(fromPropertyListData: data)
+        )
+
+        // No device list, but signing an App Store upload with it is rejected.
+        XCTAssertFalse(record.hasProvisionedDevices)
+        XCTAssertTrue(record.provisionsAllDevices)
+        XCTAssertFalse(record.isAppStoreProfile)
+    }
+
+    func testProvisioningProfileRecordDetectsWildcardIdentifier() throws {
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "TeamIdentifier": ["TEAM123"],
+                "Entitlements": [
+                    "application-identifier": "TEAM123.com.example.*",
+                    "beta-reports-active": true
+                ]
+            ] as [String: Any],
+            format: .xml,
+            options: 0
+        )
+
+        let record = try XCTUnwrap(
+            DeveloperTeamService.provisioningProfileRecord(fromPropertyListData: data)
+        )
+
+        XCTAssertEqual(record.bundleIdentifier, "com.example.*")
+        XCTAssertTrue(record.hasWildcardBundleIdentifier)
+    }
+
+    func testProvisioningProfileRecordDetectsDevelopmentProfile() throws {
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "UUID": "e8e659ea-04a8-4ac7-9be0-1a6aae95eae0",
+                "Name": "iOS Team Provisioning Profile: com.example.app",
+                "TeamIdentifier": ["TEAM123"],
+                "ProvisionedDevices": ["00008130-000000000000001C"],
+                "Entitlements": ["application-identifier": "TEAM123.com.example.app"]
+            ] as [String: Any],
+            format: .xml,
+            options: 0
+        )
+
+        let record = try XCTUnwrap(
+            DeveloperTeamService.provisioningProfileRecord(fromPropertyListData: data)
+        )
+
+        XCTAssertTrue(record.hasProvisionedDevices)
+        XCTAssertFalse(record.isAppStoreProfile)
+        XCTAssertEqual(record.certificateSHA1Fingerprints, [])
+    }
+
     private func makeProvisioningProfile(
         teamID: String,
         teamName: String?,

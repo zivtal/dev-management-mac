@@ -62,7 +62,53 @@ enum CommandFailureSummary {
     }
 }
 
-final class ProcessRunner {
+/// The subset of `ProcessRunner` services depend on, so tests can observe the exact
+/// command line and standard input a service produces without spawning anything.
+protocol ProcessRunning: Sendable {
+    func run(
+        executable: URL,
+        arguments: [String],
+        workingDirectory: URL?,
+        additionalEnvironment: [String: String],
+        standardInput: Data?,
+        onOutput: ProcessRunner.OutputHandler?,
+        terminateWhenOutput: ProcessRunner.OutputTerminationPredicate?
+    ) async throws -> CommandResult
+}
+
+extension ProcessRunning {
+    @discardableResult
+    func runAndRequireSuccess(
+        executable: URL,
+        arguments: [String],
+        workingDirectory: URL? = nil,
+        additionalEnvironment: [String: String] = [:],
+        standardInput: Data? = nil,
+        onOutput: ProcessRunner.OutputHandler? = nil,
+        terminateWhenOutput: ProcessRunner.OutputTerminationPredicate? = nil
+    ) async throws -> CommandResult {
+        let result = try await run(
+            executable: executable,
+            arguments: arguments,
+            workingDirectory: workingDirectory,
+            additionalEnvironment: additionalEnvironment,
+            standardInput: standardInput,
+            onOutput: onOutput,
+            terminateWhenOutput: terminateWhenOutput
+        )
+
+        guard result.terminationStatus == 0 else {
+            throw ProcessRunnerError.commandFailed(
+                executable: executable.lastPathComponent,
+                status: result.terminationStatus,
+                output: result.output
+            )
+        }
+        return result
+    }
+}
+
+final class ProcessRunner: ProcessRunning {
     typealias OutputHandler = @Sendable (String) -> Void
     typealias OutputTerminationPredicate = @Sendable (String) -> Bool
 
@@ -71,6 +117,7 @@ final class ProcessRunner {
         arguments: [String],
         workingDirectory: URL? = nil,
         additionalEnvironment: [String: String] = [:],
+        standardInput: Data? = nil,
         onOutput: OutputHandler? = nil,
         terminateWhenOutput: OutputTerminationPredicate? = nil
     ) async throws -> CommandResult {
@@ -87,6 +134,13 @@ final class ProcessRunner {
                 process.currentDirectoryURL = workingDirectory
                 process.standardOutput = outputPipe
                 process.standardError = outputPipe
+
+                // Secrets are handed to helper tools this way instead of through
+                // `arguments`, which every local user can read out of `ps`.
+                let inputPipe: Pipe? = standardInput.map { _ in Pipe() }
+                if let inputPipe {
+                    process.standardInput = inputPipe
+                }
 
                 var environment = ProcessInfo.processInfo.environment
                 let commonToolPaths = [
@@ -133,6 +187,15 @@ final class ProcessRunner {
                 do {
                     try process.run()
                     cancellationController.started(process)
+                    if let inputPipe, let standardInput {
+                        // Written off the calling thread so a child that stops reading
+                        // cannot deadlock this one once the pipe buffer fills.
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            let handle = inputPipe.fileHandleForWriting
+                            try? handle.write(contentsOf: standardInput)
+                            try? handle.close()
+                        }
+                    }
                 } catch {
                     outputPipe.fileHandleForReading.readabilityHandler = nil
                     continuation.resume(
@@ -145,33 +208,6 @@ final class ProcessRunner {
         } onCancel: {
             cancellationController.cancel()
         }
-    }
-
-    func runAndRequireSuccess(
-        executable: URL,
-        arguments: [String],
-        workingDirectory: URL? = nil,
-        additionalEnvironment: [String: String] = [:],
-        onOutput: OutputHandler? = nil,
-        terminateWhenOutput: OutputTerminationPredicate? = nil
-    ) async throws -> CommandResult {
-        let result = try await run(
-            executable: executable,
-            arguments: arguments,
-            workingDirectory: workingDirectory,
-            additionalEnvironment: additionalEnvironment,
-            onOutput: onOutput,
-            terminateWhenOutput: terminateWhenOutput
-        )
-
-        guard result.terminationStatus == 0 else {
-            throw ProcessRunnerError.commandFailed(
-                executable: executable.lastPathComponent,
-                status: result.terminationStatus,
-                output: result.output
-            )
-        }
-        return result
     }
 }
 

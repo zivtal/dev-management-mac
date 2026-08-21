@@ -7,6 +7,7 @@ enum PublishingCredential: String {
     case appReviewDemoAccountName = "app-review-demo-account-name"
     case appReviewDemoAccountPassword = "app-review-demo-account-password"
     case appStorePrivacyFastlaneSession = "app-store-privacy-fastlane-session"
+    case signingKeychainPassword = "signing-keychain-password"
 }
 
 enum KeychainCredentialError: LocalizedError {

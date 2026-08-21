@@ -69,7 +69,7 @@ enum AppStorePublishingError: LocalizedError {
         case .privacyManifestUnavailable:
             return L10n.text("App Privacy was published, but app-store-publishing.json could not be updated with the publication time.")
         case .distributionSigningUnavailable:
-            return L10n.text("Distribution signing is not available. Use an Account Holder or Admin App Store Connect API key with Certificates, Identifiers & Profiles access so Development Management can create a local Apple Distribution identity, grant Cloud Managed App Distribution access, or import an existing Apple Distribution certificate with its private key into Keychain. No archive was uploaded.")
+            return L10n.text("Distribution signing is not available. Development Management signs App Store builds with a local Apple Distribution identity and explicit distribution profiles; it never uses Xcode cloud signing. Use an Account Holder or Admin App Store Connect API key with Certificates, Identifiers & Profiles access, or import an Apple Distribution certificate with its private key. No archive was uploaded.")
         }
     }
 }
@@ -87,6 +87,7 @@ final class AppStorePublishingService {
     private let xcodeSchemePreparationService: XcodeSchemeBuildPreparationService
     private let privacyPublishingService: AppStorePrivacyPublishingService
     private let distributionCertificateProvisioningService: DistributionCertificateProvisioningService
+    private let provisioningProfileService: AppStoreProvisioningProfileService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
@@ -94,7 +95,8 @@ final class AppStorePublishingService {
         subscriptionDiscoveryService: StoreKitSubscriptionDiscoveryService = StoreKitSubscriptionDiscoveryService(),
         reviewAssetService: AppStoreReviewAssetService = AppStoreReviewAssetService(),
         publicationURLValidator: AppStorePublicationURLValidator = AppStorePublicationURLValidator(),
-        distributionCertificateProvisioningService: DistributionCertificateProvisioningService = .shared
+        distributionCertificateProvisioningService: DistributionCertificateProvisioningService = .shared,
+        provisioningProfileService: AppStoreProvisioningProfileService = .shared
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
@@ -102,6 +104,7 @@ final class AppStorePublishingService {
         self.reviewAssetService = reviewAssetService
         self.publicationURLValidator = publicationURLValidator
         self.distributionCertificateProvisioningService = distributionCertificateProvisioningService
+        self.provisioningProfileService = provisioningProfileService
         self.xcodeGenPreparationService = XcodeGenProjectPreparationService(
             processRunner: processRunner,
             fileManager: fileManager
@@ -332,13 +335,26 @@ final class AppStorePublishingService {
             targetBuildNumber = localBuildNumber
         } else {
             let signingTeamID = project.signingTeamID ?? project.projectSigningTeamID
-            _ = try await distributionCertificateProvisioningService.prepareLocalIdentity(
-                teamID: signingTeamID,
+            // Check the application's identifier before creating any certificate. A
+            // missing identifier should cost only an API request, not consume signing
+            // state that cannot yet be used. Embedded bundle IDs are checked after the
+            // archive because they cannot be enumerated reliably before then.
+            try await provisioningProfileService.preflight(
+                bundleIdentifiers: [bundleIdentifier],
                 issuerID: configuration.appStoreConnectIssuerID,
                 keyID: configuration.appStoreConnectKeyID,
-                privateKeyPEM: configuration.appStoreConnectPrivateKey,
-                onOutput: { eventHandler(.output($0)) }
+                privateKeyPEM: configuration.appStoreConnectPrivateKey
             )
+            // Resolved before archiving: without a usable local distribution identity
+            // the export can never succeed, and a Release archive is expensive.
+            let signingIdentity = try await distributionCertificateProvisioningService
+                .prepareLocalIdentity(
+                    teamID: signingTeamID,
+                    issuerID: configuration.appStoreConnectIssuerID,
+                    keyID: configuration.appStoreConnectKeyID,
+                    privateKeyPEM: configuration.appStoreConnectPrivateKey,
+                    onOutput: { eventHandler(.output($0)) }
+                )
             let directory = fileManager.temporaryDirectory
                 .appendingPathComponent("DevManagement-Publish-\(UUID().uuidString)", isDirectory: true)
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -348,6 +364,7 @@ final class AppStorePublishingService {
             let archived = try await archiveAndExport(
                 project: project,
                 expectedBundleIdentifier: bundleIdentifier,
+                signingIdentity: signingIdentity,
                 issuerID: configuration.appStoreConnectIssuerID,
                 keyID: configuration.appStoreConnectKeyID,
                 privateKey: configuration.appStoreConnectPrivateKey,
@@ -1034,6 +1051,7 @@ final class AppStorePublishingService {
     private func archiveAndExport(
         project: ManagedProject,
         expectedBundleIdentifier: String,
+        signingIdentity: DistributionSigningIdentity,
         issuerID: String,
         keyID: String,
         privateKey: String,
@@ -1073,17 +1091,14 @@ final class AppStorePublishingService {
         }) ?? project.availableConfigurations.first(where: {
             $0.localizedCaseInsensitiveContains("release")
         }) ?? project.configuration
-        var archiveArguments = xcodeContainerArguments(for: project) + [
-            "-scheme", preparedScheme.name,
-            "-configuration", releaseConfiguration,
-            "-destination", "generic/platform=iOS",
-            "-archivePath", archiveURL.path,
-            "-allowProvisioningUpdates"
-        ] + authenticationArguments
-        if let teamID = project.signingTeamID ?? project.projectSigningTeamID, !teamID.isEmpty {
-            archiveArguments.append("DEVELOPMENT_TEAM=\(teamID)")
-        }
-        archiveArguments.append("archive")
+        let archiveArguments = Self.archiveArguments(
+            containerArguments: xcodeContainerArguments(for: project),
+            schemeName: preparedScheme.name,
+            configuration: releaseConfiguration,
+            archiveURL: archiveURL,
+            teamID: project.signingTeamID ?? project.projectSigningTeamID,
+            authenticationArguments: authenticationArguments
+        )
         _ = try await processRunner.runAndRequireSuccess(
             executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
             arguments: archiveArguments,
@@ -1097,32 +1112,49 @@ final class AppStorePublishingService {
             fileManager: fileManager
         )
 
-        var exportOptions: [String: Any] = [
-            "method": "app-store-connect",
-            "destination": "export",
-            "signingStyle": "automatic",
-            "manageAppVersionAndBuildNumber": false,
-            "uploadSymbols": true
-        ]
-        if let teamID = project.signingTeamID ?? project.projectSigningTeamID, !teamID.isEmpty {
-            exportOptions["teamID"] = teamID
-        }
+        // Every signed bundle in the archive — the app plus each app extension — needs
+        // its own distribution profile before a manual export can succeed. The archive
+        // was already validated above, so the fallback only guards an unexpected layout.
+        let discoveredBundleIdentifiers = Self.archivedBundleIdentifiers(
+            at: archiveURL,
+            fileManager: fileManager
+        )
+        let archivedBundleIdentifiers = discoveredBundleIdentifiers.isEmpty
+            ? [archiveMetadata.bundleIdentifier]
+            : discoveredBundleIdentifiers
+        let provisioningProfiles = try await provisioningProfileService.ensureProfiles(
+            bundleIdentifiers: archivedBundleIdentifiers,
+            identity: signingIdentity,
+            issuerID: issuerID,
+            keyID: keyID,
+            privateKeyPEM: privateKey,
+            onOutput: { eventHandler(.output($0)) }
+        )
+
+        let exportOptions = Self.exportOptions(
+            teamID: project.signingTeamID ?? project.projectSigningTeamID,
+            signingIdentity: signingIdentity,
+            provisioningProfiles: provisioningProfiles
+        )
         let plist = try PropertyListSerialization.data(
             fromPropertyList: exportOptions,
             format: .xml,
             options: 0
         )
         try plist.write(to: exportOptionsURL, options: .atomic)
+        eventHandler(.output(L10n.format(
+            "Exporting with the local Apple Distribution identity %@ and %d distribution profile(s).\n",
+            signingIdentity.commonName,
+            provisioningProfiles.count
+        )))
         do {
             _ = try await processRunner.runAndRequireSuccess(
                 executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
-                arguments: [
-                    "-exportArchive",
-                    "-archivePath", archiveURL.path,
-                    "-exportPath", exportURL.path,
-                    "-exportOptionsPlist", exportOptionsURL.path,
-                    "-allowProvisioningUpdates"
-                ] + authenticationArguments,
+                arguments: Self.exportArchiveArguments(
+                    archiveURL: archiveURL,
+                    exportURL: exportURL,
+                    exportOptionsURL: exportOptionsURL
+                ),
                 workingDirectory: project.folderURL,
                 onOutput: { eventHandler(.output($0)) }
             )
@@ -1186,6 +1218,111 @@ final class AppStorePublishingService {
             )
         }
         throw AppStorePublishingError.missingArchiveApplication
+    }
+
+    /// The archive keeps `-allowProvisioningUpdates` and the App Store Connect key:
+    /// they let Xcode refresh the development profile the archive is signed with.
+    static func archiveArguments(
+        containerArguments: [String],
+        schemeName: String,
+        configuration: String,
+        archiveURL: URL,
+        teamID: String?,
+        authenticationArguments: [String]
+    ) -> [String] {
+        var arguments = containerArguments + [
+            "-scheme", schemeName,
+            "-configuration", configuration,
+            "-destination", "generic/platform=iOS",
+            "-archivePath", archiveURL.path,
+            "-allowProvisioningUpdates"
+        ] + authenticationArguments
+        if let teamID, !teamID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            arguments.append("DEVELOPMENT_TEAM=\(teamID)")
+        }
+        arguments.append("archive")
+        return arguments
+    }
+
+    /// Deliberately carries neither `-allowProvisioningUpdates` nor an App Store
+    /// Connect authentication key. Both make `xcodebuild` resolve signing through
+    /// Xcode Cloud Managed Distribution, which an API key has no permission to use —
+    /// that is what produced "Cloud signing permission error". A manual export needs
+    /// neither, because the certificate and profiles are pinned in the options plist.
+    static func exportArchiveArguments(
+        archiveURL: URL,
+        exportURL: URL,
+        exportOptionsURL: URL
+    ) -> [String] {
+        [
+            "-exportArchive",
+            "-archivePath", archiveURL.path,
+            "-exportPath", exportURL.path,
+            "-exportOptionsPlist", exportOptionsURL.path
+        ]
+    }
+
+    /// Manual signing: the certificate and every profile are pinned explicitly so
+    /// xcodebuild never consults Xcode's accounts or Cloud Managed Distribution.
+    static func exportOptions(
+        teamID: String?,
+        signingIdentity: DistributionSigningIdentity,
+        provisioningProfiles: [String: String]
+    ) -> [String: Any] {
+        var options: [String: Any] = [
+            "method": "app-store-connect",
+            "destination": "export",
+            "signingStyle": "manual",
+            // Publishing must never rewrite the managed app's version or build.
+            "manageAppVersionAndBuildNumber": false,
+            "uploadSymbols": true,
+            "signingCertificate": signingIdentity.sha1Fingerprint
+        ]
+        let resolvedTeamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        options["teamID"] = resolvedTeamID?.isEmpty == false
+            ? resolvedTeamID
+            : signingIdentity.teamID
+        if !provisioningProfiles.isEmpty {
+            options["provisioningProfiles"] = provisioningProfiles
+        }
+        return options
+    }
+
+    /// Bundle identifiers of every signed bundle in the archive: the application and
+    /// its embedded app extensions and companion apps.
+    static func archivedBundleIdentifiers(
+        at archiveURL: URL,
+        fileManager: FileManager = .default
+    ) -> [String] {
+        let applicationsURL = archiveURL
+            .appendingPathComponent("Products", isDirectory: true)
+            .appendingPathComponent("Applications", isDirectory: true)
+        guard let enumerator = fileManager.enumerator(
+            at: applicationsURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+        var identifiers: [String] = []
+        var seen: Set<String> = []
+        for case let candidate as URL in enumerator {
+            guard ["app", "appex"].contains(candidate.pathExtension.lowercased()) else { continue }
+            guard let data = try? Data(contentsOf: candidate.appendingPathComponent("Info.plist")),
+                  let values = try? PropertyListSerialization.propertyList(
+                    from: data,
+                    options: [],
+                    format: nil
+                  ) as? [String: Any],
+                  let identifier = values["CFBundleIdentifier"] as? String,
+                  !identifier.isEmpty,
+                  seen.insert(identifier).inserted
+            else {
+                continue
+            }
+            identifiers.append(identifier)
+        }
+        return identifiers
     }
 
     static func isDistributionSigningFailure(_ message: String) -> Bool {

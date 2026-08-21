@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Security
 
@@ -5,6 +6,32 @@ struct SigningCertificateRecord: Equatable {
     let commonName: String
     let organizationalUnit: String
     let organizationName: String?
+    /// Uppercase hexadecimal SHA-1 of the DER certificate, matching the value
+    /// `security find-identity` prints and `exportOptionsPlist` expects for
+    /// `signingCertificate`. Nil when the record was built from parsed subject
+    /// components instead of a certificate.
+    let sha1Fingerprint: String?
+    /// Expiry of the certificate. A keychain routinely holds several certificates
+    /// sharing one common name, only one of which is still valid.
+    let expirationDate: Date?
+
+    init(
+        commonName: String,
+        organizationalUnit: String,
+        organizationName: String?,
+        sha1Fingerprint: String? = nil,
+        expirationDate: Date? = nil
+    ) {
+        self.commonName = commonName
+        self.organizationalUnit = organizationalUnit
+        self.organizationName = organizationName
+        self.sha1Fingerprint = sha1Fingerprint
+        self.expirationDate = expirationDate
+    }
+
+    func isValid(at date: Date) -> Bool {
+        expirationDate.map { $0 > date } != false
+    }
 }
 
 struct ProvisioningProfileRecord: Equatable {
@@ -12,6 +39,63 @@ struct ProvisioningProfileRecord: Equatable {
     let teamName: String?
     let bundleIdentifier: String?
     let expirationDate: Date?
+    let uuid: String?
+    let name: String?
+    /// Uppercase SHA-1 fingerprints of the certificates the profile authorizes.
+    let certificateSHA1Fingerprints: [String]
+    /// App Store profiles carry no `ProvisionedDevices` list; development and
+    /// ad-hoc profiles always do.
+    let hasProvisionedDevices: Bool
+    /// Set on enterprise in-house profiles, which also carry no device list.
+    let provisionsAllDevices: Bool
+    /// `beta-reports-active` is present and true only on App Store profiles.
+    let isBetaReportsActive: Bool
+
+    init(
+        teamID: String,
+        teamName: String?,
+        bundleIdentifier: String?,
+        expirationDate: Date?,
+        uuid: String? = nil,
+        name: String? = nil,
+        certificateSHA1Fingerprints: [String] = [],
+        hasProvisionedDevices: Bool = false,
+        provisionsAllDevices: Bool = false,
+        isBetaReportsActive: Bool = false
+    ) {
+        self.teamID = teamID
+        self.teamName = teamName
+        self.bundleIdentifier = bundleIdentifier
+        self.expirationDate = expirationDate
+        self.uuid = uuid
+        self.name = name
+        self.certificateSHA1Fingerprints = certificateSHA1Fingerprints
+        self.hasProvisionedDevices = hasProvisionedDevices
+        self.provisionsAllDevices = provisionsAllDevices
+        self.isBetaReportsActive = isBetaReportsActive
+    }
+
+    /// The absence of a device list is not enough on its own: enterprise in-house
+    /// profiles have no device list either, and signing an App Store upload with one
+    /// produces an IPA Apple rejects. `beta-reports-active` is what actually marks a
+    /// profile as App Store.
+    var isAppStoreProfile: Bool {
+        !hasProvisionedDevices && !provisionsAllDevices && isBetaReportsActive
+    }
+
+    /// Wildcard identifiers such as `com.example.*` cannot back an App Store profile
+    /// for a concrete bundle, so they are never reused for one.
+    var hasWildcardBundleIdentifier: Bool {
+        bundleIdentifier?.contains("*") == true
+    }
+}
+
+/// A locally usable Apple Distribution identity: a certificate whose private key
+/// is present in one of the search-list keychains.
+struct DistributionSigningIdentity: Equatable, Sendable {
+    let teamID: String
+    let commonName: String
+    let sha1Fingerprint: String
 }
 
 final class DeveloperTeamService {
@@ -46,17 +130,91 @@ final class DeveloperTeamService {
         )
     }
 
+    /// The Apple Distribution identity usable for manual App Store export, or nil
+    /// when no matching certificate has its private key in the keychain.
+    func distributionSigningIdentity(teamID: String?) -> DistributionSigningIdentity? {
+        distributionSigningIdentities(teamID: teamID).first
+    }
+
+    /// Every locally usable identity, newest expiry first. Provisioning checks each
+    /// one against the App Store Connect account: a revoked renewal must not hide an
+    /// older identity that is still active there.
+    func distributionSigningIdentities(teamID: String?) -> [DistributionSigningIdentity] {
+        Self.distributionSigningIdentities(
+            certificateRecords: signingCertificateRecords(),
+            teamID: teamID
+        )
+    }
+
+    static let distributionCertificatePrefixes = ["Apple Distribution:", "iPhone Distribution:"]
+
     static func hasDistributionSigningIdentity(
         certificateRecords: [SigningCertificateRecord],
         teamID: String?
     ) -> Bool {
+        !distributionCertificateRecords(
+            certificateRecords: certificateRecords,
+            teamID: teamID
+        ).isEmpty
+    }
+
+    static func distributionCertificateRecords(
+        certificateRecords: [SigningCertificateRecord],
+        teamID: String?
+    ) -> [SigningCertificateRecord] {
         let normalizedTeamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let prefixes = ["Apple Distribution:", "iPhone Distribution:"]
-        return certificateRecords.contains { record in
-            prefixes.contains(where: record.commonName.hasPrefix)
+        return certificateRecords.filter { record in
+            distributionCertificatePrefixes.contains(where: record.commonName.hasPrefix)
                 && (normalizedTeamID?.isEmpty != false
                     || record.organizationalUnit == normalizedTeamID)
         }
+    }
+
+    /// Manual export pins one exact certificate, so only a record that carries a
+    /// SHA-1 fingerprint can back a `DistributionSigningIdentity`.
+    ///
+    /// A keychain commonly holds several certificates with the same common name —
+    /// renewals accumulate — so expired ones are rejected and the longest-lived
+    /// remaining certificate wins. Pinning an expired hash would fail the export.
+    static func distributionSigningIdentity(
+        certificateRecords: [SigningCertificateRecord],
+        teamID: String?,
+        now: Date = Date()
+    ) -> DistributionSigningIdentity? {
+        distributionSigningIdentities(
+            certificateRecords: certificateRecords,
+            teamID: teamID,
+            now: now
+        ).first
+    }
+
+    static func distributionSigningIdentities(
+        certificateRecords: [SigningCertificateRecord],
+        teamID: String?,
+        now: Date = Date()
+    ) -> [DistributionSigningIdentity] {
+        let candidates = distributionCertificateRecords(
+            certificateRecords: certificateRecords,
+            teamID: teamID
+        )
+        .filter { $0.sha1Fingerprint?.isEmpty == false && $0.isValid(at: now) }
+        .sorted { left, right in
+            (left.expirationDate ?? .distantFuture) > (right.expirationDate ?? .distantFuture)
+        }
+        return candidates.compactMap { match in
+            guard let fingerprint = match.sha1Fingerprint else { return nil }
+            return DistributionSigningIdentity(
+                teamID: match.organizationalUnit,
+                commonName: match.commonName,
+                sha1Fingerprint: fingerprint
+            )
+        }
+    }
+
+    static func sha1Fingerprint(ofCertificateData data: Data) -> String {
+        Insecure.SHA1.hash(data: data)
+            .map { String(format: "%02X", $0) }
+            .joined()
     }
 
     static func signingCertificateRecord(
@@ -74,7 +232,8 @@ final class DeveloperTeamService {
         return SigningCertificateRecord(
             commonName: commonName,
             organizationalUnit: organizationalUnit,
-            organizationName: subjectValue(kSecOIDOrganizationName, certificate: certificate)
+            organizationName: subjectValue(kSecOIDOrganizationName, certificate: certificate),
+            sha1Fingerprint: sha1Fingerprint(ofCertificateData: certificateData)
         )
     }
 
@@ -194,11 +353,20 @@ final class DeveloperTeamService {
             bundleIdentifier = applicationIdentifier
         }
 
+        let certificateFingerprints = (dictionary["DeveloperCertificates"] as? [Data] ?? [])
+            .map { sha1Fingerprint(ofCertificateData: $0) }
+
         return ProvisioningProfileRecord(
             teamID: teamID,
             teamName: dictionary["TeamName"] as? String,
             bundleIdentifier: bundleIdentifier,
-            expirationDate: dictionary["ExpirationDate"] as? Date
+            expirationDate: dictionary["ExpirationDate"] as? Date,
+            uuid: dictionary["UUID"] as? String,
+            name: dictionary["Name"] as? String,
+            certificateSHA1Fingerprints: certificateFingerprints,
+            hasProvisionedDevices: (dictionary["ProvisionedDevices"] as? [String])?.isEmpty == false,
+            provisionsAllDevices: dictionary["ProvisionsAllDevices"] as? Bool == true,
+            isBetaReportsActive: entitlements?["beta-reports-active"] as? Bool == true
         )
     }
 
@@ -227,7 +395,7 @@ final class DeveloperTeamService {
             ) {
                 return expirationDate
             }
-            guard let propertyListData = decodedProvisioningProfileContent(data) else {
+            guard let propertyListData = Self.decodedProvisioningProfileContent(data) else {
                 continue
             }
             if let expirationDate = Self.provisioningProfileExpirationDate(
@@ -283,18 +451,55 @@ final class DeveloperTeamService {
                 organizationName: Self.subjectValue(
                     kSecOIDOrganizationName,
                     certificate: certificate
-                )
+                ),
+                sha1Fingerprint: Self.sha1Fingerprint(
+                    ofCertificateData: SecCertificateCopyData(certificate) as Data
+                ),
+                expirationDate: Self.expirationDate(of: certificate)
             )
         }
     }
 
-    private func provisioningProfileRecords() -> [ProvisioningProfileRecord] {
+    /// Reads the certificate's notAfter date. Security reports it as a
+    /// `CFAbsoluteTime`, which is seconds since 2001-01-01, not since the epoch.
+    static func expirationDate(of certificate: SecCertificate) -> Date? {
+        guard let values = SecCertificateCopyValues(
+            certificate,
+            [kSecOIDX509V1ValidityNotAfter] as CFArray,
+            nil
+        ) as? [String: Any],
+              let entry = values[kSecOIDX509V1ValidityNotAfter as String] as? [String: Any],
+              let rawValue = entry[kSecPropertyKeyValue as String]
+        else {
+            return nil
+        }
+        if let date = rawValue as? Date {
+            return date
+        }
+        if let interval = rawValue as? Double {
+            return Date(timeIntervalSinceReferenceDate: interval)
+        }
+        if let number = rawValue as? NSNumber {
+            return Date(timeIntervalSinceReferenceDate: number.doubleValue)
+        }
+        return nil
+    }
+
+    /// Where Xcode 14+ looks for installed profiles. Newly created profiles are
+    /// written here so `xcodebuild -exportArchive` can resolve them by name.
+    static func installedProvisioningProfilesDirectory(
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL {
+        homeDirectory.appendingPathComponent(
+            "Library/Developer/Xcode/UserData/Provisioning Profiles",
+            isDirectory: true
+        )
+    }
+
+    func provisioningProfileRecords() -> [ProvisioningProfileRecord] {
         let homeDirectory = fileManagerHomeDirectory
         let directories = [
-            homeDirectory.appendingPathComponent(
-                "Library/Developer/Xcode/UserData/Provisioning Profiles",
-                isDirectory: true
-            ),
+            Self.installedProvisioningProfilesDirectory(homeDirectory: homeDirectory),
             homeDirectory.appendingPathComponent(
                 "Library/MobileDevice/Provisioning Profiles",
                 isDirectory: true
@@ -313,7 +518,7 @@ final class DeveloperTeamService {
         .filter { seenURLs.insert($0.standardizedFileURL).inserted }
         .compactMap { profileURL in
             guard let data = try? Data(contentsOf: profileURL),
-                  let propertyListData = decodedProvisioningProfileContent(data)
+                  let propertyListData = Self.decodedProvisioningProfileContent(data)
             else {
                 return nil
             }
@@ -325,7 +530,7 @@ final class DeveloperTeamService {
         FileManager.default.homeDirectoryForCurrentUser
     }
 
-    private func decodedProvisioningProfileContent(_ data: Data) -> Data? {
+    static func decodedProvisioningProfileContent(_ data: Data) -> Data? {
         var decoder: CMSDecoder?
         guard CMSDecoderCreate(&decoder) == errSecSuccess, let decoder else { return nil }
 

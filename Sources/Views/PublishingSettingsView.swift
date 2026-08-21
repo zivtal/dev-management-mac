@@ -73,7 +73,7 @@ struct PublishingSettingsView: View {
                 Text("Apps use this API unless a different profile is selected in the Publish window. The private key is stored only in your macOS Keychain.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("For automatic distribution signing, use an Account Holder or Admin key with Certificates, Identifiers & Profiles access, or grant the key access to cloud-managed distribution certificates. The app’s selected signing team must belong to the same Apple team.")
+                Text("App Store builds are signed with a local Apple Distribution identity and explicit distribution profiles, never with Xcode cloud signing. Use an Account Holder or Admin key with Certificates, Identifiers & Profiles access. The app’s selected signing team must belong to the same Apple team.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
