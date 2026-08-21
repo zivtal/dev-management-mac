@@ -557,6 +557,20 @@ OpenAI and App Store Connect API keys and App Review demo credentials are stored
 separately in macOS Keychain and are never written to `state.json` or an app's
 `app-store-publishing.json`.
 
+Distribution signing keeps two owner-only (`0700`/`0600`) directories beside
+`state.json`:
+
+- `PendingSigningCertificates/` holds the private key of a certificate request
+  that is still in flight, written before Apple is asked to issue anything. It
+  is deleted only after the certificate is confirmed installed or Apple confirms
+  the revocation — never because a local keychain cleanup or inspection failed,
+  because a live certificate whose key was deleted can never be installed again.
+- `IssuedSigningCertificates/` records every certificate Apple issued for this
+  Mac: its identifier, the public-key modulus it was issued from, the expected
+  team, the issuance time, and whether it is issued, installed, or revoked. It
+  holds no key material and outlives the pending key, so ownership of a
+  certificate stays provable and a confirmed revocation stays auditable.
+
 The pending Install All queue, discovered device list, icon cache, and failed
 attempt cooldowns are runtime-only and are rebuilt or discarded after relaunch.
 

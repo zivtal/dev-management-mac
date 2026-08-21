@@ -408,6 +408,41 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
         XCTAssertTrue(partition.standardInput?.contains("apple-tool:,apple:,codesign:") == true)
     }
 
+    func testImportIdentityIsIdempotentWhenTheFingerprintIsAlreadyPresent() async throws {
+        let url = try scratchKeychainURL()
+        try Data("existing".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let runner = RecordingProcessRunner()
+        runner.respond { invocation in
+            guard invocation.arguments.first == "find-identity" else { return nil }
+            return CommandResult(
+                terminationStatus: 0,
+                output: "  1) AABBCCDD \"Apple Distribution\""
+            )
+        }
+        let service = SigningKeychainService(
+            processRunner: runner,
+            passwordStore: InMemoryPasswordStore(password: "pw"),
+            keychainURLOverride: url,
+            updatesSearchList: false
+        )
+
+        try await service.importIdentity(
+            pkcs12URL: URL(fileURLWithPath: "/tmp/not-needed.p12"),
+            pkcs12Password: "not-needed",
+            expectedSHA1Fingerprint: "AABBCCDD",
+            onOutput: { _ in }
+        )
+
+        XCTAssertFalse(
+            runner.invocations.contains {
+                $0.standardInput?.hasPrefix("import") == true
+                    || $0.standardInput?.hasPrefix("set-key-partition-list") == true
+            },
+            "an already-installed identity must not be imported or reauthorized again"
+        )
+    }
+
     func testRemoveIdentityTargetsOnlyTheDedicatedKeychainAndOnlyWhenPresent() async throws {
         let url = try scratchKeychainURL()
         try Data("existing".utf8).write(to: url)

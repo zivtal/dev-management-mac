@@ -269,6 +269,13 @@ actor SigningKeychainService {
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws {
         let url = try await prepareKeychain(onOutput: onOutput)
+        // Recovery may retry after the identity was imported successfully but the
+        // separate provenance write failed. Treat an exact fingerprint match as an
+        // already-completed import so that retrying remains idempotent instead of
+        // failing forever with Security's "item already exists" error.
+        if try await containsIdentity(sha1Fingerprint: expectedSHA1Fingerprint) {
+            return
+        }
         let keychainPassword = try requiredPassword()
         try await runSecurity(SecurityCommand([
             .plain("import"), .plain(pkcs12URL.path),

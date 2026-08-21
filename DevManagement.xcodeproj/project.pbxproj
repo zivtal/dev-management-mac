@@ -30,6 +30,7 @@
 		30BE0C471F8EE7AA7B72A601 /* ProjectIconServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A59E1559E63A3643555DC751 /* ProjectIconServiceTests.swift */; };
 		333B2C5902BEB7FA416E5E91 /* ProjectVersionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16304D3C5216A6E329FC687D /* ProjectVersionService.swift */; };
 		3A03B76E9DB0978F003F953F /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB755CA878595D122931F826 /* IOKit.framework */; };
+		41F4CC96660B8C903E97094D /* SigningCertificateProvenanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D4973537ABDEFA5FA430285 /* SigningCertificateProvenanceTests.swift */; };
 		424073DCC7F03EE62B815AA7 /* SigningProcessAndRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B719B011062FBC6451EE3D6 /* SigningProcessAndRecoveryTests.swift */; };
 		4349D459F2E4B2C4F17EA0E1 /* AppStorePublishingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FA9DEC991B43F6B915C1712 /* AppStorePublishingTests.swift */; };
 		4A814A652BD78B42A602368D /* PendingSigningCertificateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC0A8058098CBFFE6FA56596 /* PendingSigningCertificateStore.swift */; };
@@ -96,6 +97,7 @@
 		FBB51E7BF36D23DFFD6059CB /* DeviceInstallationSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 530E58724DCC86E51ADA96DC /* DeviceInstallationSelectionTests.swift */; };
 		FDA9CC031B2D6EA020FA048D /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCC55BBF92D1B08B76423F98 /* ActivityView.swift */; };
 		FE4EB9CD154BAECAC02E2B72 /* LaunchAtLoginService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A2784C79744CD66BFA25A1 /* LaunchAtLoginService.swift */; };
+		FE7665307AB7E4513730F0E9 /* IssuedSigningCertificateProvenanceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51E3BA3AA027452830D54328 /* IssuedSigningCertificateProvenanceStore.swift */; };
 		FE79B7C7E59A6F6747FDC37A /* InstallationRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA05D3B928C1D38506053D4 /* InstallationRecordTests.swift */; };
 		FFA08E86D752D3D51B6D6764 /* AppStoreCopyrightNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFEE7B1D2C50ED2BB83B31D1 /* AppStoreCopyrightNormalizer.swift */; };
 /* End PBXBuildFile section */
@@ -121,6 +123,7 @@
 		16304D3C5216A6E329FC687D /* ProjectVersionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectVersionService.swift; sourceTree = "<group>"; };
 		1B7096F249D3F3EBC32EEAF2 /* PublishingProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingProgressView.swift; sourceTree = "<group>"; };
 		1CB256DC4A73BE90711652A1 /* ProcessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessRunner.swift; sourceTree = "<group>"; };
+		1D4973537ABDEFA5FA430285 /* SigningCertificateProvenanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SigningCertificateProvenanceTests.swift; sourceTree = "<group>"; };
 		1E424D0BD8342267B04D406E /* RedeemCodeOfferDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedeemCodeOfferDetailView.swift; sourceTree = "<group>"; };
 		1EE52232D5DB1CF4FF3954EE /* USBConnectionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = USBConnectionMonitor.swift; sourceTree = "<group>"; };
 		216D98980B9264F7BC5DC75E /* MenuBarLayoutPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarLayoutPolicyTests.swift; sourceTree = "<group>"; };
@@ -144,6 +147,7 @@
 		456F7738EAE617528B0F3D42 /* ProjectVersionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectVersionServiceTests.swift; sourceTree = "<group>"; };
 		46CA950089CCC0AD6A4134BC /* DeveloperTeam.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperTeam.swift; sourceTree = "<group>"; };
 		4B8D0D564881B1EC0B5C65E8 /* AppStoreConnectCredentialProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreConnectCredentialProfile.swift; sourceTree = "<group>"; };
+		51E3BA3AA027452830D54328 /* IssuedSigningCertificateProvenanceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IssuedSigningCertificateProvenanceStore.swift; sourceTree = "<group>"; };
 		530E58724DCC86E51ADA96DC /* DeviceInstallationSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceInstallationSelectionTests.swift; sourceTree = "<group>"; };
 		537B048C63747430E7107A8A /* AppStoreConnectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreConnectService.swift; sourceTree = "<group>"; };
 		5E1276ED68C930278EA259F3 /* PublishingSubscriptionForm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublishingSubscriptionForm.swift; sourceTree = "<group>"; };
@@ -238,6 +242,7 @@
 				44DF4CF45B211135EADC58B6 /* DeviceService.swift */,
 				2C66A29E860D54DCC7B0EFDC /* DistributionCertificateProvisioningService.swift */,
 				8648AB030DDA915B7137674A /* InstallationService.swift */,
+				51E3BA3AA027452830D54328 /* IssuedSigningCertificateProvenanceStore.swift */,
 				E8217125EF1A7EDC42D724E6 /* KeychainCredentialStore.swift */,
 				77A2784C79744CD66BFA25A1 /* LaunchAtLoginService.swift */,
 				C00D521CCAB99741C5A2A693 /* NotificationService.swift */,
@@ -383,6 +388,7 @@
 				35E9A1A9B6FDB5D74804A1F1 /* PublishingExperienceTests.swift */,
 				0E6EB9AF1E8FA9C94AAA2117 /* SandboxTesterServiceTests.swift */,
 				7EB3B7AB29B4412F47C54292 /* SchedulingPolicyTests.swift */,
+				1D4973537ABDEFA5FA430285 /* SigningCertificateProvenanceTests.swift */,
 				3B719B011062FBC6451EE3D6 /* SigningProcessAndRecoveryTests.swift */,
 				13FDDF9F48698084B25CFFA3 /* XcodeGenProjectPreparationTests.swift */,
 				8A466250B1213AF0E709F70B /* XcodeSchemeBuildPreparationTests.swift */,
@@ -520,6 +526,7 @@
 				AB83EAE7DF4B7FC08B5E3BF9 /* DistributionCertificateProvisioningService.swift in Sources */,
 				9D7F580C89BD70EA6C0EBB86 /* InstallationLogWindow.swift in Sources */,
 				C0820A8CA20DBBA4BE058884 /* InstallationService.swift in Sources */,
+				FE7665307AB7E4513730F0E9 /* IssuedSigningCertificateProvenanceStore.swift in Sources */,
 				027C50AFA8B0805A1D272090 /* KeychainCredentialStore.swift in Sources */,
 				FE4EB9CD154BAECAC02E2B72 /* LaunchAtLoginService.swift in Sources */,
 				642ACDD0B44BC448AD2549B4 /* Localization.swift in Sources */,
@@ -587,6 +594,7 @@
 				5A0A5C5DC670DB27092EEA59 /* PublishingExperienceTests.swift in Sources */,
 				0EFCC40A31BDE64FC7DFCE67 /* SandboxTesterServiceTests.swift in Sources */,
 				9632C4EDAFFF50F0AA2F4FEE /* SchedulingPolicyTests.swift in Sources */,
+				41F4CC96660B8C903E97094D /* SigningCertificateProvenanceTests.swift in Sources */,
 				424073DCC7F03EE62B815AA7 /* SigningProcessAndRecoveryTests.swift in Sources */,
 				D62324A78C666F5EF8101F39 /* XcodeGenProjectPreparationTests.swift in Sources */,
 				13D1BC1DE58C277C97276348 /* XcodeSchemeBuildPreparationTests.swift in Sources */,
@@ -710,7 +718,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 96;
+				CURRENT_PROJECT_VERSION = 97;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -730,7 +738,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.9.5;
+				MARKETING_VERSION = 1.9.6;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -777,7 +785,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 96;
+				CURRENT_PROJECT_VERSION = 97;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -791,7 +799,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.9.5;
+				MARKETING_VERSION = 1.9.6;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

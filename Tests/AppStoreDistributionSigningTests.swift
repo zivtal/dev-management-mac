@@ -366,7 +366,23 @@ final class AppStoreDistributionSigningTests: XCTestCase {
         XCTAssertEqual(unusable.map(\.displayName), ["Alpha", "Zeta"])
         XCTAssertTrue(unusable[0].descriptionText.contains("Alpha"))
         XCTAssertNotEqual(unusable[0].descriptionText, "Alpha", "an expiry date should be shown")
-        XCTAssertEqual(unusable[1].descriptionText, "Zeta")
+        // The Apple identifier is always shown: two renewals routinely share a name,
+        // and revoking the wrong one costs another certificate slot.
+        XCTAssertTrue(unusable[0].descriptionText.contains("ID 1"))
+        XCTAssertTrue(unusable[1].descriptionText.contains("Zeta"))
+        XCTAssertTrue(unusable[1].descriptionText.contains("ID 2"))
+    }
+
+    func testUnusableCertificatesAreOrderedByIdentifierWhenNamesCollide() {
+        let certificates = [
+            Self.certificate(id: "b", type: "DISTRIBUTION", expires: nil, displayName: "Same"),
+            Self.certificate(id: "a", type: "DISTRIBUTION", expires: nil, displayName: "Same")
+        ]
+
+        let unusable = DistributionCertificateProvisioningService.unusableCertificates(certificates)
+
+        XCTAssertEqual(unusable.map(\.id), ["a", "b"])
+        XCTAssertNotEqual(unusable[0].descriptionText, unusable[1].descriptionText)
     }
 
     func testSlotExhaustionErrorNamesTheBlockingCertificatesAndPromisesNoRevoke() throws {

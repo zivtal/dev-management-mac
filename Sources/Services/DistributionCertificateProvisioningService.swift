@@ -6,18 +6,60 @@ struct UnusableDistributionCertificate: Equatable, Sendable {
     let id: String
     let displayName: String
     let expirationDate: Date?
+    /// Uppercase SHA-1 of the certificate, when Apple returned its content. A team's
+    /// renewals routinely share a display name and even an expiry date; the
+    /// fingerprint is what tells two of them apart in Keychain Access.
+    let sha1Fingerprint: String?
 
+    init(
+        id: String,
+        displayName: String,
+        expirationDate: Date?,
+        sha1Fingerprint: String? = nil
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.expirationDate = expirationDate
+        self.sha1Fingerprint = sha1Fingerprint
+    }
+
+    /// Names the certificate precisely enough to act on. Listing several
+    /// indistinguishable "Apple Distribution: Example Ltd." lines is worse than
+    /// useless: revoking the wrong one costs another slot. Everything included here is
+    /// public certificate metadata — an Apple resource identifier and a certificate
+    /// digest — never key material.
     var descriptionText: String {
-        guard let expirationDate else { return displayName }
-        return L10n.format(
-            "%@ (expires %@)",
-            displayName,
-            DateFormatter.localizedString(
-                from: expirationDate,
-                dateStyle: .medium,
-                timeStyle: .none
-            )
-        )
+        var details: [String] = []
+        if let expirationDate {
+            details.append(L10n.format(
+                "expires %@",
+                DateFormatter.localizedString(
+                    from: expirationDate,
+                    dateStyle: .medium,
+                    timeStyle: .none
+                )
+            ))
+        }
+        if !id.isEmpty {
+            details.append(L10n.format("ID %@", id))
+        }
+        if let shortFingerprint = Self.shortFingerprint(sha1Fingerprint) {
+            details.append(L10n.format("SHA-1 %@", shortFingerprint))
+        }
+        guard !details.isEmpty else { return displayName }
+        return L10n.format("%@ (%@)", displayName, details.joined(separator: ", "))
+    }
+
+    /// The leading bytes of the SHA-1, grouped in pairs the way Keychain Access and the
+    /// Developer portal show them. Long enough to disambiguate a team's certificates,
+    /// short enough to read out loud.
+    static func shortFingerprint(_ fingerprint: String?) -> String? {
+        guard let fingerprint else { return nil }
+        let digits = Array(fingerprint.uppercased().filter(\.isHexDigit).prefix(16))
+        guard digits.count >= 8 else { return nil }
+        return stride(from: 0, to: digits.count, by: 2)
+            .map { String(digits[$0..<min($0 + 2, digits.count)]) }
+            .joined(separator: ":")
     }
 }
 
@@ -28,6 +70,7 @@ enum DistributionCertificateProvisioningError: LocalizedError {
     case certificateAccessDenied
     case certificateSlotsExhausted([UnusableDistributionCertificate])
     case privateKeyModulusUnavailable
+    case certificateParserUnavailable(String)
     case recoveredCertificateUnusable(String)
 
     var errorDescription: String? {
@@ -60,6 +103,11 @@ enum DistributionCertificateProvisioningError: LocalizedError {
             )
         case .privateKeyModulusUnavailable:
             return L10n.text("The generated signing key could not be fingerprinted, so a certificate was not requested from Apple. No archive was uploaded.")
+        case .certificateParserUnavailable(let reason):
+            return L10n.format(
+                "This Mac could not read a distribution certificate that Development Management generated locally (%@), so no certificate was requested from Apple and no certificate slot was used. No archive was uploaded.",
+                reason
+            )
         case .recoveredCertificateUnusable(let reason):
             return L10n.format(
                 "An Apple Distribution certificate left over from an interrupted attempt could not be installed (%@). No archive was uploaded.",
@@ -77,19 +125,26 @@ actor DistributionCertificateProvisioningService {
     private let developerTeamService: DeveloperTeamService
     private let signingKeychainService: SigningKeychainService
     private let pendingStore: PendingSigningCertificateStore
+    private let provenanceStore: IssuedSigningCertificateProvenanceStore
+    private let urlSession: URLSession
 
     init(
         processRunner: any ProcessRunning = ProcessRunner(),
         fileManager: FileManager = .default,
         developerTeamService: DeveloperTeamService = DeveloperTeamService(),
         signingKeychainService: SigningKeychainService = .shared,
-        pendingStore: PendingSigningCertificateStore = PendingSigningCertificateStore()
+        pendingStore: PendingSigningCertificateStore = PendingSigningCertificateStore(),
+        provenanceStore: IssuedSigningCertificateProvenanceStore =
+            IssuedSigningCertificateProvenanceStore(),
+        urlSession: URLSession = .shared
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
         self.developerTeamService = developerTeamService
         self.signingKeychainService = signingKeychainService
         self.pendingStore = pendingStore
+        self.provenanceStore = provenanceStore
+        self.urlSession = urlSession
     }
 
     /// Produces a local Apple Distribution identity for `teamID`, reusing an existing
@@ -129,7 +184,8 @@ actor DistributionCertificateProvisioningService {
         let appStoreConnect = try AppStoreConnectService(
             issuerID: issuerID,
             keyID: keyID,
-            privateKeyPEM: privateKeyPEM
+            privateKeyPEM: privateKeyPEM,
+            session: urlSession
         )
         let certificates: [AppStoreConnectCertificate]
         do {
@@ -253,7 +309,13 @@ actor DistributionCertificateProvisioningService {
                     normalizedTeamID: normalizedTeamID ?? request.expectedTeamID,
                     onOutput: onOutput
                 )
-                pendingStore.remove(id: request.id)
+                // The install is confirmed, so the pending key may go — but only once
+                // ownership is durably recorded somewhere that outlives it.
+                releasePendingKeyAfterConfirmedInstall(
+                    request: request,
+                    certificate: certificate,
+                    onOutput: onOutput
+                )
                 onOutput(L10n.format(
                     "Recovered and installed the Apple Distribution signing identity for team %@.\n",
                     installed.teamID
@@ -268,9 +330,8 @@ actor DistributionCertificateProvisioningService {
                 // The certificate itself cannot be used. It was provably created by
                 // Development Management, so releasing its slot is safe.
                 await rollBack(
-                    certificateID: certificate.id,
-                    sha1Fingerprint: Self.sha1Fingerprint(of: certificate),
-                    requestID: request.id,
+                    certificate: certificate,
+                    request: request,
                     appStoreConnect: appStoreConnect,
                     onOutput: onOutput
                 )
@@ -335,6 +396,11 @@ actor DistributionCertificateProvisioningService {
             throw DistributionCertificateProvisioningError.privateKeyModulusUnavailable
         }
 
+        // Run before anything exists on the Apple account. If this Mac's certificate
+        // parser cannot read a certificate, that fact is worth an early failure, not a
+        // consumed certificate slot holding a certificate nothing here can install.
+        try await verifyCertificateParsing(privateKeyURL: privateKeyURL, in: temporaryDirectory)
+
         // Persisted *before* Apple is asked to issue anything. From here on, a crash
         // at any point still leaves the key on disk and recoverable next launch.
         var request = PendingSigningCertificateRequest(
@@ -372,6 +438,16 @@ actor DistributionCertificateProvisioningService {
         request.certificateID = issuedCertificate.id
         try? pendingStore.update(request)
 
+        // Written here, before the details fetch and the import, for the same reason:
+        // this is the first instant at which a certificate exists on the account, and
+        // the record is what proves later that this one is ours.
+        recordProvenance(
+            .issued,
+            certificateID: issuedCertificate.id,
+            request: request,
+            onOutput: onOutput
+        )
+
         let certificate: AppStoreConnectCertificate
         if issuedCertificate.certificateContent == nil {
             certificate = try await appStoreConnect.certificate(id: issuedCertificate.id)
@@ -386,7 +462,11 @@ actor DistributionCertificateProvisioningService {
                 normalizedTeamID: normalizedTeamID,
                 onOutput: onOutput
             )
-            pendingStore.remove(id: request.id)
+            releasePendingKeyAfterConfirmedInstall(
+                request: request,
+                certificate: certificate,
+                onOutput: onOutput
+            )
             onOutput(L10n.format(
                 "Created and installed an Apple Distribution signing identity for team %@.\n",
                 identity.teamID
@@ -398,15 +478,155 @@ actor DistributionCertificateProvisioningService {
             // recover it. Only malformed or wrong-team certificates are revoked.
             if Self.shouldRollBackCertificate(for: error) {
                 await rollBack(
-                    certificateID: certificate.id,
-                    sha1Fingerprint: Self.sha1Fingerprint(of: certificate),
-                    requestID: request.id,
+                    certificate: certificate,
+                    request: request,
                     appStoreConnect: appStoreConnect,
                     onOutput: onOutput
                 )
             }
             throw error
         }
+    }
+
+    // MARK: - Certificate parser preflight
+
+    /// Subject of the throwaway certificate the preflight parses. Deliberately not an
+    /// Apple distribution subject: it is never installed anywhere, and it must not be
+    /// mistakable for a real signing certificate if it ever outlives its temporary
+    /// directory.
+    static let parserPreflightCommonName = "Development Management Certificate Parser Preflight"
+    static let parserPreflightOrganizationalUnit = "DEVMANAGEMENTPREFLIGHT"
+    static let parserPreflightOrganizationName = "Development Management"
+
+    static var parserPreflightSubject: String {
+        "/CN=\(parserPreflightCommonName)/OU=\(parserPreflightOrganizationalUnit)"
+            + "/O=\(parserPreflightOrganizationName)"
+    }
+
+    /// Proves, before Apple is asked to create anything, that this Mac can parse a real
+    /// DER certificate issued from the key that was just generated.
+    ///
+    /// The failure this catches is otherwise unrecoverable in the worst way: Apple
+    /// issues a genuine certificate, `signingCertificateRecord` returns nil, the
+    /// attempt reports `invalidCertificate`, and a slot is spent on a certificate
+    /// nothing on this Mac could ever install. Using the real key and the real parser
+    /// is the point — a checked-in fixture would not exercise the same Security
+    /// framework path on this machine.
+    private func verifyCertificateParsing(privateKeyURL: URL, in directory: URL) async throws {
+        let derURL = directory.appendingPathComponent("parser-preflight-certificate.der")
+        defer { try? fileManager.removeItem(at: derURL) }
+
+        do {
+            _ = try await processRunner.runAndRequireSuccess(
+                executable: Self.openssl,
+                arguments: [
+                    "req",
+                    "-new",
+                    "-x509",
+                    "-key", privateKeyURL.path,
+                    "-sha256",
+                    "-days", "1",
+                    "-subj", Self.parserPreflightSubject,
+                    "-outform", "DER",
+                    "-out", derURL.path
+                ]
+            )
+        } catch {
+            throw DistributionCertificateProvisioningError.certificateParserUnavailable(
+                error.localizedDescription
+            )
+        }
+
+        let certificateData: Data
+        do {
+            certificateData = try Data(contentsOf: derURL)
+        } catch {
+            throw DistributionCertificateProvisioningError.certificateParserUnavailable(
+                error.localizedDescription
+            )
+        }
+        if let reason = Self.parserPreflightFailureReason(certificateData: certificateData) {
+            throw DistributionCertificateProvisioningError.certificateParserUnavailable(reason)
+        }
+    }
+
+    /// Reads a DER certificate through the exact parser `installCertificate` depends on
+    /// and reports what it got wrong. Nil means the parser can be trusted with whatever
+    /// Apple returns.
+    static func parserPreflightFailureReason(certificateData: Data) -> String? {
+        guard !certificateData.isEmpty else {
+            return L10n.text("the locally generated test certificate was empty")
+        }
+        guard let record = DeveloperTeamService.signingCertificateRecord(
+            certificateData: certificateData
+        ) else {
+            return L10n.text("a locally generated certificate could not be read at all")
+        }
+        guard record.commonName == parserPreflightCommonName else {
+            return L10n.format(
+                "the certificate's common name was read as %@",
+                record.commonName
+            )
+        }
+        guard record.organizationalUnit == parserPreflightOrganizationalUnit else {
+            return L10n.format("the certificate's team was read as %@", record.organizationalUnit)
+        }
+        return nil
+    }
+
+    // MARK: - Provenance
+
+    /// Records what is now known about a certificate Apple issued for this Mac.
+    ///
+    /// Returns whether the record is durable. A failure is never fatal — the
+    /// certificate exists either way — but it does mean the pending private key has to
+    /// stay, because that key then becomes the only remaining proof of ownership.
+    @discardableResult
+    private func recordProvenance(
+        _ status: IssuedSigningCertificateRecord.Status,
+        certificateID: String,
+        request: PendingSigningCertificateRequest,
+        onOutput: @escaping @Sendable (String) -> Void
+    ) -> Bool {
+        do {
+            try provenanceStore.recordStatus(
+                status,
+                certificateID: certificateID,
+                publicKeyModulus: request.publicKeyModulus,
+                expectedTeamID: request.expectedTeamID
+            )
+            return true
+        } catch {
+            onOutput(L10n.format(
+                "The ownership record for Apple Distribution certificate %@ could not be saved (%@).\n",
+                certificateID,
+                error.localizedDescription
+            ))
+            return false
+        }
+    }
+
+    /// Drops the pending private key now that the identity is confirmed installed —
+    /// unless the ownership record could not be written, in which case the key is the
+    /// last thing that can identify this certificate as ours and is kept instead.
+    private func releasePendingKeyAfterConfirmedInstall(
+        request: PendingSigningCertificateRequest,
+        certificate: AppStoreConnectCertificate,
+        onOutput: @escaping @Sendable (String) -> Void
+    ) {
+        guard recordProvenance(
+            .installed,
+            certificateID: certificate.id,
+            request: request,
+            onOutput: onOutput
+        ) else {
+            onOutput(L10n.format(
+                "The Apple Distribution certificate %@ is installed, but its ownership record could not be saved, so its private key was kept on this Mac instead of being deleted.\n",
+                certificate.displayName ?? certificate.id
+            ))
+            return
+        }
+        pendingStore.remove(id: request.id)
     }
 
     /// Builds a PKCS#12 from a certificate and its private key and imports it into the
@@ -495,15 +715,21 @@ actor DistributionCertificateProvisioningService {
     /// certificate itself. Never runs for a certificate Development Management did not
     /// create, and never deletes a pre-existing identity — only the exact fingerprint
     /// of the certificate at hand, and only from Development Management's own keychain.
+    ///
+    /// The pending private key is deleted on exactly one path: after Apple confirms the
+    /// revocation. Every other outcome leaves a live certificate on the account, and a
+    /// live certificate whose key has been deleted is unusable forever — it cannot be
+    /// installed, and nothing local can even identify it. Deleting the key when a
+    /// keychain cleanup or inspection merely failed is what once stranded one.
     private func rollBack(
-        certificateID: String,
-        sha1Fingerprint: String?,
-        requestID: String,
+        certificate: AppStoreConnectCertificate,
+        request: PendingSigningCertificateRequest,
         appStoreConnect: AppStoreConnectService,
         onOutput: @escaping @Sendable (String) -> Void
     ) async {
+        let certificateName = certificate.displayName ?? certificate.id
         var localMaterialRemoved = true
-        if let sha1Fingerprint {
+        if let sha1Fingerprint = Self.sha1Fingerprint(of: certificate) {
             do {
                 if try await signingKeychainService.containsIdentity(
                     sha1Fingerprint: sha1Fingerprint
@@ -516,6 +742,8 @@ actor DistributionCertificateProvisioningService {
                     )
                 }
             } catch {
+                // The keychain could not be inspected or cleaned. That says nothing
+                // about the certificate, and it is not a reason to destroy anything.
                 localMaterialRemoved = false
             }
         }
@@ -523,20 +751,21 @@ actor DistributionCertificateProvisioningService {
         guard localMaterialRemoved else {
             // Revoking now would leave a revoked certificate installed locally, which
             // is the one state that blocks every future publish. The certificate stays
-            // active instead, so the next run can simply reuse it.
-            pendingStore.remove(id: requestID)
-            onOutput(L10n.text(
-                "The distribution certificate created for this attempt could not be removed from the Development Management signing keychain, so it was left active on the Apple account rather than revoked. No certificate slot was lost.\n"
+            // active instead, and its private key stays on disk, so the next run can
+            // recover it rather than requesting another one.
+            //
+            // The report names the cost honestly. Its predecessor claimed "No
+            // certificate slot was lost" while deleting the very key that made the
+            // slot recoverable.
+            onOutput(L10n.format(
+                "The distribution certificate %@ created for this attempt could not be removed from the Development Management signing keychain, so it was left active on the Apple account rather than revoked. It still occupies a certificate slot, and its private key was kept on this Mac so the next publish can recover it instead of requesting another one.\n",
+                certificateName
             ))
             return
         }
 
         do {
-            try await appStoreConnect.revokeCertificate(id: certificateID)
-            pendingStore.remove(id: requestID)
-            onOutput(L10n.text(
-                "The distribution certificate created for this attempt could not be used, so its local key was removed and the certificate was revoked again, releasing its certificate slot.\n"
-            ))
+            try await appStoreConnect.revokeCertificate(id: certificate.id)
         } catch {
             // The certificate still exists and its key is still saved, so the next run
             // recovers it rather than requesting another one.
@@ -544,7 +773,22 @@ actor DistributionCertificateProvisioningService {
                 "The distribution certificate created for this attempt could not be used and could not be revoked automatically (%@). Its private key was kept so the next publish can reuse that certificate instead of requesting another one.\n",
                 error.localizedDescription
             ))
+            return
         }
+
+        // Only now is the key provably worthless: Apple confirmed the certificate is
+        // gone, so it holds no slot and can never be installed again. The revocation
+        // is recorded first so it stays auditable after the key disappears.
+        recordProvenance(
+            .revoked,
+            certificateID: certificate.id,
+            request: request,
+            onOutput: onOutput
+        )
+        pendingStore.remove(id: request.id)
+        onOutput(L10n.text(
+            "The distribution certificate created for this attempt could not be used, so its local key was removed and the certificate was revoked again, releasing its certificate slot.\n"
+        ))
     }
 
     // MARK: - OpenSSL helpers
@@ -614,6 +858,8 @@ actor DistributionCertificateProvisioningService {
              .certificateAccessDenied,
              .certificateSlotsExhausted,
              .privateKeyModulusUnavailable,
+             // Raised before Apple is contacted at all, so there is nothing to revoke.
+             .certificateParserUnavailable,
              .recoveredCertificateUnusable:
             return false
         }
@@ -699,10 +945,13 @@ actor DistributionCertificateProvisioningService {
                 UnusableDistributionCertificate(
                     id: $0.id,
                     displayName: $0.displayName ?? $0.id,
-                    expirationDate: $0.expirationDate
+                    expirationDate: $0.expirationDate,
+                    sha1Fingerprint: Self.sha1Fingerprint(of: $0)
                 )
             }
-            .sorted { $0.displayName < $1.displayName }
+            // Renewals routinely share a display name, so the identifier breaks the tie
+            // and the listed order stays stable from one run to the next.
+            .sorted { ($0.displayName, $0.id) < ($1.displayName, $1.id) }
     }
 
     static func certificatePEM(_ certificateData: Data) -> String {
