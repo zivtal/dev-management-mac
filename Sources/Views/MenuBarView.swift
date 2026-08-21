@@ -5,7 +5,6 @@ struct MenuBarView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.openSettings) private var openSettings
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.displayScale) private var displayScale
     @State private var isDeviceListExpanded = false
     @State private var showsCancelInstallationConfirmation = false
     @State private var cancellationProjectID: UUID?
@@ -33,7 +32,9 @@ struct MenuBarView: View {
             footer
                 .reportMenuBarHeight(.footer)
         }
-        .padding(14)
+        .padding(.vertical, 14)
+        .padding(.leading, 14)
+        .padding(.trailing, 16)
         .frame(width: showsGitBranchColumn ? 715 : 615)
         .frame(height: popoverSizing.popoverHeight, alignment: .top)
         .background {
@@ -89,8 +90,7 @@ struct MenuBarView: View {
         MenuBarLayoutPolicy.sizing(
             contentHeight: measuredScrollableContentHeight,
             headerHeight: measuredHeaderHeight,
-            footerHeight: measuredFooterHeight,
-            displayScale: displayScale
+            footerHeight: measuredFooterHeight
         )
     }
 
@@ -774,8 +774,8 @@ enum MenuBarLayoutPolicy {
         let scrollableHeight: CGFloat
     }
 
-    static let minimumPopoverPixelHeight: CGFloat = 400
-    static let maximumPopoverPixelHeight: CGFloat = 600
+    static let minimumPopoverHeight: CGFloat = 600
+    static let maximumPopoverHeight: CGFloat = 600
 
     // Header, footer, one divider, three 12-point VStack gaps, and 14-point
     // vertical padding on each edge remain outside the scrolling viewport.
@@ -784,12 +784,10 @@ enum MenuBarLayoutPolicy {
     static func sizing(
         contentHeight: CGFloat,
         headerHeight: CGFloat,
-        footerHeight: CGFloat,
-        displayScale: CGFloat
+        footerHeight: CGFloat
     ) -> Sizing {
-        let resolvedScale = displayScale.isFinite && displayScale > 0 ? displayScale : 1
-        let minimumHeight = minimumPopoverPixelHeight / resolvedScale
-        let maximumHeight = maximumPopoverPixelHeight / resolvedScale
+        let minimumHeight = minimumPopoverHeight
+        let maximumHeight = maximumPopoverHeight
         let resolvedHeaderHeight = max(0, headerHeight.isFinite ? headerHeight : 0)
         let resolvedFooterHeight = max(0, footerHeight.isFinite ? footerHeight : 0)
         let chromeHeight = resolvedHeaderHeight

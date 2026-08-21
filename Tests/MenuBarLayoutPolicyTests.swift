@@ -2,64 +2,36 @@ import XCTest
 @testable import DevManagement
 
 final class MenuBarLayoutPolicyTests: XCTestCase {
-    func testRetinaHeightUsesFourHundredToSixHundredPhysicalPixels() {
-        let minimum = MenuBarLayoutPolicy.sizing(
-            contentHeight: 0,
-            headerHeight: 35,
-            footerHeight: 20,
-            displayScale: 2
-        )
-        let maximum = MenuBarLayoutPolicy.sizing(
-            contentHeight: 1_000,
-            headerHeight: 35,
-            footerHeight: 20,
-            displayScale: 2
-        )
-
-        XCTAssertEqual(minimum.popoverHeight, 200)
-        XCTAssertEqual(maximum.popoverHeight, 300)
-        XCTAssertEqual(minimum.popoverHeight * 2, 400)
-        XCTAssertEqual(maximum.popoverHeight * 2, 600)
-    }
-
-    func testShortContentFitsBetweenHeightBounds() {
+    func testShortContentStillFillsMinimumHeight() {
         let sizing = MenuBarLayoutPolicy.sizing(
             contentHeight: 100,
             headerHeight: 35,
-            footerHeight: 20,
-            displayScale: 2
+            footerHeight: 20
         )
 
-        XCTAssertEqual(sizing.scrollableHeight, 100)
-        XCTAssertEqual(sizing.popoverHeight, 220)
+        XCTAssertEqual(sizing.popoverHeight, 600)
+        XCTAssertEqual(sizing.scrollableHeight, 600 - 35 - 20 - 65)
     }
 
-    func testOneTimesDisplayUsesRequestedPixelBoundsDirectly() {
-        let minimum = MenuBarLayoutPolicy.sizing(
-            contentHeight: 0,
-            headerHeight: 35,
-            footerHeight: 20,
-            displayScale: 1
-        )
-        let maximum = MenuBarLayoutPolicy.sizing(
+    func testTallContentScrollsWithinMaximumHeight() {
+        let sizing = MenuBarLayoutPolicy.sizing(
             contentHeight: 1_000,
             headerHeight: 35,
-            footerHeight: 20,
-            displayScale: 1
+            footerHeight: 20
         )
 
-        XCTAssertEqual(minimum.popoverHeight, 400)
-        XCTAssertEqual(maximum.popoverHeight, 600)
+        XCTAssertEqual(sizing.popoverHeight, 600)
+        XCTAssertEqual(sizing.scrollableHeight, 600 - 35 - 20 - 65)
     }
 
-    func testInvalidDisplayScaleFallsBackToOne() {
+    func testInvalidMeasurementsFallBackToZero() {
         let sizing = MenuBarLayoutPolicy.sizing(
-            contentHeight: 0,
-            headerHeight: 35,
-            footerHeight: 20,
-            displayScale: 0
+            contentHeight: .nan,
+            headerHeight: .infinity,
+            footerHeight: -10
         )
 
-        XCTAssertEqual(sizing.popoverHeight, 400)
+        XCTAssertEqual(sizing.popoverHeight, 600)
+        XCTAssertEqual(sizing.scrollableHeight, 600 - 65)
     }
 }
