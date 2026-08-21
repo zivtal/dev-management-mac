@@ -23,30 +23,36 @@ final class SimulatorRunWindowPresenter {
         }
         let rootView = SimulatorRunWindowView(projectID: projectID, session: session)
             .environmentObject(model)
+        let preferredSize = NSSize(width: 760, height: 680)
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 680),
+            contentRect: NSRect(origin: .zero, size: preferredSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .utilityWindow],
             backing: .buffered,
             defer: false
         )
         panel.title = windowTitle(for: project)
-        panel.contentViewController = NSHostingController(rootView: rootView)
+        let hostingController = NSHostingController(rootView: rootView)
+        // Keep the panel at its own frame; the hosting view must never shrink
+        // the window to the SwiftUI content's intrinsic size.
+        hostingController.sizingOptions = []
+        panel.contentViewController = hostingController
         panel.isFloatingPanel = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.minSize = NSSize(width: 640, height: 560)
+        panel.minSize = NSSize(width: 760, height: 600)
         if let screen = NSApplication.shared.keyWindow?.screen
             ?? NSScreen.main
             ?? NSScreen.screens.first {
             panel.setFrame(
                 PerProjectWindowPlacement.cascadedFrame(
-                    size: panel.frame.size,
+                    size: preferredSize,
                     in: screen.visibleFrame,
                     openWindowCount: windowControllers.projectIDs.count
                 ),
                 display: false
             )
         } else {
+            panel.setContentSize(preferredSize)
             panel.center()
         }
         let windowController = NSWindowController(window: panel)
@@ -131,6 +137,7 @@ struct SimulatorRunWindowView: View {
             controlBar
                 .padding(16)
         }
+        .frame(minWidth: 760, minHeight: 600)
         .task {
             loadSettingsIfNeeded()
             await session.refreshDevices()
