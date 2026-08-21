@@ -2,6 +2,48 @@ import XCTest
 @testable import DevManagement
 
 final class MenuBarLayoutPolicyTests: XCTestCase {
+    func testPopoverHeightIsCappedAtSixHundredPoints() {
+        XCTAssertEqual(MenuBarLayoutPolicy.maximumPopoverHeight, 600)
+    }
+
+    func testIdleProjectListLeavesRoomForFixedPopoverControls() {
+        XCTAssertEqual(MenuBarLayoutPolicy.maximumIdleProjectListHeight, 450)
+        XCTAssertLessThan(
+            MenuBarLayoutPolicy.maximumIdleProjectListHeight,
+            MenuBarLayoutPolicy.maximumPopoverHeight
+        )
+    }
+
+    func testShortIdleProjectListFitsItsContent() {
+        XCTAssertEqual(
+            MenuBarLayoutPolicy.projectListIdealHeight(
+                projectCount: 2,
+                hasActiveWork: false
+            ),
+            93
+        )
+    }
+
+    func testLongIdleProjectListUsesScrollableHeightLimit() {
+        XCTAssertEqual(
+            MenuBarLayoutPolicy.projectListIdealHeight(
+                projectCount: 20,
+                hasActiveWork: false
+            ),
+            MenuBarLayoutPolicy.maximumIdleProjectListHeight
+        )
+    }
+
+    func testActiveWorkKeepsMinimumProjectListVisible() {
+        XCTAssertEqual(
+            MenuBarLayoutPolicy.projectListIdealHeight(
+                projectCount: 1,
+                hasActiveWork: true
+            ),
+            MenuBarLayoutPolicy.minimumProjectListHeight
+        )
+    }
+
     func testSingleInstallationKeepsAVisibleProgressCardHeight() {
         XCTAssertEqual(
             MenuBarLayoutPolicy.activeWorkHeight(

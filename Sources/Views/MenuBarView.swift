@@ -59,6 +59,7 @@ struct MenuBarView: View {
         }
         .padding(14)
         .frame(width: showsGitBranchColumn ? 715 : 615)
+        .frame(maxHeight: MenuBarLayoutPolicy.maximumPopoverHeight, alignment: .top)
         .background {
             MenuBarOpenObserver {
                 Task {
@@ -501,18 +502,22 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private var projectSectionContainer: some View {
-        if model.hasActiveWork {
-            ScrollView {
-                projectSection
-            }
-            .frame(
-                minHeight: MenuBarLayoutPolicy.minimumProjectListHeight,
-                maxHeight: MenuBarLayoutPolicy.maximumProjectListHeight
-            )
-            .layoutPriority(1)
-        } else {
+        ScrollView {
             projectSection
         }
+        .frame(
+            minHeight: model.hasActiveWork
+                ? MenuBarLayoutPolicy.minimumProjectListHeight
+                : nil,
+            idealHeight: MenuBarLayoutPolicy.projectListIdealHeight(
+                projectCount: model.projects.count,
+                hasActiveWork: model.hasActiveWork
+            ),
+            maxHeight: model.hasActiveWork
+                ? MenuBarLayoutPolicy.maximumProjectListHeight
+                : MenuBarLayoutPolicy.maximumIdleProjectListHeight
+        )
+        .layoutPriority(1)
     }
 
     private var footer: some View {
@@ -736,10 +741,26 @@ struct MenuBarView: View {
 }
 
 enum MenuBarLayoutPolicy {
+    static let maximumPopoverHeight: CGFloat = 600
+    static let maximumIdleProjectListHeight = maximumPopoverHeight - 150
     static let minimumActiveWorkHeight: CGFloat = 88
     static let maximumActiveWorkHeight: CGFloat = 170
     static let minimumProjectListHeight: CGFloat = 105
     static let maximumProjectListHeight: CGFloat = 210
+
+    static func projectListIdealHeight(
+        projectCount: Int,
+        hasActiveWork: Bool
+    ) -> CGFloat {
+        let contentHeight = projectCount > 0
+            ? 23 + CGFloat(projectCount) * 35
+            : 24
+        let maximumHeight = hasActiveWork
+            ? maximumProjectListHeight
+            : maximumIdleProjectListHeight
+        let minimumHeight = hasActiveWork ? minimumProjectListHeight : 0
+        return min(maximumHeight, max(minimumHeight, contentHeight))
+    }
 
     static func activeWorkHeight(
         publishingCount: Int,
