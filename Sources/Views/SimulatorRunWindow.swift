@@ -24,7 +24,7 @@ final class SimulatorRunWindowPresenter {
         }
         let rootView = SimulatorRunWindowView(projectID: projectID, session: session)
             .environmentObject(model)
-        let preferredSize = NSSize(width: 760, height: 680)
+        let preferredSize = NSSize(width: 760, height: 840)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: preferredSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .utilityWindow],
@@ -40,7 +40,7 @@ final class SimulatorRunWindowPresenter {
         panel.isFloatingPanel = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.minSize = NSSize(width: 760, height: 600)
+        panel.minSize = NSSize(width: 760, height: 800)
         if let screen = NSApplication.shared.keyWindow?.screen
             ?? NSScreen.main
             ?? NSScreen.screens.first {
@@ -154,7 +154,7 @@ struct SimulatorRunWindowView: View {
             controlBar
                 .padding(16)
         }
-        .frame(minWidth: 760, minHeight: 600)
+        .frame(minWidth: 760, minHeight: 800)
         .dropDestination(for: URL.self) { urls, _ in
             guard session.isSessionActive else { return false }
             session.importFiles(urls.filter(\.isFileURL))
