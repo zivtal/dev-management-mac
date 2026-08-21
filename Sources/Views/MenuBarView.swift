@@ -35,7 +35,7 @@ struct MenuBarView: View {
         .padding(.vertical, 14)
         .padding(.leading, 14)
         .padding(.trailing, 16)
-        .frame(width: showsGitBranchColumn ? 715 : 615)
+        .frame(width: showsGitBranchColumn ? 735 : 635)
         .frame(height: popoverSizing.popoverHeight, alignment: .top)
         .background {
             MenuBarOpenObserver {
@@ -384,7 +384,7 @@ struct MenuBarView: View {
                             .frame(width: 110, alignment: .leading)
                         Text("Last installed")
                             .frame(width: 135, alignment: .leading)
-                        Color.clear.frame(width: 98, height: 1)
+                        Color.clear.frame(width: 118, height: 1)
                     }
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -491,6 +491,25 @@ struct MenuBarView: View {
                                     Color.clear.frame(width: 14, height: 14)
                                 }
 
+                                if !project.isMacOSApplication {
+                                    Button {
+                                        openSimulatorRun(projectID: project.id)
+                                    } label: {
+                                        Image(systemName: "iphone.and.arrow.forward")
+                                            .frame(width: 14)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .foregroundStyle(
+                                        model.isSimulatorSessionActive(projectID: project.id)
+                                            ? Color.green
+                                            : Color.purple
+                                    )
+                                    .help(L10n.format("Run %@ in the Simulator…", project.displayName))
+                                    .accessibilityLabel(L10n.format("Run %@ in the Simulator…", project.displayName))
+                                } else {
+                                    Color.clear.frame(width: 14, height: 14)
+                                }
+
                                 Button {
                                     model.setProjectEnabled(!project.isEnabled, projectID: project.id)
                                 } label: {
@@ -526,7 +545,7 @@ struct MenuBarView: View {
                                         || model.isPublishing(projectID: project.id)
                                 )
                             }
-                            .frame(width: 98, alignment: .trailing)
+                            .frame(width: 118, alignment: .trailing)
                         }
                     }
                 }
@@ -657,6 +676,16 @@ struct MenuBarView: View {
         }.value
         guard !Task.isCancelled else { return }
         subscriptionProjectIDs = discoveredIDs
+    }
+
+    private func openSimulatorRun(projectID: UUID) {
+        let menuWindow = NSApplication.shared.keyWindow
+        Task { @MainActor in
+            await Task.yield()
+            SimulatorRunWindowPresenter.shared.show(model: model, projectID: projectID)
+            dismiss()
+            menuWindow?.orderOut(nil)
+        }
     }
 
     private func openPublishing(

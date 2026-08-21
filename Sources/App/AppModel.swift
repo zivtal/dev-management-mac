@@ -46,6 +46,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var developerTeams: [DeveloperTeam] = []
     @Published private(set) var isRefreshingDeveloperTeams = false
     @Published private(set) var isSettingsWindowOpen = false
+    @Published private(set) var simulatorSessions: [UUID: SimulatorSessionController] = [:]
     @Published var selectedSettingsSection = SettingsSection.general
     @Published var presentedError: String?
 
@@ -166,6 +167,7 @@ final class AppModel: ObservableObject {
     private let developerTeamService: DeveloperTeamService
     private let credentialStore: KeychainCredentialStore
     private let publishingService: AppStorePublishingService
+    private let simulatorService: SimulatorService
     private var monitoringTask: Task<Void, Never>?
     private var activeInstallationTasks: [UUID: Task<Void, Never>] = [:]
     private var activePublishingTasks: [UUID: Task<Void, Never>] = [:]
@@ -193,7 +195,8 @@ final class AppModel: ObservableObject {
         projectGitService: ProjectGitService = ProjectGitService(),
         developerTeamService: DeveloperTeamService = DeveloperTeamService(),
         credentialStore: KeychainCredentialStore = KeychainCredentialStore(),
-        publishingService: AppStorePublishingService = AppStorePublishingService()
+        publishingService: AppStorePublishingService = AppStorePublishingService(),
+        simulatorService: SimulatorService = SimulatorService()
     ) {
         self.settingsStore = settingsStore
         self.deviceService = deviceService
@@ -208,6 +211,7 @@ final class AppModel: ObservableObject {
         self.developerTeamService = developerTeamService
         self.credentialStore = credentialStore
         self.publishingService = publishingService
+        self.simulatorService = simulatorService
 
         let savedState = settingsStore.load()
         var loadedPreferences = savedState.preferences
@@ -375,8 +379,49 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func simulatorSession(for projectID: UUID) -> SimulatorSessionController? {
+        if let existing = simulatorSessions[projectID] {
+            if let project = projects.first(where: { $0.id == projectID }) {
+                existing.updateProject(project)
+            }
+            return existing
+        }
+        guard let project = projects.first(where: { $0.id == projectID }),
+              !project.isMacOSApplication else {
+            return nil
+        }
+        let controller = SimulatorSessionController(
+            project: project,
+            simulatorService: simulatorService,
+            installationService: installationService,
+            derivedDataURL: Self.simulatorDerivedDataURL(projectID: projectID)
+        )
+        simulatorSessions[projectID] = controller
+        return controller
+    }
+
+    func isSimulatorSessionActive(projectID: UUID) -> Bool {
+        simulatorSessions[projectID]?.isSessionActive == true
+    }
+
+    func saveSimulatorRunSettings(_ settings: SimulatorRunSettings, projectID: UUID) {
+        updateProject(id: projectID) { $0.simulatorRunSettings = settings }
+    }
+
+    static func simulatorDerivedDataURL(projectID: UUID) -> URL {
+        let applicationSupport = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support")
+        return applicationSupport
+            .appendingPathComponent("DevManagement/SimulatorDerivedData", isDirectory: true)
+            .appendingPathComponent(projectID.uuidString, isDirectory: true)
+    }
+
     func removeProject(id: UUID) {
         guard let project = projects.first(where: { $0.id == id }) else { return }
+        simulatorSessions[id]?.stop()
+        simulatorSessions[id] = nil
         projects.removeAll { $0.id == id }
         installAllTargets[id] = nil
         clearTransientInstallationState(for: id)

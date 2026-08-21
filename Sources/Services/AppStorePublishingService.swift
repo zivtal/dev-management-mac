@@ -863,7 +863,7 @@ final class AppStorePublishingService {
         let plans = screenshotBuildPlans(for: project)
         let platforms = Set(plans.keys).union(screenshots.map(\.platform))
         let orderedPlatforms = AppStoreScreenshotPlatform.allCases.filter(platforms.contains)
-        let simulators: [SimulatorDevice]
+        let simulators: [ScreenshotSimulatorDevice]
         do {
             let listResult = try await processRunner.runAndRequireSuccess(
                 executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
@@ -880,7 +880,7 @@ final class AppStorePublishingService {
             )))
         }
 
-        var selectedSimulators: [AppStoreScreenshotPlatform: SimulatorDevice] = [:]
+        var selectedSimulators: [AppStoreScreenshotPlatform: ScreenshotSimulatorDevice] = [:]
         var deviceStates: [AppStoreScreenshotPlatform: AppStoreScreenshotCaptureDevice] = [:]
         for platform in orderedPlatforms {
             if let provided = screenshots.first(where: { $0.platform == platform }) {
@@ -989,7 +989,7 @@ final class AppStorePublishingService {
     private func captureScreenshot(
         project: ManagedProject,
         platform: AppStoreScreenshotPlatform,
-        simulator: SimulatorDevice,
+        simulator: ScreenshotSimulatorDevice,
         application: SimulatorApplication,
         eventHandler: EventHandler?
     ) async throws -> AppStoreScreenshotAsset {
@@ -1747,7 +1747,7 @@ final class AppStorePublishingService {
         return (width, height)
     }
 
-    private struct SimulatorDevice {
+    private struct ScreenshotSimulatorDevice {
         let udid: String
         let name: String
         let state: String
@@ -1755,33 +1755,26 @@ final class AppStorePublishingService {
         let platform: AppStoreScreenshotPlatform
     }
 
-    private static func availableSimulators(from data: Data) -> [SimulatorDevice] {
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let runtimes = root["devices"] as? [String: [[String: Any]]] else {
-            return []
-        }
-        return runtimes.flatMap { runtime, values in
-            values.compactMap { value in
-                guard value["isAvailable"] as? Bool != false,
-                      let udid = value["udid"] as? String,
-                      let name = value["name"] as? String,
-                      let platform = simulatorPlatform(runtimeIdentifier: runtime, deviceName: name)
-                else { return nil }
-                return SimulatorDevice(
-                    udid: udid,
-                    name: name,
-                    state: value["state"] as? String ?? "Shutdown",
-                    runtimeIdentifier: runtime,
-                    platform: platform
-                )
-            }
+    private static func availableSimulators(from data: Data) -> [ScreenshotSimulatorDevice] {
+        SimulatorDevice.availableDevices(fromSimctlList: data).compactMap { device in
+            guard let platform = simulatorPlatform(
+                runtimeIdentifier: device.runtimeIdentifier,
+                deviceName: device.name
+            ) else { return nil }
+            return ScreenshotSimulatorDevice(
+                udid: device.udid,
+                name: device.name,
+                state: device.state,
+                runtimeIdentifier: device.runtimeIdentifier,
+                platform: platform
+            )
         }
     }
 
     private static func preferredSimulator(
         for platform: AppStoreScreenshotPlatform,
-        devices: [SimulatorDevice]
-    ) -> SimulatorDevice? {
+        devices: [ScreenshotSimulatorDevice]
+    ) -> ScreenshotSimulatorDevice? {
         devices.filter { $0.platform == platform }.max { lhs, rhs in
             let leftVersion = runtimeVersion(lhs.runtimeIdentifier)
             let rightVersion = runtimeVersion(rhs.runtimeIdentifier)

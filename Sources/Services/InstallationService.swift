@@ -121,6 +121,11 @@ struct InstallationBatchOutcome: Sendable {
     let profileExpirationWasChecked: Bool
 }
 
+struct SimulatorBuildProduct: Equatable, Sendable {
+    let applicationURL: URL
+    let bundleIdentifier: String?
+}
+
 enum InstallationServiceError: LocalizedError {
     case missingProjectContainer
     case missingDevelopmentTeam
@@ -708,6 +713,92 @@ final class InstallationService {
             ])
         }
         return arguments
+    }
+
+    static func simulatorXcodeArguments(
+        project: ManagedProject,
+        simulatorUDID: String,
+        derivedDataURL: URL,
+        scheme: String? = nil
+    ) -> [String] {
+        [
+            project.containerKind.xcodebuildFlag, project.containerPath,
+            "-scheme", scheme ?? project.scheme,
+            "-configuration", project.configuration,
+            "-destination", "platform=iOS Simulator,id=\(simulatorUDID)",
+            "-destination-timeout", "30",
+            "-derivedDataPath", derivedDataURL.path
+        ]
+    }
+
+    /// Builds the scheme for an iOS Simulator, reusing the persistent derived
+    /// data directory so repeated session builds stay incremental. Signing is
+    /// left untouched: simulator builds need no development team.
+    func buildForSimulator(
+        project: ManagedProject,
+        simulatorUDID: String,
+        derivedDataURL: URL,
+        eventHandler: @escaping EventHandler
+    ) async throws -> SimulatorBuildProduct {
+        guard fileManager.fileExists(atPath: project.containerPath) else {
+            throw InstallationServiceError.missingProjectContainer
+        }
+
+        try await xcodeGenPreparationService.prepare(
+            project: project,
+            onOutput: { eventHandler(.output($0)) }
+        )
+        try fileManager.createDirectory(at: derivedDataURL, withIntermediateDirectories: true)
+        let preparedScheme = try xcodeSchemePreparationService.prepare(project: project)
+        defer { preparedScheme.removeTemporaryFile(fileManager: fileManager) }
+        if !preparedScheme.removedActionTitles.isEmpty {
+            eventHandler(.output(L10n.format(
+                "Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n",
+                preparedScheme.removedActionTitles.count
+            )))
+        }
+
+        let commonArguments = Self.simulatorXcodeArguments(
+            project: project,
+            simulatorUDID: simulatorUDID,
+            derivedDataURL: derivedDataURL,
+            scheme: preparedScheme.name
+        )
+        let sourceVersion = versionService.currentVersion(for: project)
+        let expectedVersion = ProjectVersion(
+            marketingVersion: sourceVersion.marketingVersion ?? project.marketingVersion,
+            buildNumber: sourceVersion.buildNumber ?? project.buildNumber
+        )
+
+        eventHandler(.phase(.building))
+        _ = try await processRunner.runAndRequireSuccess(
+            executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
+            arguments: commonArguments + ["build"],
+            workingDirectory: project.folderURL,
+            onOutput: { eventHandler(.output($0)) }
+        )
+
+        let appURL = try await locateBuiltApplication(
+            project: project,
+            commonArguments: commonArguments,
+            derivedDataURL: derivedDataURL
+        )
+        try validateVersionPreservation(
+            project: project,
+            sourceVersion: sourceVersion,
+            expectedVersion: expectedVersion,
+            applicationURL: appURL
+        )
+        eventHandler(.output(L10n.format(
+            "Verified that the project and built app remain at version %@ (%@); no app script or version bump was run.\n",
+            expectedVersion.marketingVersion ?? "—",
+            expectedVersion.buildNumber ?? "—"
+        )))
+
+        return SimulatorBuildProduct(
+            applicationURL: appURL,
+            bundleIdentifier: Bundle(url: appURL)?.bundleIdentifier ?? project.bundleIdentifier
+        )
     }
 
     static func deviceInstallArguments(
