@@ -113,6 +113,7 @@ struct SimulatorRunWindowView: View {
     @State private var selectedLanguage: String?
     @State private var availableLanguages: [String] = []
     @State private var didLoadSettings = false
+    @State private var isLogExpanded = false
     @State private var locationSearchText = ""
     @State private var locationSearchResults: [LocationSearchResult] = []
     @State private var isSearchingLocation = false
@@ -143,8 +144,12 @@ struct SimulatorRunWindowView: View {
             statusBar
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-            logView
-                .frame(minHeight: 140)
+            if isLogExpanded {
+                logView
+                    .frame(minHeight: 140)
+            } else {
+                collapsedLogView
+            }
             Divider()
             controlBar
                 .padding(16)
@@ -361,7 +366,49 @@ struct SimulatorRunWindowView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isLogExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: isLogExpanded ? "chevron.down" : "chevron.up")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.borderless)
+            .help(isLogExpanded
+                ? L10n.text("Show only the latest log lines")
+                : L10n.text("Show the full log"))
+            .accessibilityLabel(isLogExpanded
+                ? L10n.text("Show only the latest log lines")
+                : L10n.text("Show the full log"))
         }
+    }
+
+    private var collapsedLogView: some View {
+        Text(latestLogLines)
+            .font(.caption.monospaced())
+            .foregroundStyle(session.logOutput.isEmpty ? .secondary : .primary)
+            .lineLimit(3, reservesSpace: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.quaternary.opacity(0.4))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isLogExpanded = true
+                }
+            }
+    }
+
+    private var latestLogLines: String {
+        guard !session.logOutput.isEmpty else {
+            return L10n.text("The build log appears here.")
+        }
+        return session.logOutput
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .suffix(3)
+            .joined(separator: "\n")
     }
 
     private var logView: some View {

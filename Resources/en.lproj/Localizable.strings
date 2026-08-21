@@ -1304,3 +1304,5 @@
 "Could not copy files into the app's Documents folder: %@\n" = "Could not copy files into the app's Documents folder: %@\n";
 "✓ marks a Simulator this app was run on before." = "✓ marks a Simulator this app was run on before.";
 "The simulated date and time are UTC; the app also runs with its timezone set to UTC." = "The simulated date and time are UTC; the app also runs with its timezone set to UTC.";
+"Show the full log" = "Show the full log";
+"Show only the latest log lines" = "Show only the latest log lines";
