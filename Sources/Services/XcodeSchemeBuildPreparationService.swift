@@ -72,7 +72,14 @@ final class XcodeSchemeBuildPreparationService {
 
     func prepare(project: ManagedProject) throws -> PreparedXcodeScheme {
         guard let sourceURL = sharedSchemeURL(for: project) else {
-            throw XcodeSchemeBuildPreparationError.sharedSchemeNotFound(project.scheme)
+            // Scheme-less projects (e.g. XcodeGen without a schemes section) have
+            // no scheme file that could carry script actions; xcodebuild then
+            // synthesizes a plain scheme from the target, which is safe to build.
+            return PreparedXcodeScheme(
+                name: project.scheme,
+                removedActionTitles: [],
+                temporaryURL: nil
+            )
         }
         removeStaleTemporarySchemes(in: sourceURL.deletingLastPathComponent())
         let document = try XMLDocument(contentsOf: sourceURL, options: [.nodePreserveAll])
@@ -207,7 +214,7 @@ final class XcodeSchemeBuildPreparationService {
         let expectedName = "\(project.scheme).xcscheme"
         for case let candidate as URL in enumerator {
             guard candidate.lastPathComponent == expectedName,
-                  candidate.path.contains("/xcshareddata/xcschemes/") else { continue }
+                  candidate.path.contains("/xcschemes/") else { continue }
             return candidate
         }
         return nil

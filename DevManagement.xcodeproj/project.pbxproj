@@ -67,6 +67,7 @@
 		8E203327032B650A64BF8924 /* ProjectLocalizationDiscoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F58FBC7AF5A7D51D823487C5 /* ProjectLocalizationDiscoveryService.swift */; };
 		95B6832D1AD4A1A98A759720 /* PublishingReadinessView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E6B368943210F206DF5C9E6 /* PublishingReadinessView.swift */; };
 		9632C4EDAFFF50F0AA2F4FEE /* SchedulingPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EB3B7AB29B4412F47C54292 /* SchedulingPolicyTests.swift */; };
+		9924FBE749A4A931B01BFC19 /* SourceFingerprintCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE8C60A886C1D3AD3A509D7B /* SourceFingerprintCalculator.swift */; };
 		9A6ED0392C47FB0214A93417 /* DirectXcodeInstallationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0994C5CD237B832074C055 /* DirectXcodeInstallationTests.swift */; };
 		9B40DB677026BBB23FF93EC8 /* ProjectsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E551EDA5AB8441BCD618FA /* ProjectsSettingsView.swift */; };
 		9D7F580C89BD70EA6C0EBB86 /* InstallationLogWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 439AE14DCCE24CDCB7F7CD21 /* InstallationLogWindow.swift */; };
@@ -229,6 +230,7 @@
 		F58FBC7AF5A7D51D823487C5 /* ProjectLocalizationDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectLocalizationDiscoveryService.swift; sourceTree = "<group>"; };
 		F664ECE9636F677E8254178A /* ManagedProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedProject.swift; sourceTree = "<group>"; };
 		FA3FC6FDE58B7AB3648A78A5 /* AppStoreReviewAssetService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreReviewAssetService.swift; sourceTree = "<group>"; };
+		FE8C60A886C1D3AD3A509D7B /* SourceFingerprintCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceFingerprintCalculator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -279,6 +281,7 @@
 				D594DD13523F79CF71BEA250 /* SimulatorService.swift */,
 				52ACE1995ADC38C33666AD70 /* SimulatorSessionController.swift */,
 				D098A21064D2822733DC96B9 /* SourceChangeWatcher.swift */,
+				FE8C60A886C1D3AD3A509D7B /* SourceFingerprintCalculator.swift */,
 				25055FBACD7B5FDD275AF0E0 /* StoreKitSubscriptionDiscoveryService.swift */,
 				1EE52232D5DB1CF4FF3954EE /* USBConnectionMonitor.swift */,
 				CC031DD8C8850B95D5E78916 /* XcodeGenProjectPreparationService.swift */,
@@ -597,6 +600,7 @@
 				A57E2BAE706C2E5A1F39FB84 /* SimulatorService.swift in Sources */,
 				A4CC946BE9C78258DA04C3B8 /* SimulatorSessionController.swift in Sources */,
 				F7F5FE2541978E7026204779 /* SourceChangeWatcher.swift in Sources */,
+				9924FBE749A4A931B01BFC19 /* SourceFingerprintCalculator.swift in Sources */,
 				4C0613B0ABF394EB4A0C8B3D /* StoreKitSubscriptionDiscoveryService.swift in Sources */,
 				2A1BA4E8DAD016908AD34443 /* String+NonEmpty.swift in Sources */,
 				B83A4EAA414165468AF70F69 /* SubscriptionPricingCardsView.swift in Sources */,
@@ -758,7 +762,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 101;
+				CURRENT_PROJECT_VERSION = 102;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -778,7 +782,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.0.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -825,7 +829,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 101;
+				CURRENT_PROJECT_VERSION = 102;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -839,7 +843,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 2.0.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

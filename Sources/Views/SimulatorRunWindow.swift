@@ -1,4 +1,5 @@
 import AppKit
+import MapKit
 import SwiftUI
 
 @MainActor
@@ -112,6 +113,17 @@ struct SimulatorRunWindowView: View {
     @State private var selectedLanguage: String?
     @State private var availableLanguages: [String] = []
     @State private var didLoadSettings = false
+    @State private var locationSearchText = ""
+    @State private var locationSearchResults: [LocationSearchResult] = []
+    @State private var isSearchingLocation = false
+    @State private var locationSearchFailed = false
+
+    private struct LocationSearchResult: Identifiable {
+        let id = UUID()
+        let title: String
+        let latitude: Double
+        let longitude: Double
+    }
 
     private static let automaticDeviceTag = "automatic"
 
@@ -185,6 +197,45 @@ struct SimulatorRunWindowView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Set the Simulator location", isOn: $isLocationEnabled)
                 if isLocationEnabled {
+                    HStack(spacing: 8) {
+                        TextField(
+                            "Search for a place or address",
+                            text: $locationSearchText,
+                            prompt: Text("Search for a place or address")
+                        )
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { Task { await searchLocation() } }
+                        if isSearchingLocation {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Button {
+                                Task { await searchLocation() }
+                            } label: {
+                                Image(systemName: "magnifyingglass")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Search Apple Maps")
+                            .accessibilityLabel(L10n.text("Search Apple Maps"))
+                            .disabled(locationSearchText.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                    }
+                    if locationSearchFailed {
+                        Text("No places found.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(locationSearchResults) { result in
+                        Button {
+                            latitudeText = String(result.latitude)
+                            longitudeText = String(result.longitude)
+                            locationSearchResults = []
+                            locationSearchText = result.title
+                        } label: {
+                            Label(result.title, systemImage: "mappin.and.ellipse")
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.link)
+                    }
                     HStack(spacing: 8) {
                         TextField("Latitude", text: $latitudeText, prompt: Text(verbatim: "34.6937"))
                         TextField("Longitude", text: $longitudeText, prompt: Text(verbatim: "135.5023"))
@@ -439,6 +490,35 @@ struct SimulatorRunWindowView: View {
 
     private func saveSettings() {
         model.saveSimulatorRunSettings(currentSettings, projectID: projectID)
+    }
+
+    @MainActor
+    private func searchLocation() async {
+        let query = locationSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, !isSearchingLocation else { return }
+        isSearchingLocation = true
+        locationSearchFailed = false
+        defer { isSearchingLocation = false }
+
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = query
+        let mapItems = (try? await MKLocalSearch(request: request).start().mapItems) ?? []
+        locationSearchResults = mapItems.prefix(5).map { item in
+            let coordinate = item.placemark.coordinate
+            let title = [
+                item.name,
+                item.placemark.locality,
+                item.placemark.country
+            ]
+                .compactMap { $0?.nilIfEmpty }
+                .joined(separator: ", ")
+            return LocationSearchResult(
+                title: title.isEmpty ? "\(coordinate.latitude),\(coordinate.longitude)" : title,
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude
+            )
+        }
+        locationSearchFailed = locationSearchResults.isEmpty
     }
 
     @MainActor

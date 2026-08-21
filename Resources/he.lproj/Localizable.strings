@@ -1288,3 +1288,6 @@
 "Watching for changes." = "מעקב אחר שינויים.";
 "No compatible iOS Simulator is available. Install a Simulator runtime from Xcode Settings > Components." = "אין סימולטור iOS תואם זמין. יש להתקין סביבת סימולטור מ־Xcode Settings > Components.";
 "The built app's bundle identifier could not be determined." = "לא ניתן לקבוע את מזהה החבילה של האפליקציה שנבנתה.";
+"Search for a place or address" = "חיפוש מקום או כתובת";
+"Search Apple Maps" = "חיפוש במפות Apple";
+"No places found." = "לא נמצאו מקומות.";

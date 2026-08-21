@@ -43,6 +43,8 @@ final class SimulatorSessionController: ObservableObject {
     private var watcher: SourceChangeWatcher?
     private var buildProduct: SimulatorBuildProduct?
     private var pendingRebuild = false
+    private var lastSourceFingerprint: String?
+    private var isComparingFingerprint = false
 
     init(
         project: ManagedProject,
@@ -151,14 +153,37 @@ final class SimulatorSessionController: ObservableObject {
         }
     }
 
+    /// Rebuilds only when the watched sources' content actually differs from
+    /// the last build's fingerprint. The session's own XcodeGen regeneration
+    /// and temporary scheme files rewrite identical content, which must never
+    /// retrigger a build.
     func handleSourceChange() {
         guard isSessionActive else { return }
         guard sessionTask == nil else {
             pendingRebuild = true
             return
         }
-        appendOutput(L10n.text("Source change detected; rebuilding.\n"))
-        rebuildNow()
+        guard !isComparingFingerprint else {
+            pendingRebuild = true
+            return
+        }
+        isComparingFingerprint = true
+        let folderURL = project.folderURL
+        Task { [weak self] in
+            let fingerprint = await Task.detached(priority: .utility) {
+                SourceFingerprintCalculator.fingerprint(of: folderURL)
+            }.value
+            guard let self else { return }
+            self.isComparingFingerprint = false
+            guard self.isSessionActive else { return }
+            guard self.sessionTask == nil else {
+                self.pendingRebuild = true
+                return
+            }
+            guard fingerprint != self.lastSourceFingerprint else { return }
+            self.appendOutput(L10n.text("Source change detected; rebuilding.\n"))
+            self.rebuildNow()
+        }
     }
 
     private func startWatcher() {
@@ -193,8 +218,7 @@ final class SimulatorSessionController: ObservableObject {
     private func runPendingRebuildIfNeeded() {
         guard pendingRebuild, isSessionActive else { return }
         pendingRebuild = false
-        appendOutput(L10n.text("A change arrived during the build; refreshing again.\n"))
-        rebuildNow()
+        handleSourceChange()
     }
 
     private func prepareDeviceAndRun(
@@ -245,6 +269,10 @@ final class SimulatorSessionController: ObservableObject {
         phase = .building
         buildCount += 1
         statusMessage = L10n.format("Building %@ (refresh %d)…", project.displayName, buildCount)
+        let folderURL = project.folderURL
+        lastSourceFingerprint = await Task.detached(priority: .utility) {
+            SourceFingerprintCalculator.fingerprint(of: folderURL)
+        }.value
         let coalescer = InstallationEventCoalescer { [weak self] batch in
             Task { @MainActor [weak self] in
                 self?.receive(batch)
