@@ -3084,9 +3084,7 @@ final class AppStoreConnectService {
             "PREPARE_FOR_SUBMISSION",
             "READY_FOR_REVIEW",
             "WAITING_FOR_REVIEW",
-            "IN_REVIEW",
-            "REJECTED",
-            "DEVELOPER_REJECTED"
+            "IN_REVIEW"
         ]
         return versions.filter {
             guard let state = Self.attributes($0)["state"] as? String else { return false }
@@ -3952,16 +3950,53 @@ final class AppStoreConnectService {
         return id
     }
 
-    private static func errorMessage(from data: Data) -> String {
+    static func errorMessage(from data: Data) -> String {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return String(data: data, encoding: .utf8) ?? L10n.text("Unknown error")
         }
         if let errors = root["errors"] as? [[String: Any]], !errors.isEmpty {
-            return errors.compactMap {
-                ($0["detail"] as? String) ?? ($0["title"] as? String)
-            }.joined(separator: "\n")
+            var seen: Set<String> = []
+            let messages = errors
+                .flatMap(errorMessages)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && seen.insert($0).inserted }
+            if !messages.isEmpty {
+                return messages.joined(separator: "\n")
+            }
         }
         return L10n.text("Unknown error")
+    }
+
+    private static func errorMessages(from error: [String: Any]) -> [String] {
+        let directMessage = (error["detail"] as? String) ?? (error["title"] as? String)
+        let metadata = error["meta"] as? [String: Any]
+        let associated = metadata?["associatedErrors"] ?? error["associatedErrors"]
+        let associatedMessages = associated.map(nestedErrorMessages) ?? []
+
+        guard !associatedMessages.isEmpty else {
+            return directMessage.map { [$0] } ?? []
+        }
+        if directMessage?.localizedCaseInsensitiveContains("associated errors") == true {
+            return associatedMessages
+        }
+        return directMessage.map { [$0] + associatedMessages } ?? associatedMessages
+    }
+
+    private static func nestedErrorMessages(from value: Any) -> [String] {
+        if let message = value as? String {
+            return [message]
+        }
+        if let values = value as? [Any] {
+            return values.flatMap(nestedErrorMessages)
+        }
+        guard let dictionary = value as? [String: Any] else { return [] }
+        if dictionary["detail"] is String || dictionary["title"] is String {
+            return errorMessages(from: dictionary)
+        }
+        return dictionary.keys.sorted().flatMap { key -> [String] in
+            guard let nestedValue = dictionary[key] else { return [] }
+            return nestedErrorMessages(from: nestedValue)
+        }
     }
 
     private static func offerMatches(

@@ -8,6 +8,29 @@ final class AppStoreConnectReviewSubmissionTests: XCTestCase {
         super.tearDown()
     }
 
+    func testReviewConflictReportsNestedAssociatedErrorsInsteadOfWrapper() throws {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "errors": [[
+                "detail": "This resource cannot be reviewed, please check associated errors to see why.",
+                "meta": [
+                    "associatedErrors": [
+                        "subscriptions": [[
+                            "detail": "Create a new subscription version after withdrawing the previous submission."
+                        ]],
+                        "version": [[
+                            "title": "The App Store version is missing required review information."
+                        ]]
+                    ]
+                ]
+            ]]
+        ])
+
+        XCTAssertEqual(
+            AppStoreConnectService.errorMessage(from: data),
+            "Create a new subscription version after withdrawing the previous submission.\nThe App Store version is missing required review information."
+        )
+    }
+
     func testUnresolvedSubmissionOwningVersionIsResolvedAndResubmitted() async throws {
         var canceledEmptyDraft = false
         var resolvedVersionItem = false

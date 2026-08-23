@@ -1534,19 +1534,106 @@ final class AppStorePublishingTests: XCTestCase {
         )
     }
 
-    func testDeveloperRejectedSubscriptionVersionIsReusedAfterReviewCancellation() {
-        let versions: [[String: Any]] = [[
-            "id": "b1fc29ff-956f-45bb-b399-aad0392367f9",
-            "attributes": ["state": "DEVELOPER_REJECTED", "version": 2]
-        ]]
+    func testDeveloperRejectedSubscriptionVersionRequiresFreshDraftAfterReviewCancellation() {
+        let versions: [[String: Any]] = [
+            [
+                "id": "rejected-version",
+                "attributes": ["state": "REJECTED", "version": 1]
+            ],
+            [
+                "id": "developer-rejected-version",
+                "attributes": ["state": "DEVELOPER_REJECTED", "version": 2]
+            ]
+        ]
 
-        XCTAssertEqual(
-            AppStoreConnectService.reusableSubscriptionVersionID(in: versions),
-            "b1fc29ff-956f-45bb-b399-aad0392367f9"
-        )
+        XCTAssertNil(AppStoreConnectService.reusableSubscriptionVersionID(in: versions))
     }
 
-    func testSubscriptionGroupCreationConflictRefreshesAndReusesDeveloperRejectedVersion() async throws {
+    func testRejectedSubscriptionGroupVersionIsReplacedWithFreshDraft() async throws {
+        var createdFreshDraft = false
+        let service = try appStoreConnectTestService { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/apps/app-id/subscriptionGroups"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [[
+                        "type": "subscriptionGroups",
+                        "id": "group-id",
+                        "attributes": ["referenceName": "Premium"]
+                    ]]]
+                )
+            case ("GET", "/v1/subscriptionGroups/group-id/subscriptions"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": []]
+                )
+            case ("GET", "/v1/subscriptionGroups/group-id/versions"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [[
+                        "type": "subscriptionGroupVersions",
+                        "id": "withdrawn-version",
+                        "attributes": ["state": "DEVELOPER_REJECTED", "version": 1]
+                    ]]]
+                )
+            case ("POST", "/v1/subscriptionGroupVersions"):
+                createdFreshDraft = true
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 201,
+                    json: ["data": [
+                        "type": "subscriptionGroupVersions",
+                        "id": "fresh-version",
+                        "attributes": ["state": "PREPARE_FOR_SUBMISSION", "version": 2]
+                    ]]
+                )
+            case ("GET", "/v1/subscriptionGroupVersions/fresh-version/localizations"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": []]
+                )
+            default:
+                XCTFail("Unexpected App Store Connect request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
+                return try Self.appStoreConnectResponse(for: request, status: 500, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+
+        let catalog = AppStoreSubscriptionCatalog(
+            publication: nil,
+            application: nil,
+            compliance: nil,
+            groups: [AppStoreSubscriptionGroupDefinition(
+                referenceName: "Premium",
+                localizations: [],
+                subscriptions: []
+            )],
+            detectedProductIDs: [],
+            sourceFiles: [],
+            projectDirectory: FileManager.default.temporaryDirectory
+        )
+
+        let reviewItems = try await service.reconcileSubscriptions(
+            appID: "app-id",
+            catalog: catalog,
+            requiresReviewAssets: true,
+            onOutput: { _ in }
+        )
+
+        XCTAssertTrue(createdFreshDraft)
+        XCTAssertEqual(reviewItems, [AppStoreConnectReviewItem(
+            relationship: "subscriptionGroupVersion",
+            resourceType: "subscriptionGroupVersions",
+            id: "fresh-version",
+            label: "Premium"
+        )])
+    }
+
+    func testSubscriptionGroupCreationConflictRefreshesAndReusesActiveVersion() async throws {
         var versionListRequestCount = 0
         let inflightVersionID = "b1fc29ff-956f-45bb-b399-aad0392367f9"
         let service = try appStoreConnectTestService { request in
@@ -1572,7 +1659,7 @@ final class AppStorePublishingTests: XCTestCase {
                 let data: [[String: Any]] = versionListRequestCount == 1 ? [] : [[
                     "type": "subscriptionGroupVersions",
                     "id": inflightVersionID,
-                    "attributes": ["state": "DEVELOPER_REJECTED", "version": 2]
+                    "attributes": ["state": "READY_FOR_REVIEW", "version": 2]
                 ], [
                     "type": "subscriptionGroupVersions",
                     "id": "different-newer-version",
