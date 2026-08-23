@@ -1304,6 +1304,85 @@ final class AppStorePublishingTests: XCTestCase {
         )
     }
 
+    func testScreenshotFixtureUsesDebugConfigurationAndIsDetectedFromSource() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ScreenshotFixtureTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try #"let argument = "-AppStoreScreenshotFixture""#.write(
+            to: root.appendingPathComponent("AppStoreScreenshotFixture.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(AppStorePublishingService.projectContainsScreenshotFixture(at: root))
+        XCTAssertEqual(
+            AppStorePublishingService.screenshotBuildConfiguration(
+                availableConfigurations: ["Release", "Debug"],
+                selectedConfiguration: "Release",
+                requiresDebug: true
+            ),
+            "Debug"
+        )
+        XCTAssertEqual(
+            AppStorePublishingService.screenshotBuildConfiguration(
+                availableConfigurations: ["Release", "Debug"],
+                selectedConfiguration: "Release",
+                requiresDebug: false
+            ),
+            "Release"
+        )
+    }
+
+    func testPreparedScreenshotSimulatorGetsAStableDistinctCache() {
+        let source = [
+            AppStoreScreenshotPlatform.iPad.rawValue: "IPAD-UDID",
+            AppStoreScreenshotPlatform.iPhone.rawValue: "IPHONE-UDID"
+        ]
+        let reversed = Dictionary(uniqueKeysWithValues: source.reversed())
+
+        let first = AppStorePublishingService.screenshotSourceCacheKey(
+            screenshotSimulatorUDIDs: source,
+            usesFixture: true
+        )
+        let second = AppStorePublishingService.screenshotSourceCacheKey(
+            screenshotSimulatorUDIDs: reversed,
+            usesFixture: true
+        )
+
+        XCTAssertEqual(first, second)
+        XCTAssertTrue(first.hasPrefix("Prepared-v1-"))
+        XCTAssertNotEqual(
+            first,
+            AppStorePublishingService.screenshotSourceCacheKey(
+                screenshotSimulatorUDIDs: [AppStoreScreenshotPlatform.iPad.rawValue: "OTHER-IPAD"],
+                usesFixture: true
+            )
+        )
+        XCTAssertEqual(
+            AppStorePublishingService.screenshotSourceCacheKey(
+                screenshotSimulatorUDIDs: [:],
+                usesFixture: true
+            ),
+            "Fixture-v1"
+        )
+    }
+
+    func testScreenshotFixtureInsideDerivedDataIsIgnored() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ScreenshotFixtureIgnoreTests-\(UUID().uuidString)", isDirectory: true)
+        let derivedData = root.appendingPathComponent("DerivedData/App", isDirectory: true)
+        try FileManager.default.createDirectory(at: derivedData, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try #"let argument = "-AppStoreScreenshotFixture""#.write(
+            to: derivedData.appendingPathComponent("AppStoreScreenshotFixture.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        XCTAssertFalse(AppStorePublishingService.projectContainsScreenshotFixture(at: root))
+    }
+
     func testMissingLocalizedDeviceScreenshotUsesPrimaryLocaleAsset() {
         let primaryPhone = AppStoreScreenshotAsset(
             url: URL(fileURLWithPath: "/screenshots/he/phone.png"),
@@ -1927,6 +2006,9 @@ final class AppStorePublishingTests: XCTestCase {
         {
           "schemaVersion": 1,
           "publication": {
+            "screenshotSimulatorUDIDs": {
+              "iPad": "PREPARED-IPAD"
+            },
             "testFlight": {
               "groupName": "Internal Testing",
               "feedbackEmail": "owner@example.com",
@@ -1951,6 +2033,10 @@ final class AppStorePublishingTests: XCTestCase {
         let manifest = try JSONDecoder().decode(AppStorePublishingManifest.self, from: data)
         XCTAssertEqual(manifest.publication?.testFlight?.groupName, "Internal Testing")
         XCTAssertEqual(manifest.publication?.testFlight?.internalTesterEmails, ["owner@example.com"])
+        XCTAssertEqual(
+            manifest.publication?.screenshotSimulatorUDIDs?[AppStoreScreenshotPlatform.iPad.rawValue],
+            "PREPARED-IPAD"
+        )
         XCTAssertEqual(
             manifest.subscriptions?.groups?.first?.subscriptions.first?.territoryPrices?["ISR"],
             "39.00"

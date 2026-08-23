@@ -444,6 +444,10 @@ struct AppStorePublicationConfiguration: Codable, Equatable, Sendable {
     var metadata: AppStoreMetadata?
     var localizations: [AppStoreLocalizedMetadata]? = nil
     var screenshotPaths: [String]?
+    /// Optional prepared Simulator UDIDs keyed by AppStoreScreenshotPlatform.rawValue.
+    /// When absent, screenshot capture uses the deterministic fixture or newest
+    /// compatible Simulator automatically.
+    var screenshotSimulatorUDIDs: [String: String]? = nil
     var reviewAttachmentPaths: [String]? = nil
     var replaceScreenshots: Bool? = nil
     var review: AppStoreReviewManifestConfiguration?
@@ -947,6 +951,7 @@ struct PublishingConfiguration: Sendable {
     let manualMetadata: AppStoreMetadata?
     let manualLocalizations: [AppStoreLocalizedMetadata]
     let screenshotPaths: [String]
+    let screenshotSimulatorUDIDs: [String: String]
     let reviewAttachmentPaths: [String]
     let replaceScreenshots: Bool
     let releaseAutomatically: Bool

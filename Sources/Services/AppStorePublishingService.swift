@@ -1,5 +1,6 @@
-import ImageIO
+import CryptoKit
 import Foundation
+import ImageIO
 import Security
 
 enum AppStorePublishingError: LocalizedError {
@@ -319,6 +320,7 @@ final class AppStorePublishingService {
         let screenshots = try await collectScreenshots(
             project: project,
             configuredPaths: configuration.screenshotPaths,
+            screenshotSimulatorUDIDs: configuration.screenshotSimulatorUDIDs,
             eventHandler: eventHandler
         )
         if screenshots.isEmpty {
@@ -696,7 +698,8 @@ final class AppStorePublishingService {
 
     func localScreenshotAssets(
         project: ManagedProject,
-        configuredPaths: [String]
+        configuredPaths: [String],
+        screenshotSimulatorUDIDs: [String: String] = [:]
     ) -> [AppStoreScreenshotAsset] {
         var screenshots = configuredPaths.flatMap { path -> [AppStoreScreenshotAsset] in
             let url = URL(fileURLWithPath: path, relativeTo: project.folderURL).standardizedFileURL
@@ -716,7 +719,10 @@ final class AppStorePublishingService {
             return screenshotAsset(at: url).map { [$0] } ?? []
         }
         screenshots.append(contentsOf: discoverProjectScreenshots(project: project))
-        screenshots.append(contentsOf: screenshotAssets(in: screenshotCacheDirectory(for: project)))
+        screenshots.append(contentsOf: screenshotAssets(in: screenshotCacheDirectory(
+            for: project,
+            screenshotSimulatorUDIDs: screenshotSimulatorUDIDs
+        )))
         var seenPaths: Set<String> = []
         return screenshots.filter {
             seenPaths.insert($0.url.standardizedFileURL.path).inserted
@@ -726,11 +732,13 @@ final class AppStorePublishingService {
     private func collectScreenshots(
         project: ManagedProject,
         configuredPaths: [String],
+        screenshotSimulatorUDIDs: [String: String],
         eventHandler: @escaping EventHandler
     ) async throws -> [AppStoreScreenshotAsset] {
         let preview = try await prepareScreenshotPreview(
             project: project,
             configuredPaths: configuredPaths,
+            screenshotSimulatorUDIDs: screenshotSimulatorUDIDs,
             eventHandler: eventHandler
         )
         if preview.screenshots.isEmpty {
@@ -850,10 +858,21 @@ final class AppStorePublishingService {
     func prepareScreenshotPreview(
         project: ManagedProject,
         configuredPaths: [String],
+        screenshotSimulatorUDIDs: [String: String] = [:],
         onUpdate: ScreenshotPreviewHandler? = nil,
         eventHandler: EventHandler? = nil
     ) async throws -> AppStoreScreenshotPreview {
-        var screenshots = localScreenshotAssets(project: project, configuredPaths: configuredPaths)
+        let screenshotFixtureArguments = screenshotFixtureLaunchArguments(for: project)
+        let screenshotConfiguration = Self.screenshotBuildConfiguration(
+            availableConfigurations: project.availableConfigurations,
+            selectedConfiguration: project.configuration,
+            requiresDebug: !screenshotFixtureArguments.isEmpty || !screenshotSimulatorUDIDs.isEmpty
+        )
+        var screenshots = localScreenshotAssets(
+            project: project,
+            configuredPaths: configuredPaths,
+            screenshotSimulatorUDIDs: screenshotSimulatorUDIDs
+        )
         if !screenshots.isEmpty {
             eventHandler?(.output(L10n.format(
                 "Found %d valid local or cached screenshot(s).\n",
@@ -864,6 +883,14 @@ final class AppStorePublishingService {
         let plans = screenshotBuildPlans(for: project)
         let platforms = Set(plans.keys).union(screenshots.map(\.platform))
         let orderedPlatforms = AppStoreScreenshotPlatform.allCases.filter(platforms.contains)
+        if !screenshotFixtureArguments.isEmpty,
+           orderedPlatforms.contains(where: {
+               screenshotSimulatorUDIDs[$0.rawValue]?.nilIfEmpty == nil
+           }) {
+            eventHandler?(.output(L10n.text(
+                "Using the managed app's deterministic screenshot fixture.\n"
+            )))
+        }
         let simulators: [ScreenshotSimulatorDevice]
         do {
             let listResult = try await processRunner.runAndRequireSuccess(
@@ -882,6 +909,7 @@ final class AppStorePublishingService {
         }
 
         var selectedSimulators: [AppStoreScreenshotPlatform: ScreenshotSimulatorDevice] = [:]
+        var usesPreparedSimulator: Set<AppStoreScreenshotPlatform> = []
         var deviceStates: [AppStoreScreenshotPlatform: AppStoreScreenshotCaptureDevice] = [:]
         for platform in orderedPlatforms {
             if let provided = screenshots.first(where: { $0.platform == platform }) {
@@ -891,6 +919,35 @@ final class AppStorePublishingService {
                     runtime: nil,
                     state: .provided
                 )
+            } else if let requestedUDID = screenshotSimulatorUDIDs[platform.rawValue]?.nilIfEmpty {
+                if let simulator = simulators.first(where: {
+                    $0.udid == requestedUDID && $0.platform == platform
+                }) {
+                    selectedSimulators[platform] = simulator
+                    usesPreparedSimulator.insert(platform)
+                    deviceStates[platform] = AppStoreScreenshotCaptureDevice(
+                        platform: platform,
+                        name: simulator.name,
+                        runtime: Self.friendlyRuntime(simulator.runtimeIdentifier),
+                        state: .ready
+                    )
+                    eventHandler?(.output(L10n.format(
+                        "Using prepared Simulator %@ for %@ screenshots.\n",
+                        simulator.name,
+                        platform.title
+                    )))
+                } else {
+                    deviceStates[platform] = AppStoreScreenshotCaptureDevice(
+                        platform: platform,
+                        name: nil,
+                        runtime: nil,
+                        state: .unavailable
+                    )
+                    eventHandler?(.output(L10n.format(
+                        "The prepared %@ Simulator is no longer available; select another source in publishing settings.\n",
+                        platform.title
+                    )))
+                }
             } else if let simulator = Self.preferredSimulator(for: platform, devices: simulators) {
                 selectedSimulators[platform] = simulator
                 deviceStates[platform] = AppStoreScreenshotCaptureDevice(
@@ -917,9 +974,15 @@ final class AppStorePublishingService {
         }
         onUpdate?(preview())
 
-        let cacheRoot = screenshotCacheRoot(for: project)
+        let cacheRoot = screenshotCacheRoot(
+            for: project,
+            screenshotSimulatorUDIDs: screenshotSimulatorUDIDs
+        )
         try fileManager.createDirectory(
-            at: screenshotCacheDirectory(for: project),
+            at: screenshotCacheDirectory(
+                for: project,
+                screenshotSimulatorUDIDs: screenshotSimulatorUDIDs
+            ),
             withIntermediateDirectories: true
         )
         var builtApplications: [String: SimulatorApplication] = [:]
@@ -947,6 +1010,7 @@ final class AppStorePublishingService {
                     application = try await buildSimulatorApplication(
                         project: project,
                         plan: plan,
+                        configuration: screenshotConfiguration,
                         buildRoot: cacheRoot.appendingPathComponent("Build-\(plan.buildKey)", isDirectory: true),
                         eventHandler: eventHandler
                     )
@@ -957,6 +1021,10 @@ final class AppStorePublishingService {
                     platform: platform,
                     simulator: simulator,
                     application: application,
+                    launchArguments: usesPreparedSimulator.contains(platform)
+                        ? []
+                        : screenshotFixtureArguments,
+                    screenshotSimulatorUDIDs: screenshotSimulatorUDIDs,
                     eventHandler: eventHandler
                 )
                 screenshots.append(screenshot)
@@ -992,6 +1060,8 @@ final class AppStorePublishingService {
         platform: AppStoreScreenshotPlatform,
         simulator: ScreenshotSimulatorDevice,
         application: SimulatorApplication,
+        launchArguments: [String],
+        screenshotSimulatorUDIDs: [String: String],
         eventHandler: EventHandler?
     ) async throws -> AppStoreScreenshotAsset {
         var bootedByUs = false
@@ -1022,10 +1092,16 @@ final class AppStorePublishingService {
         )
         _ = try await processRunner.runAndRequireSuccess(
             executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
-            arguments: ["simctl", "launch", "--terminate-running-process", simulator.udid, application.bundleIdentifier]
+            arguments: [
+                "simctl", "launch", "--terminate-running-process",
+                simulator.udid, application.bundleIdentifier
+            ] + launchArguments
         )
         try await Task.sleep(for: .seconds(3))
-        let screenshotURL = screenshotCacheDirectory(for: project).appendingPathComponent(
+        let screenshotURL = screenshotCacheDirectory(
+            for: project,
+            screenshotSimulatorUDIDs: screenshotSimulatorUDIDs
+        ).appendingPathComponent(
             "\(Self.safeFilename(project.displayName))-\(platform.rawValue)-\(Self.safeFilename(simulator.name)).png"
         )
         try? fileManager.removeItem(at: screenshotURL)
@@ -1597,6 +1673,7 @@ final class AppStorePublishingService {
     private func buildSimulatorApplication(
         project: ManagedProject,
         plan: ScreenshotBuildPlan,
+        configuration: String,
         buildRoot: URL,
         eventHandler: EventHandler?
     ) async throws -> SimulatorApplication {
@@ -1604,7 +1681,7 @@ final class AppStorePublishingService {
             executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
             arguments: xcodeContainerArguments(for: project) + [
                 "-scheme", plan.scheme,
-                "-configuration", project.configuration,
+                "-configuration", configuration,
                 "-destination", plan.destination,
                 "-showBuildSettings", "-json"
             ],
@@ -1634,7 +1711,7 @@ final class AppStorePublishingService {
             arguments: [
                 "-project", projectPath,
                 "-target", target.name,
-                "-configuration", project.configuration,
+                "-configuration", configuration,
                 "-sdk", plan.sdk,
                 "SYMROOT=\(products.path)",
                 "OBJROOT=\(intermediates.path)",
@@ -1695,7 +1772,10 @@ final class AppStorePublishingService {
         return supportedPlatforms.contains(platform.bundlePlatformName)
     }
 
-    private func screenshotCacheRoot(for project: ManagedProject) -> URL {
+    private func screenshotCacheRoot(
+        for project: ManagedProject,
+        screenshotSimulatorUDIDs: [String: String] = [:]
+    ) -> URL {
         let base = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? fileManager.temporaryDirectory
         let version = Self.safeFilename(project.marketingVersion ?? "unknown")
@@ -1705,10 +1785,26 @@ final class AppStorePublishingService {
             .appendingPathComponent("AppStoreScreenshots", isDirectory: true)
             .appendingPathComponent(project.id.uuidString, isDirectory: true)
             .appendingPathComponent("\(version)-\(build)", isDirectory: true)
+            .appendingPathComponent(
+                Self.screenshotSourceCacheKey(
+                    screenshotSimulatorUDIDs: screenshotSimulatorUDIDs,
+                    usesFixture: Self.projectContainsScreenshotFixture(
+                        at: project.folderURL,
+                        fileManager: fileManager
+                    )
+                ),
+                isDirectory: true
+            )
     }
 
-    private func screenshotCacheDirectory(for project: ManagedProject) -> URL {
-        screenshotCacheRoot(for: project).appendingPathComponent("Screenshots", isDirectory: true)
+    private func screenshotCacheDirectory(
+        for project: ManagedProject,
+        screenshotSimulatorUDIDs: [String: String] = [:]
+    ) -> URL {
+        screenshotCacheRoot(
+            for: project,
+            screenshotSimulatorUDIDs: screenshotSimulatorUDIDs
+        ).appendingPathComponent("Screenshots", isDirectory: true)
     }
 
     private func screenshotAssets(in directory: URL) -> [AppStoreScreenshotAsset] {
@@ -1724,6 +1820,77 @@ final class AppStorePublishingService {
             return screenshotAsset(at: url, automaticallyCaptured: true)
         }
     }
+
+    private func screenshotFixtureLaunchArguments(for project: ManagedProject) -> [String] {
+        Self.projectContainsScreenshotFixture(
+            at: project.folderURL,
+            fileManager: fileManager
+        ) ? [Self.screenshotFixtureLaunchArgument] : []
+    }
+
+    static func screenshotBuildConfiguration(
+        availableConfigurations: [String],
+        selectedConfiguration: String,
+        requiresDebug: Bool
+    ) -> String {
+        guard requiresDebug,
+              let debug = availableConfigurations.first(where: {
+                  $0.caseInsensitiveCompare("Debug") == .orderedSame
+              }) else {
+            return selectedConfiguration
+        }
+        return debug
+    }
+
+    static func screenshotSourceCacheKey(
+        screenshotSimulatorUDIDs: [String: String],
+        usesFixture: Bool
+    ) -> String {
+        guard !screenshotSimulatorUDIDs.isEmpty else {
+            return usesFixture ? "Fixture-v1" : "Default-v1"
+        }
+        let source = screenshotSimulatorUDIDs
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: "&")
+        let digest = SHA256.hash(data: Data(source.utf8))
+            .prefix(8)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "Prepared-v1-\(digest)"
+    }
+
+    static func projectContainsScreenshotFixture(
+        at root: URL,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        guard let enumerator = fileManager.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return false }
+        let sourceExtensions: Set<String> = ["swift", "m", "mm"]
+        for case let url as URL in enumerator {
+            let lowerPath = url.path.lowercased()
+            if lowerPath.contains("/build/") || lowerPath.contains("/deriveddata/") {
+                if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                    enumerator.skipDescendants()
+                }
+                continue
+            }
+            guard sourceExtensions.contains(url.pathExtension.lowercased()) else { continue }
+            let lowerName = url.lastPathComponent.lowercased()
+            guard lowerName.contains("screenshot") || lowerName.contains("fixture") else { continue }
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey])
+            guard (values?.fileSize ?? 0) <= 2_000_000,
+                  let source = try? String(contentsOf: url, encoding: .utf8),
+                  source.contains(Self.screenshotFixtureLaunchArgument) else { continue }
+            return true
+        }
+        return false
+    }
+
+    private static let screenshotFixtureLaunchArgument = "-AppStoreScreenshotFixture"
 
     private static func platformHint(from path: String) -> AppStoreScreenshotPlatform? {
         let path = path.lowercased()
@@ -1826,7 +1993,8 @@ final class AppStorePublishingService {
         SimulatorDevice.availableDevices(fromSimctlList: data).compactMap { device in
             guard let platform = simulatorPlatform(
                 runtimeIdentifier: device.runtimeIdentifier,
-                deviceName: device.name
+                deviceName: device.name,
+                deviceTypeIdentifier: device.deviceTypeIdentifier
             ) else { return nil }
             return ScreenshotSimulatorDevice(
                 udid: device.udid,
@@ -1855,13 +2023,20 @@ final class AppStorePublishingService {
 
     private static func simulatorPlatform(
         runtimeIdentifier: String,
-        deviceName: String
+        deviceName: String,
+        deviceTypeIdentifier: String? = nil
     ) -> AppStoreScreenshotPlatform? {
         let runtime = runtimeIdentifier.lowercased()
         if runtime.contains("watchos-") { return .appleWatch }
         if runtime.contains("tvos-") { return .appleTV }
         if runtime.contains("xros-") || runtime.contains("visionos-") { return .appleVisionPro }
         if runtime.contains("ios-") {
+            if deviceTypeIdentifier?.localizedCaseInsensitiveContains("iPad") == true {
+                return .iPad
+            }
+            if deviceTypeIdentifier?.localizedCaseInsensitiveContains("iPhone") == true {
+                return .iPhone
+            }
             return deviceName.localizedCaseInsensitiveContains("iPad") ? .iPad : .iPhone
         }
         return nil

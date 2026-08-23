@@ -1576,7 +1576,8 @@ private struct PublishingWindowView: View {
             let screenshotService = AppStorePublishingService()
             let localScreenshots = screenshotService.localScreenshotAssets(
                 project: project,
-                configuredPaths: catalog.publication?.screenshotPaths ?? []
+                configuredPaths: catalog.publication?.screenshotPaths ?? [],
+                screenshotSimulatorUDIDs: catalog.publication?.screenshotSimulatorUDIDs ?? [:]
             )
             localPublishingPreview = LocalPublishingPreview(
                 catalog: catalog,
@@ -1622,6 +1623,7 @@ private struct PublishingWindowView: View {
                 let prepared = try await screenshotService.prepareScreenshotPreview(
                     project: project,
                     configuredPaths: catalog.publication?.screenshotPaths ?? [],
+                    screenshotSimulatorUDIDs: catalog.publication?.screenshotSimulatorUDIDs ?? [:],
                     onUpdate: { updated in
                         Task { @MainActor in
                             guard selectedProjectID == projectID,
@@ -2780,6 +2782,10 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var privacyPolicyURL = ""
     @State private var privacyChoicesURL = ""
     @State private var screenshotPaths = "Screenshots"
+    @State private var screenshotSimulatorUDIDs: [String: String] = [:]
+    @State private var screenshotSimulators: [SimulatorDevice] = []
+    @State private var isLoadingScreenshotSimulators = false
+    @State private var screenshotSimulatorLoadError: String?
     @State private var reviewAttachmentPaths = ""
     @State private var replaceScreenshots = false
 
@@ -2911,6 +2917,7 @@ private struct PerAppPublishingConfigurationEditor: View {
             selectedTab = initialTab
             showsRequiredFieldErrors = highlightMissingFields
             load()
+            await loadScreenshotSimulators()
             if highlightMissingFields,
                selectedTab == .appSetup,
                privacyEditorValidationMessage != nil {
@@ -3281,10 +3288,143 @@ private struct PerAppPublishingConfigurationEditor: View {
                 height: 80
             )
             Toggle("Replace existing screenshots for matching device sizes", isOn: $replaceScreenshots)
+            Divider()
+            HStack {
+                Text("Screenshot Simulator Source")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Button {
+                    Task { await loadScreenshotSimulators() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(isLoadingScreenshotSimulators)
+                .help("Refresh Simulator sources")
+                .accessibilityLabel(L10n.text("Refresh Simulator sources"))
+            }
+            if isLoadingScreenshotSimulators {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading available Simulators…")
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                ForEach(screenshotSourcePlatforms) { platform in
+                    HStack(spacing: 8) {
+                        Picker(
+                            L10n.format("%@ source", platform.title),
+                            selection: screenshotSimulatorBinding(for: platform)
+                        ) {
+                            Text("Automatic (fixture or newest Simulator)").tag("")
+                            let devices = screenshotSimulators(for: platform)
+                            ForEach(devices) { device in
+                                Text(verbatim: screenshotSimulatorTitle(device)).tag(device.udid)
+                            }
+                            if let selected = screenshotSimulatorUDIDs[platform.rawValue],
+                               !devices.contains(where: { $0.udid == selected }) {
+                                Text("Unavailable prepared Simulator").tag(selected)
+                            }
+                        }
+                        Button {
+                            openPreparedSimulator(for: platform)
+                        } label: {
+                            Image(systemName: "play.rectangle")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(screenshotSimulatorUDIDs[platform.rawValue]?.nilIfEmpty == nil)
+                        .help("Open this Simulator to run the app and import files")
+                        .accessibilityLabel(L10n.format(
+                            "Prepare %@ screenshot Simulator",
+                            platform.title
+                        ))
+                    }
+                }
+            }
+            if let screenshotSimulatorLoadError {
+                Label(screenshotSimulatorLoadError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            Text("Select a prepared Simulator to preserve its app data during screenshot capture. Use the play button to run the app, import files, and arrange the screen first. Automatic uses the app’s deterministic fixture when available.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Text("Relative paths are resolved from the app project. The Publish overview automatically extracts and previews missing screenshots on every supported Simulator family.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var screenshotSourcePlatforms: [AppStoreScreenshotPlatform] {
+        AppStoreScreenshotPlatform.allCases.filter { platform in
+            switch platform {
+            case .iPhone:
+                project.effectiveSupportedDeviceFamilies.contains(.iPhone)
+            case .iPad:
+                project.effectiveSupportedDeviceFamilies.contains(.iPad)
+            case .appleWatch, .appleTV, .appleVisionPro:
+                false
+            }
+        }
+    }
+
+    private func screenshotSimulators(
+        for platform: AppStoreScreenshotPlatform
+    ) -> [SimulatorDevice] {
+        screenshotSimulators.filter { device in
+            switch platform {
+            case .iPhone: device.mobileDeviceFamily == .iPhone
+            case .iPad: device.mobileDeviceFamily == .iPad
+            case .appleWatch, .appleTV, .appleVisionPro: false
+            }
+        }
+    }
+
+    private func screenshotSimulatorBinding(
+        for platform: AppStoreScreenshotPlatform
+    ) -> Binding<String> {
+        Binding(
+            get: { screenshotSimulatorUDIDs[platform.rawValue] ?? "" },
+            set: { value in
+                if value.isEmpty {
+                    screenshotSimulatorUDIDs.removeValue(forKey: platform.rawValue)
+                } else {
+                    screenshotSimulatorUDIDs[platform.rawValue] = value
+                }
+            }
+        )
+    }
+
+    private func screenshotSimulatorTitle(_ device: SimulatorDevice) -> String {
+        device.isBooted
+            ? L10n.format("%@ (booted)", device.displayTitle)
+            : device.displayTitle
+    }
+
+    @MainActor
+    private func loadScreenshotSimulators() async {
+        isLoadingScreenshotSimulators = true
+        screenshotSimulatorLoadError = nil
+        defer { isLoadingScreenshotSimulators = false }
+        do {
+            let devices = try await SimulatorService().availableDevices()
+            screenshotSimulators = SimulatorDevice.compatibleIOSDevices(
+                in: devices,
+                supportedFamilies: project.effectiveSupportedDeviceFamilies
+            )
+        } catch {
+            screenshotSimulators = []
+            screenshotSimulatorLoadError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func openPreparedSimulator(for platform: AppStoreScreenshotPlatform) {
+        guard let udid = screenshotSimulatorUDIDs[platform.rawValue]?.nilIfEmpty else { return }
+        var settings = project.simulatorRunSettings ?? SimulatorRunSettings()
+        settings.deviceUDID = udid
+        model.saveSimulatorRunSettings(settings, projectID: project.id)
+        SimulatorRunWindowPresenter.shared.show(model: model, projectID: project.id)
     }
 
     private var categoriesAndContentSection: some View {
@@ -3856,6 +3996,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         privacyPolicyURL = publication.privacyPolicyURL ?? ""
         privacyChoicesURL = publication.privacyChoicesURL ?? ""
         screenshotPaths = (publication.screenshotPaths ?? []).joined(separator: "\n")
+        screenshotSimulatorUDIDs = publication.screenshotSimulatorUDIDs ?? [:]
         reviewAttachmentPaths = (publication.reviewAttachmentPaths ?? []).joined(separator: "\n")
         replaceScreenshots = publication.replaceScreenshots ?? false
         releaseAutomatically = publication.releaseAutomatically ?? true
@@ -3955,6 +4096,9 @@ private struct PerAppPublishingConfigurationEditor: View {
             metadata: metadata,
             localizations: localizations,
             screenshotPaths: screenshotPaths.split(whereSeparator: \.isNewline).map(String.init),
+            screenshotSimulatorUDIDs: screenshotSimulatorUDIDs.isEmpty
+                ? nil
+                : screenshotSimulatorUDIDs,
             reviewAttachmentPaths: reviewAttachmentPaths.split(whereSeparator: \.isNewline).map(String.init),
             replaceScreenshots: replaceScreenshots,
             review: AppStoreReviewManifestConfiguration(

@@ -935,6 +935,7 @@ final class AppModel: ObservableObject {
             manualMetadata: perAppConfiguration?.metadata?.normalized(),
             manualLocalizations: perAppConfiguration?.localizations?.map { $0.normalized() } ?? [],
             screenshotPaths: perAppConfiguration?.screenshotPaths ?? [],
+            screenshotSimulatorUDIDs: perAppConfiguration?.screenshotSimulatorUDIDs ?? [:],
             reviewAttachmentPaths: perAppConfiguration?.reviewAttachmentPaths ?? [],
             replaceScreenshots: perAppConfiguration?.replaceScreenshots ?? false,
             releaseAutomatically: releaseAutomatically,
