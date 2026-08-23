@@ -50,6 +50,10 @@ struct ProvisioningProfileRecord: Equatable {
     let provisionsAllDevices: Bool
     /// `beta-reports-active` is present and true only on App Store profiles.
     let isBetaReportsActive: Bool
+    /// Entitlements authorized by this exact profile. Profile reuse must cover the
+    /// archived bundle's capabilities; matching only its identifier and certificate
+    /// can select a profile created before a capability such as Push was enabled.
+    let entitlementKeys: Set<String>
 
     init(
         teamID: String,
@@ -61,7 +65,8 @@ struct ProvisioningProfileRecord: Equatable {
         certificateSHA1Fingerprints: [String] = [],
         hasProvisionedDevices: Bool = false,
         provisionsAllDevices: Bool = false,
-        isBetaReportsActive: Bool = false
+        isBetaReportsActive: Bool = false,
+        entitlementKeys: Set<String> = []
     ) {
         self.teamID = teamID
         self.teamName = teamName
@@ -73,6 +78,7 @@ struct ProvisioningProfileRecord: Equatable {
         self.hasProvisionedDevices = hasProvisionedDevices
         self.provisionsAllDevices = provisionsAllDevices
         self.isBetaReportsActive = isBetaReportsActive
+        self.entitlementKeys = entitlementKeys
     }
 
     /// The absence of a device list is not enough on its own: enterprise in-house
@@ -366,8 +372,19 @@ final class DeveloperTeamService {
             certificateSHA1Fingerprints: certificateFingerprints,
             hasProvisionedDevices: (dictionary["ProvisionedDevices"] as? [String])?.isEmpty == false,
             provisionsAllDevices: dictionary["ProvisionsAllDevices"] as? Bool == true,
-            isBetaReportsActive: entitlements?["beta-reports-active"] as? Bool == true
+            isBetaReportsActive: entitlements?["beta-reports-active"] as? Bool == true,
+            entitlementKeys: Set(entitlements?.keys.map { $0 } ?? [])
         )
+    }
+
+    /// Accepts either a decoded profile plist (useful to callers and tests) or the
+    /// CMS-wrapped profile content returned by App Store Connect.
+    static func provisioningProfileRecord(fromProfileContent data: Data) -> ProvisioningProfileRecord? {
+        if let record = provisioningProfileRecord(fromPropertyListData: data) {
+            return record
+        }
+        guard let propertyListData = decodedProvisioningProfileContent(data) else { return nil }
+        return provisioningProfileRecord(fromPropertyListData: propertyListData)
     }
 
     static func provisioningProfileExpirationDate(fromPropertyListData data: Data) -> Date? {

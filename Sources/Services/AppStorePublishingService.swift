@@ -1,5 +1,6 @@
 import ImageIO
 import Foundation
+import Security
 
 enum AppStorePublishingError: LocalizedError {
     case busy
@@ -1115,15 +1116,18 @@ final class AppStorePublishingService {
         // Every signed bundle in the archive — the app plus each app extension — needs
         // its own distribution profile before a manual export can succeed. The archive
         // was already validated above, so the fallback only guards an unexpected layout.
-        let discoveredBundleIdentifiers = Self.archivedBundleIdentifiers(
+        let discoveredTargets = Self.archivedProvisioningTargets(
             at: archiveURL,
             fileManager: fileManager
         )
-        let archivedBundleIdentifiers = discoveredBundleIdentifiers.isEmpty
-            ? [archiveMetadata.bundleIdentifier]
-            : discoveredBundleIdentifiers
+        let archivedTargets = discoveredTargets.isEmpty
+            ? [AppStoreProvisioningTarget(
+                bundleIdentifier: archiveMetadata.bundleIdentifier,
+                requiredEntitlementKeys: []
+            )]
+            : discoveredTargets
         let provisioningProfiles = try await provisioningProfileService.ensureProfiles(
-            bundleIdentifiers: archivedBundleIdentifiers,
+            targets: archivedTargets,
             identity: signingIdentity,
             issuerID: issuerID,
             keyID: keyID,
@@ -1294,6 +1298,18 @@ final class AppStorePublishingService {
         at archiveURL: URL,
         fileManager: FileManager = .default
     ) -> [String] {
+        archivedProvisioningTargets(at: archiveURL, fileManager: fileManager)
+            .map(\.bundleIdentifier)
+    }
+
+    /// Every profile-backed bundle plus the capability entitlements present in its
+    /// archive signature. Distribution profiles may authorize different values for
+    /// environment-specific entitlements, so profile reuse compares keys rather than
+    /// development and production values.
+    static func archivedProvisioningTargets(
+        at archiveURL: URL,
+        fileManager: FileManager = .default
+    ) -> [AppStoreProvisioningTarget] {
         let applicationsURL = archiveURL
             .appendingPathComponent("Products", isDirectory: true)
             .appendingPathComponent("Applications", isDirectory: true)
@@ -1304,7 +1320,7 @@ final class AppStorePublishingService {
         ) else {
             return []
         }
-        var identifiers: [String] = []
+        var targets: [AppStoreProvisioningTarget] = []
         var seen: Set<String> = []
         for case let candidate as URL in enumerator {
             guard ["app", "appex"].contains(candidate.pathExtension.lowercased()) else { continue }
@@ -1320,9 +1336,58 @@ final class AppStorePublishingService {
             else {
                 continue
             }
-            identifiers.append(identifier)
+            targets.append(AppStoreProvisioningTarget(
+                bundleIdentifier: identifier,
+                requiredEntitlementKeys: requiredProfileEntitlementKeys(
+                    inCodeSignatureAt: candidate
+                )
+            ))
         }
-        return identifiers
+        return targets
+    }
+
+    /// Entitlements that represent capabilities and therefore must be present in a
+    /// reusable provisioning profile. The ignored keys are universal signing
+    /// metadata or intentionally differ between development and distribution.
+    static func requiredProfileEntitlementKeys(
+        from entitlements: [String: Any]
+    ) -> Set<String> {
+        let signingMetadata: Set<String> = [
+            "application-identifier",
+            "com.apple.application-identifier",
+            "com.apple.developer.team-identifier",
+            "get-task-allow",
+            "keychain-access-groups",
+            "beta-reports-active"
+        ]
+        return Set(entitlements.keys).subtracting(signingMetadata)
+    }
+
+    private static func requiredProfileEntitlementKeys(
+        inCodeSignatureAt bundleURL: URL
+    ) -> Set<String> {
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(
+            bundleURL as CFURL,
+            SecCSFlags(),
+            &staticCode
+        ) == errSecSuccess,
+              let staticCode
+        else {
+            return []
+        }
+        var information: CFDictionary?
+        guard SecCodeCopySigningInformation(
+            staticCode,
+            SecCSFlags(rawValue: kSecCSSigningInformation),
+            &information
+        ) == errSecSuccess,
+              let dictionary = information as NSDictionary?,
+              let entitlements = dictionary[kSecCodeInfoEntitlementsDict] as? [String: Any]
+        else {
+            return []
+        }
+        return requiredProfileEntitlementKeys(from: entitlements)
     }
 
     static func isDistributionSigningFailure(_ message: String) -> Bool {

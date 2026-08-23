@@ -315,7 +315,8 @@ final class DirectXcodeInstallationTests: XCTestCase {
                 teamID: "52HV33827A",
                 teamName: "Ziv Tal",
                 bundleIdentifier: "com.zivtal.HomeCapital",
-                expirationDate: expirationDate
+                expirationDate: expirationDate,
+                entitlementKeys: ["application-identifier"]
             )
         )
         XCTAssertEqual(
@@ -509,13 +510,15 @@ final class DirectXcodeInstallationTests: XCTestCase {
         teamID: String,
         teamName: String?,
         bundleIdentifier: String,
-        expirationDate: Date? = Date.distantFuture
+        expirationDate: Date? = Date.distantFuture,
+        entitlementKeys: Set<String> = []
     ) -> ProvisioningProfileRecord {
         ProvisioningProfileRecord(
             teamID: teamID,
             teamName: teamName,
             bundleIdentifier: bundleIdentifier,
-            expirationDate: expirationDate
+            expirationDate: expirationDate,
+            entitlementKeys: entitlementKeys
         )
     }
 }

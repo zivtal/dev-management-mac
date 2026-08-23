@@ -4,6 +4,7 @@ enum AppStoreProvisioningProfileError: LocalizedError {
     case certificateNotOnAccount(String)
     case bundleIdentifiersNotRegistered([String])
     case profileContentUnavailable(String)
+    case profileMissingEntitlements(name: String, bundleIdentifier: String, entitlements: [String])
 
     var errorDescription: String? {
         switch self {
@@ -24,8 +25,20 @@ enum AppStoreProvisioningProfileError: LocalizedError {
                 "App Store Connect returned distribution profile %@ without its profile data, so it could not be installed. No archive was uploaded.",
                 name
             )
+        case .profileMissingEntitlements(let name, let bundleIdentifier, let entitlements):
+            return L10n.format(
+                "Distribution profile %@ for %@ is missing required capabilities (%@). Enable these capabilities for the identifier in Apple Developer, then publish again. The archive was not exported or uploaded.",
+                name,
+                bundleIdentifier,
+                entitlements.joined(separator: ", ")
+            )
         }
     }
+}
+
+struct AppStoreProvisioningTarget: Equatable, Sendable {
+    let bundleIdentifier: String
+    let requiredEntitlementKeys: Set<String>
 }
 
 /// Whether Development Management may register a missing bundle identifier itself.
@@ -87,25 +100,27 @@ actor AppStoreProvisioningProfileService {
     /// Returns a `bundle identifier -> profile name` map suitable for the
     /// `provisioningProfiles` key of an export options plist.
     func ensureProfiles(
-        bundleIdentifiers: [String],
+        targets: [AppStoreProvisioningTarget],
         identity: DistributionSigningIdentity,
         issuerID: String,
         keyID: String,
         privateKeyPEM: String,
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws -> [String: String] {
-        let uniqueIdentifiers = Self.uniqueIdentifiers(bundleIdentifiers)
-        guard !uniqueIdentifiers.isEmpty else { return [:] }
+        let uniqueTargets = Self.uniqueTargets(targets)
+        guard !uniqueTargets.isEmpty else { return [:] }
 
         let installed = developerTeamService.provisioningProfileRecords()
         var resolved: [String: String] = [:]
         var pending: [String] = []
-        for bundleIdentifier in uniqueIdentifiers {
+        for target in uniqueTargets {
+            let bundleIdentifier = target.bundleIdentifier
             if let match = Self.installedAppStoreProfile(
                 in: installed,
                 bundleIdentifier: bundleIdentifier,
                 teamID: identity.teamID,
-                certificateSHA1: identity.sha1Fingerprint
+                certificateSHA1: identity.sha1Fingerprint,
+                requiredEntitlementKeys: target.requiredEntitlementKeys
             ), let name = match.name {
                 resolved[bundleIdentifier] = name
                 onOutput(L10n.format(
@@ -136,11 +151,17 @@ actor AppStoreProvisioningProfileService {
 
         // Everything that still needs a profile is checked for a registered
         // identifier in one pass, so the user sees every missing one at once.
+        let requiredEntitlementsByIdentifier = Dictionary(
+            uniqueKeysWithValues: uniqueTargets.map {
+                ($0.bundleIdentifier, $0.requiredEntitlementKeys)
+            }
+        )
         let needingCreation = pending.filter { bundleIdentifier in
             Self.reusableAccountProfile(
                 in: accountProfiles,
                 bundleIdentifier: bundleIdentifier,
-                certificateID: certificateID
+                certificateID: certificateID,
+                requiredEntitlementKeys: requiredEntitlementsByIdentifier[bundleIdentifier] ?? []
             ) == nil
         }
         let missing = needingCreation.filter { bundleIDsByIdentifier[$0] == nil }
@@ -165,6 +186,7 @@ actor AppStoreProvisioningProfileService {
             let profile = try await self.profile(
                 for: bundleIdentifier,
                 certificateID: certificateID,
+                requiredEntitlementKeys: requiredEntitlementsByIdentifier[bundleIdentifier] ?? [],
                 accountProfiles: accountProfiles,
                 bundleIDsByIdentifier: bundleIDsByIdentifier,
                 appStoreConnect: appStoreConnect,
@@ -179,6 +201,7 @@ actor AppStoreProvisioningProfileService {
     private func profile(
         for bundleIdentifier: String,
         certificateID: String,
+        requiredEntitlementKeys: Set<String>,
         accountProfiles: [AppStoreConnectProfile],
         bundleIDsByIdentifier: [String: AppStoreConnectBundleID],
         appStoreConnect: AppStoreConnectService,
@@ -187,7 +210,8 @@ actor AppStoreProvisioningProfileService {
         if let reusable = Self.reusableAccountProfile(
             in: accountProfiles,
             bundleIdentifier: bundleIdentifier,
-            certificateID: certificateID
+            certificateID: certificateID,
+            requiredEntitlementKeys: requiredEntitlementKeys
         ) {
             onOutput(L10n.format(
                 "Reusing App Store Connect distribution profile %@ for %@.\n",
@@ -213,6 +237,17 @@ actor AppStoreProvisioningProfileService {
             created.name,
             bundleIdentifier
         ))
+        let missing = Self.missingEntitlementKeys(
+            requiredEntitlementKeys,
+            inProfileContent: created.profileContent
+        )
+        guard missing.isEmpty else {
+            throw AppStoreProvisioningProfileError.profileMissingEntitlements(
+                name: created.name,
+                bundleIdentifier: bundleIdentifier,
+                entitlements: missing.sorted()
+            )
+        }
         return created
     }
 
@@ -264,11 +299,35 @@ actor AppStoreProvisioningProfileService {
             .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
+    static func uniqueTargets(
+        _ targets: [AppStoreProvisioningTarget]
+    ) -> [AppStoreProvisioningTarget] {
+        var order: [String] = []
+        var entitlementsByIdentifier: [String: Set<String>] = [:]
+        for target in targets {
+            let identifier = target.bundleIdentifier
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !identifier.isEmpty else { continue }
+            if entitlementsByIdentifier[identifier] == nil {
+                order.append(identifier)
+            }
+            entitlementsByIdentifier[identifier, default: []]
+                .formUnion(target.requiredEntitlementKeys)
+        }
+        return order.map {
+            AppStoreProvisioningTarget(
+                bundleIdentifier: $0,
+                requiredEntitlementKeys: entitlementsByIdentifier[$0] ?? []
+            )
+        }
+    }
+
     static func installedAppStoreProfile(
         in profiles: [ProvisioningProfileRecord],
         bundleIdentifier: String,
         teamID: String,
         certificateSHA1: String,
+        requiredEntitlementKeys: Set<String> = [],
         now: Date = Date()
     ) -> ProvisioningProfileRecord? {
         profiles.first { profile in
@@ -279,6 +338,7 @@ actor AppStoreProvisioningProfileService {
                 && profile.name?.isEmpty == false
                 && profile.expirationDate.map { $0 > now } != false
                 && profile.certificateSHA1Fingerprints.contains(certificateSHA1)
+                && requiredEntitlementKeys.isSubset(of: profile.entitlementKeys)
         }
     }
 
@@ -286,6 +346,7 @@ actor AppStoreProvisioningProfileService {
         in profiles: [AppStoreConnectProfile],
         bundleIdentifier: String,
         certificateID: String,
+        requiredEntitlementKeys: Set<String> = [],
         now: Date = Date()
     ) -> AppStoreConnectProfile? {
         guard !bundleIdentifier.contains("*") else { return nil }
@@ -295,7 +356,26 @@ actor AppStoreProvisioningProfileService {
                 && profile.isActive(at: now)
                 && profile.certificateIDs.contains(certificateID)
                 && profile.profileContent?.isEmpty == false
+                && missingEntitlementKeys(
+                    requiredEntitlementKeys,
+                    inProfileContent: profile.profileContent
+                ).isEmpty
         }
+    }
+
+    static func missingEntitlementKeys(
+        _ required: Set<String>,
+        inProfileContent content: Data?
+    ) -> Set<String> {
+        guard !required.isEmpty else { return [] }
+        guard let content,
+              let record = DeveloperTeamService.provisioningProfileRecord(
+                fromProfileContent: content
+              )
+        else {
+            return required
+        }
+        return required.subtracting(record.entitlementKeys)
     }
 
     static func matchingCertificateID(

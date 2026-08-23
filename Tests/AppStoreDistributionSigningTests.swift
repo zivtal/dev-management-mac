@@ -151,6 +151,22 @@ final class AppStoreDistributionSigningTests: XCTestCase {
         )
     }
 
+    func testRequiredProfileEntitlementsExcludeUniversalSigningMetadata() {
+        let required = AppStorePublishingService.requiredProfileEntitlementKeys(from: [
+            "application-identifier": "TEAM.com.example.app",
+            "com.apple.developer.team-identifier": "TEAM",
+            "get-task-allow": true,
+            "keychain-access-groups": ["TEAM.*"],
+            "aps-environment": "development",
+            "com.apple.security.application-groups": ["group.com.example.app"]
+        ])
+
+        XCTAssertEqual(required, [
+            "aps-environment",
+            "com.apple.security.application-groups"
+        ])
+    }
+
     // MARK: - Local identity selection
 
     func testDistributionSigningIdentityRequiresFingerprintAndMatchingTeam() {
@@ -640,6 +656,38 @@ final class AppStoreDistributionSigningTests: XCTestCase {
         ))
     }
 
+    func testInstalledProfileMustContainArchivedCapabilityEntitlements() {
+        let profile = Self.installedProfile(
+            bundleIdentifier: "com.example.app",
+            teamID: "TEAM123",
+            fingerprints: ["BBBB"],
+            expires: Date().addingTimeInterval(60 * 60 * 24 * 365),
+            hasDevices: false,
+            entitlementKeys: ["com.apple.security.application-groups"]
+        )
+
+        XCTAssertNil(AppStoreProvisioningProfileService.installedAppStoreProfile(
+            in: [profile],
+            bundleIdentifier: "com.example.app",
+            teamID: "TEAM123",
+            certificateSHA1: "BBBB",
+            requiredEntitlementKeys: [
+                "com.apple.security.application-groups",
+                "aps-environment"
+            ]
+        ))
+        XCTAssertEqual(
+            AppStoreProvisioningProfileService.installedAppStoreProfile(
+                in: [profile],
+                bundleIdentifier: "com.example.app",
+                teamID: "TEAM123",
+                certificateSHA1: "BBBB",
+                requiredEntitlementKeys: ["com.apple.security.application-groups"]
+            ),
+            profile
+        )
+    }
+
     func testWildcardAccountProfileIsNeverReused() {
         let wildcard = AppStoreConnectProfile(
             id: "P1",
@@ -698,6 +746,37 @@ final class AppStoreDistributionSigningTests: XCTestCase {
         )
     }
 
+    func testReusableAccountProfileMustContainArchivedCapabilityEntitlements() throws {
+        let content = try Self.profileContent(entitlementKeys: [
+            "application-identifier",
+            "beta-reports-active",
+            "com.apple.security.application-groups"
+        ])
+        let profile = Self.profile(
+            state: "ACTIVE",
+            expires: nil,
+            bundleIdentifier: "com.example.app",
+            certificateIDs: ["CERT1"],
+            content: content
+        )
+
+        XCTAssertNil(AppStoreProvisioningProfileService.reusableAccountProfile(
+            in: [profile],
+            bundleIdentifier: "com.example.app",
+            certificateID: "CERT1",
+            requiredEntitlementKeys: ["aps-environment"]
+        ))
+        XCTAssertEqual(
+            AppStoreProvisioningProfileService.reusableAccountProfile(
+                in: [profile],
+                bundleIdentifier: "com.example.app",
+                certificateID: "CERT1",
+                requiredEntitlementKeys: ["com.apple.security.application-groups"]
+            ),
+            profile
+        )
+    }
+
     func testMatchingCertificateIDComparesFingerprints() {
         let content = Data("certificate".utf8)
         let fingerprint = DeveloperTeamService.sha1Fingerprint(ofCertificateData: content)
@@ -744,6 +823,38 @@ final class AppStoreDistributionSigningTests: XCTestCase {
                 "com.example.app", "  ", "com.example.app.widget", "com.example.app", " com.example.app "
             ]),
             ["com.example.app", "com.example.app.widget"]
+        )
+    }
+
+    func testUniqueTargetsMergeEntitlementsForDuplicateIdentifiers() {
+        XCTAssertEqual(
+            AppStoreProvisioningProfileService.uniqueTargets([
+                AppStoreProvisioningTarget(
+                    bundleIdentifier: " com.example.app ",
+                    requiredEntitlementKeys: ["aps-environment"]
+                ),
+                AppStoreProvisioningTarget(
+                    bundleIdentifier: "com.example.app.widget",
+                    requiredEntitlementKeys: []
+                ),
+                AppStoreProvisioningTarget(
+                    bundleIdentifier: "com.example.app",
+                    requiredEntitlementKeys: ["com.apple.security.application-groups"]
+                )
+            ]),
+            [
+                AppStoreProvisioningTarget(
+                    bundleIdentifier: "com.example.app",
+                    requiredEntitlementKeys: [
+                        "aps-environment",
+                        "com.apple.security.application-groups"
+                    ]
+                ),
+                AppStoreProvisioningTarget(
+                    bundleIdentifier: "com.example.app.widget",
+                    requiredEntitlementKeys: []
+                )
+            ]
         )
     }
 
@@ -857,7 +968,8 @@ final class AppStoreDistributionSigningTests: XCTestCase {
         expires: Date?,
         hasDevices: Bool,
         provisionsAllDevices: Bool = false,
-        betaReportsActive: Bool = true
+        betaReportsActive: Bool = true,
+        entitlementKeys: Set<String> = []
     ) -> ProvisioningProfileRecord {
         ProvisioningProfileRecord(
             teamID: teamID,
@@ -869,7 +981,23 @@ final class AppStoreDistributionSigningTests: XCTestCase {
             certificateSHA1Fingerprints: fingerprints,
             hasProvisionedDevices: hasDevices,
             provisionsAllDevices: provisionsAllDevices,
-            isBetaReportsActive: betaReportsActive
+            isBetaReportsActive: betaReportsActive,
+            entitlementKeys: entitlementKeys
+        )
+    }
+
+    private static func profileContent(entitlementKeys: Set<String>) throws -> Data {
+        let entitlements = Dictionary(
+            uniqueKeysWithValues: entitlementKeys.map { ($0, true) }
+        )
+        return try PropertyListSerialization.data(
+            fromPropertyList: [
+                "TeamIdentifier": ["TEAM123"],
+                "Name": "Profile",
+                "Entitlements": entitlements
+            ],
+            format: .xml,
+            options: 0
         )
     }
 }
