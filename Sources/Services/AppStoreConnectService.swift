@@ -1769,14 +1769,21 @@ final class AppStoreConnectService {
                 path: "/v1/appStoreVersionLocalizations/\(localizationID)/appScreenshotSets",
                 query: ["filter[screenshotDisplayType]": displayType, "include": "appScreenshots", "limit": "50"]
             )
-            let existingScreenshots = (setResponse["included"] as? [[String: Any]])?.filter {
-                $0["type"] as? String == "appScreenshots"
-            } ?? []
-            if !existingScreenshots.isEmpty, !replaceExisting {
+            let existing = Self.screenshotSetContents(
+                in: setResponse,
+                matching: displayType
+            )
+            let existingScreenshots = existing.screenshots
+            let existingScreenshotsAreComplete = existingScreenshots.allSatisfy {
+                Self.screenshotAssetDeliveryState($0) == "COMPLETE"
+            }
+            if !existingScreenshots.isEmpty,
+               existingScreenshotsAreComplete,
+               !replaceExisting {
                 onOutput(L10n.format("Keeping %d existing screenshot(s) for %@.\n", existingScreenshots.count, displayType))
                 continue
             }
-            if replaceExisting {
+            if replaceExisting || !existingScreenshotsAreComplete {
                 for screenshot in existingScreenshots {
                     guard let screenshotID = screenshot["id"] as? String else { continue }
                     _ = try await request(
@@ -1794,7 +1801,7 @@ final class AppStoreConnectService {
             }
 
             let screenshotSetID: String
-            if let existingSet = (setResponse["data"] as? [[String: Any]])?.first,
+            if let existingSet = existing.set,
                let id = existingSet["id"] as? String {
                 screenshotSetID = id
             } else {
@@ -1824,6 +1831,34 @@ final class AppStoreConnectService {
                 )
             }
         }
+    }
+
+    static func screenshotSetContents(
+        in response: [String: Any],
+        matching displayType: String
+    ) -> (set: [String: Any]?, screenshots: [[String: Any]]) {
+        let matchingSet = (response["data"] as? [[String: Any]])?.first {
+            Self.attributes($0)["screenshotDisplayType"] as? String == displayType
+        }
+        guard let matchingSet else { return (nil, []) }
+        let relationships = matchingSet["relationships"] as? [String: Any]
+        let appScreenshots = relationships?["appScreenshots"] as? [String: Any]
+        let relatedIDs = Set(
+            (appScreenshots?["data"] as? [[String: Any]] ?? []).compactMap {
+                $0["id"] as? String
+            }
+        )
+        let screenshots = (response["included"] as? [[String: Any]] ?? []).filter {
+            guard $0["type"] as? String == "appScreenshots",
+                  let id = $0["id"] as? String else { return false }
+            return relatedIDs.contains(id)
+        }
+        return (matchingSet, screenshots)
+    }
+
+    static func screenshotAssetDeliveryState(_ resource: [String: Any]) -> String? {
+        let state = Self.attributes(resource)["assetDeliveryState"] as? [String: Any]
+        return state?["state"] as? String
     }
 
     static func fillingMissingLocalizedScreenshotTypes(
@@ -3806,7 +3841,67 @@ final class AppStoreConnectService {
                 ]
             ]
         )
+        onOutput(L10n.format(
+            "Waiting for App Store Connect to process screenshot %@…\n",
+            screenshot.url.lastPathComponent
+        ))
+        do {
+            try await waitForScreenshotProcessing(
+                screenshotID,
+                fileName: screenshot.url.lastPathComponent
+            )
+        } catch {
+            _ = try? await request(
+                method: "DELETE",
+                path: "/v1/appScreenshots/\(screenshotID)"
+            )
+            throw error
+        }
         onOutput(L10n.format("Uploaded screenshot %@.\n", screenshot.url.lastPathComponent))
+    }
+
+    private func waitForScreenshotProcessing(
+        _ screenshotID: String,
+        fileName: String
+    ) async throws {
+        for attempt in 0..<150 {
+            try Task.checkCancellation()
+            let response = try await request(
+                method: "GET",
+                path: "/v1/appScreenshots/\(screenshotID)",
+                query: ["fields[appScreenshots]": "assetDeliveryState,fileName"]
+            )
+            let resource = response["data"] as? [String: Any] ?? [:]
+            let attributes = Self.attributes(resource)
+            let delivery = attributes["assetDeliveryState"] as? [String: Any] ?? [:]
+            switch delivery["state"] as? String {
+            case "COMPLETE":
+                return
+            case "FAILED":
+                let errors = (delivery["errors"] as? [[String: Any]] ?? []).compactMap {
+                    ($0["description"] as? String) ?? ($0["message"] as? String)
+                }
+                throw AppStoreConnectError.requestFailed(
+                    422,
+                    L10n.format(
+                        "App Store Connect failed to process screenshot %@: %@",
+                        fileName,
+                        errors.joined(separator: "; ").nilIfEmpty ?? L10n.text("Unknown processing error")
+                    )
+                )
+            default:
+                if attempt < 149 {
+                    try await Task.sleep(for: .seconds(2))
+                }
+            }
+        }
+        throw AppStoreConnectError.requestFailed(
+            408,
+            L10n.format(
+                "Timed out waiting for App Store Connect to process screenshot %@.",
+                fileName
+            )
+        )
     }
 
     private func uploadReservedAsset(data fileData: Data, response: [String: Any]) async throws {

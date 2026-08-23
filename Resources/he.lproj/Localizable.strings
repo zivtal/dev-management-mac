@@ -313,6 +313,9 @@
 "The unresolved App Review submission does not include %@, and Apple does not allow adding items to it." = "הגשת הבדיקה עם הבעיות שטרם נפתרו אינה כוללת את %@, ו־Apple אינה מאפשרת להוסיף אליה פריטים.";
 "Screenshot asset upload failed." = "העלאת צילום המסך נכשלה.";
 "Uploaded screenshot %@.\n" = "צילום המסך %@ הועלה.\n";
+"Waiting for App Store Connect to process screenshot %@…\n" = "ממתין לעיבוד צילום המסך %@ ב־App Store Connect…\n";
+"App Store Connect failed to process screenshot %@: %@" = "App Store Connect נכשל בעיבוד צילום המסך %@: %@";
+"Timed out waiting for App Store Connect to process screenshot %@." = "תם הזמן בהמתנה לעיבוד צילום המסך %@ ב־App Store Connect.";
 "Copyright owner" = "בעל זכויות היוצרים";
 "Support URL" = "כתובת אתר תמיכה";
 "Enter the copyright owner in Publishing settings." = "יש להזין את בעל זכויות היוצרים בהגדרות הפרסום.";

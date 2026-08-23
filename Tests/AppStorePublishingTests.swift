@@ -1355,6 +1355,78 @@ final class AppStorePublishingTests: XCTestCase {
         )
     }
 
+    func testReturnedPhoneScreenshotSetDoesNotSatisfyRequestedIPadSet() {
+        let response: [String: Any] = [
+            "data": [[
+                "type": "appScreenshotSets",
+                "id": "phone-set",
+                "attributes": ["screenshotDisplayType": "APP_IPHONE_67"],
+                "relationships": [
+                    "appScreenshots": [
+                        "data": [["type": "appScreenshots", "id": "phone-shot"]]
+                    ]
+                ]
+            ]],
+            "included": [[
+                "type": "appScreenshots",
+                "id": "phone-shot",
+                "attributes": ["assetDeliveryState": ["state": "COMPLETE"]]
+            ]]
+        ]
+
+        let contents = AppStoreConnectService.screenshotSetContents(
+            in: response,
+            matching: "APP_IPAD_PRO_3GEN_129"
+        )
+
+        XCTAssertNil(contents.set)
+        XCTAssertTrue(contents.screenshots.isEmpty)
+    }
+
+    func testScreenshotSetMatchingScopesIncludedScreenshotsToRequestedType() {
+        func set(_ id: String, type: String, screenshotID: String) -> [String: Any] {
+            [
+                "type": "appScreenshotSets",
+                "id": id,
+                "attributes": ["screenshotDisplayType": type],
+                "relationships": [
+                    "appScreenshots": [
+                        "data": [["type": "appScreenshots", "id": screenshotID]]
+                    ]
+                ]
+            ]
+        }
+        func screenshot(_ id: String, state: String) -> [String: Any] {
+            [
+                "type": "appScreenshots",
+                "id": id,
+                "attributes": ["assetDeliveryState": ["state": state]]
+            ]
+        }
+        let response: [String: Any] = [
+            "data": [
+                set("phone-set", type: "APP_IPHONE_67", screenshotID: "phone-shot"),
+                set("ipad-set", type: "APP_IPAD_PRO_3GEN_129", screenshotID: "ipad-shot")
+            ],
+            "included": [
+                screenshot("phone-shot", state: "COMPLETE"),
+                screenshot("ipad-shot", state: "UPLOAD_COMPLETE")
+            ]
+        ]
+
+        let contents = AppStoreConnectService.screenshotSetContents(
+            in: response,
+            matching: "APP_IPAD_PRO_3GEN_129"
+        )
+
+        XCTAssertEqual(contents.set?["id"] as? String, "ipad-set")
+        XCTAssertEqual(contents.screenshots.compactMap { $0["id"] as? String }, ["ipad-shot"])
+        XCTAssertEqual(
+            contents.screenshots.first.flatMap(AppStoreConnectService.screenshotAssetDeliveryState),
+            "UPLOAD_COMPLETE"
+        )
+    }
+
     func testScreenshotPreparationDetectsCompanionWatchApp() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScreenshotTargetTests-\(UUID().uuidString)", isDirectory: true)
