@@ -291,6 +291,7 @@
 "Generating structured App Store metadata with OpenAI…\n" = "Generating structured App Store metadata with OpenAI…\n";
 "App Store metadata generated and validated.\n" = "App Store metadata generated and validated.\n";
 "Prepared %d App Store screenshot(s).\n" = "Prepared %d App Store screenshot(s).\n";
+"Prepared %d localized device screenshot fallback(s) required by App Review.\n" = "Prepared %d localized device screenshot fallback(s) required by App Review.\n";
 "Finding the application and editable version in App Store Connect…\n" = "Finding the application and editable version in App Store Connect…\n";
 "App Store metadata updated.\n" = "App Store metadata updated.\n";
 "Editable App Store version metadata updated; locked app-level information was preserved.\n" = "Editable App Store version metadata updated; locked app-level information was preserved.\n";

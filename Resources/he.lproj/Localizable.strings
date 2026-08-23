@@ -291,6 +291,7 @@
 "Generating structured App Store metadata with OpenAI…\n" = "יוצר מטא־נתונים מובנים ל־App Store באמצעות OpenAI…\n";
 "App Store metadata generated and validated.\n" = "המטא־נתונים ל־App Store נוצרו ואומתו.\n";
 "Prepared %d App Store screenshot(s).\n" = "הוכנו %d צילומי מסך ל־App Store.\n";
+"Prepared %d localized device screenshot fallback(s) required by App Review.\n" = "הוכנו %d צילומי מסך חלופיים ומותאמים לשפה ולמכשיר, כנדרש לבדיקת ה־App Store.\n";
 "Finding the application and editable version in App Store Connect…\n" = "מאתר את האפליקציה ואת הגרסה הניתנת לעריכה ב־App Store Connect…\n";
 "App Store metadata updated.\n" = "המטא־נתונים ב־App Store עודכנו.\n";
 "Editable App Store version metadata updated; locked app-level information was preserved.\n" = "המטא־נתונים הניתנים לעריכה של גרסת ה־App Store עודכנו; הפרטים הנעולים ברמת האפליקציה נשמרו.\n";

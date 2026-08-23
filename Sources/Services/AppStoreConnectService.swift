@@ -1739,7 +1739,18 @@ final class AppStoreConnectService {
         guard let primaryLocalizationID else {
             throw AppStoreConnectError.missingIdentifier("primary App Store localization")
         }
-        let grouped = Dictionary(grouping: screenshots) { screenshot in
+        let completeScreenshots = Self.fillingMissingLocalizedScreenshotTypes(
+            screenshots,
+            primaryLocale: primaryLocale
+        )
+        let fallbackCount = completeScreenshots.count - screenshots.count
+        if fallbackCount > 0 {
+            onOutput(L10n.format(
+                "Prepared %d localized device screenshot fallback(s) required by App Review.\n",
+                fallbackCount
+            ))
+        }
+        let grouped = Dictionary(grouping: completeScreenshots) { screenshot in
             "\(screenshot.locale?.lowercased() ?? primaryLocale.lowercased())|\(screenshot.displayType)"
         }
         for group in grouped.sorted(by: { $0.key < $1.key }) {
@@ -1813,6 +1824,44 @@ final class AppStoreConnectService {
                 )
             }
         }
+    }
+
+    static func fillingMissingLocalizedScreenshotTypes(
+        _ screenshots: [AppStoreScreenshotAsset],
+        primaryLocale: String
+    ) -> [AppStoreScreenshotAsset] {
+        guard !screenshots.isEmpty else { return [] }
+        let normalizedPrimaryLocale = primaryLocale.lowercased()
+        func locale(for screenshot: AppStoreScreenshotAsset) -> String {
+            screenshot.locale?.lowercased() ?? normalizedPrimaryLocale
+        }
+
+        let representedLocales = Set(screenshots.map { locale(for: $0) })
+        let displayTypes = Set(screenshots.map(\.displayType))
+        var result = screenshots
+        for targetLocale in representedLocales.sorted() {
+            for displayType in displayTypes.sorted() where !screenshots.contains(where: {
+                locale(for: $0) == targetLocale && $0.displayType == displayType
+            }) {
+                let primaryTemplates = screenshots.filter {
+                    locale(for: $0) == normalizedPrimaryLocale && $0.displayType == displayType
+                }
+                let templates = primaryTemplates.isEmpty
+                    ? screenshots.filter { $0.displayType == displayType }
+                    : primaryTemplates
+                result.append(contentsOf: templates.prefix(10).map { template in
+                    AppStoreScreenshotAsset(
+                        url: template.url,
+                        displayType: template.displayType,
+                        platform: template.platform,
+                        locale: targetLocale,
+                        deviceName: template.deviceName,
+                        automaticallyCaptured: template.automaticallyCaptured
+                    )
+                })
+            }
+        }
+        return result
     }
 
     func waitForBuild(

@@ -1304,6 +1304,57 @@ final class AppStorePublishingTests: XCTestCase {
         )
     }
 
+    func testMissingLocalizedDeviceScreenshotUsesPrimaryLocaleAsset() {
+        let primaryPhone = AppStoreScreenshotAsset(
+            url: URL(fileURLWithPath: "/screenshots/he/phone.png"),
+            displayType: "APP_IPHONE_67",
+            locale: "he"
+        )
+        let primaryIPad = AppStoreScreenshotAsset(
+            url: URL(fileURLWithPath: "/screenshots/he/ipad.png"),
+            displayType: "APP_IPAD_PRO_3GEN_129",
+            locale: nil,
+            automaticallyCaptured: true
+        )
+        let englishPhone = AppStoreScreenshotAsset(
+            url: URL(fileURLWithPath: "/screenshots/en-US/phone.png"),
+            displayType: "APP_IPHONE_67",
+            locale: "en-US"
+        )
+
+        let completed = AppStoreConnectService.fillingMissingLocalizedScreenshotTypes(
+            [primaryPhone, primaryIPad, englishPhone],
+            primaryLocale: "he"
+        )
+
+        XCTAssertEqual(completed.count, 4)
+        let englishIPad = completed.first {
+            $0.locale == "en-us" && $0.displayType == "APP_IPAD_PRO_3GEN_129"
+        }
+        XCTAssertEqual(englishIPad?.url, primaryIPad.url)
+        XCTAssertEqual(englishIPad?.platform, .iPad)
+    }
+
+    func testCompleteLocalizedScreenshotFamiliesAreNotDuplicated() {
+        let screenshots = ["he", "en-US"].flatMap { locale in
+            ["APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129"].map { displayType in
+                AppStoreScreenshotAsset(
+                    url: URL(fileURLWithPath: "/screenshots/\(locale)/\(displayType).png"),
+                    displayType: displayType,
+                    locale: locale
+                )
+            }
+        }
+
+        XCTAssertEqual(
+            AppStoreConnectService.fillingMissingLocalizedScreenshotTypes(
+                screenshots,
+                primaryLocale: "he"
+            ),
+            screenshots
+        )
+    }
+
     func testScreenshotPreparationDetectsCompanionWatchApp() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScreenshotTargetTests-\(UUID().uuidString)", isDirectory: true)
