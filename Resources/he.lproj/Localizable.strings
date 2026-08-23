@@ -1151,7 +1151,9 @@
 "Generated What’s New for %d language(s) from changes after approved version %@ using %@." = "נוצר טקסט ״מה חדש״ עבור %d שפות מהשינויים שלאחר הגרסה המאושרת %@ באמצעות %@.";
 "App Store Connect has no earlier approved version to use as the What’s New baseline." = "אין ב־App Store Connect גרסה מאושרת קודמת שתשמש כנקודת הבסיס עבור ״מה חדש״.";
 "Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n" = "Apple אינה מציעה מחיר מינוי %@ ב־%@ עבור %@; נעשה שימוש במחיר הזמין הקרוב ביותר %@.\n";
-"Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment." = "יש להזין את המחיר הרצוי באזור הבסיס. בעת הפרסום נעשה שימוש בנקודת המחיר הקרובה ביותר של Apple כאשר אין התאמה מדויקת, והשינוי מדווח.";
+"Current prices are loaded from App Store Connect. Changes are saved when you publish, and Apple’s nearest valid price point is used when an exact value is unavailable." = "המחירים הנוכחיים נטענים מ־App Store Connect. השינויים נשמרים בעת הפרסום, ונעשה שימוש בנקודת המחיר התקפה הקרובה ביותר של Apple כאשר אין ערך מדויק.";
+"Choose a base territory." = "יש לבחור אזור בסיס.";
+"Choose a valid three-letter base territory for %@." = "יש לבחור אזור בסיס תקין בן שלוש אותיות עבור %@.";
 "The shared Xcode scheme %@ could not be found, so its build actions could not be checked." = "סכימת Xcode המשותפת %@ לא נמצאה, ולכן לא ניתן היה לבדוק את פעולות הבנייה שלה.";
 "Scheme script" = "סקריפט סכימה";
 "Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n" = "בנייה ללא %d פעולות סקריפט של סכימת Xcode; ‏Development Management אינו מפעיל סקריפטים של תהליך עבודה ממאגר הקוד.\n";

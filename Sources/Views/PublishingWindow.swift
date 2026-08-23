@@ -226,6 +226,8 @@ private struct PublishingWindowView: View {
     @State private var configurationSaveConfirmation: String?
     @State private var subscriptionPriceDrafts: [String: String] = [:]
     @State private var savedSubscriptionPrices: [String: String] = [:]
+    @State private var subscriptionBaseTerritoryDrafts: [String: String] = [:]
+    @State private var savedSubscriptionBaseTerritories: [String: String] = [:]
     @State private var subscriptionPriceSaveStatus: SubscriptionPriceSaveStatus?
     @State private var isSavingSubscriptionPrices = false
     @State private var showsConfirmation = false
@@ -270,6 +272,7 @@ private struct PublishingWindowView: View {
                         showsPublicationStatus = false
                         selectedProjectID = log.projectID
                         selectedWorkspace = .overview
+                        configurationRevision += 1
                     },
                     onDone: {
                         model.presentedError = nil
@@ -396,6 +399,7 @@ private struct PublishingWindowView: View {
         ) {
             Button(releaseConfirmationActionTitle) {
                 guard let projectID = selectedProjectID else { return }
+                guard saveSubscriptionPricesForPublishing() else { return }
                 model.publish(
                     projectID: projectID,
                     intent: pendingPublishingIntent,
@@ -1022,7 +1026,10 @@ private struct PublishingWindowView: View {
                 SubscriptionPricingCardsView(
                     groups: groups,
                     prices: $subscriptionPriceDrafts,
-                    hasChanges: subscriptionPriceDrafts != savedSubscriptionPrices,
+                    baseTerritories: $subscriptionBaseTerritoryDrafts,
+                    territoryIDs: currentAppStoreSnapshot?.territoryIDs ?? [],
+                    hasChanges: subscriptionPriceDrafts != savedSubscriptionPrices
+                        || subscriptionBaseTerritoryDrafts != savedSubscriptionBaseTerritories,
                     isSaving: isSavingSubscriptionPrices,
                     saveStatus: subscriptionPriceSaveStatus,
                     onSave: saveSubscriptionPrices
@@ -1585,7 +1592,14 @@ private struct PublishingWindowView: View {
             )
             subscriptionPriceDrafts = configuredPrices
             savedSubscriptionPrices = configuredPrices
-            fillMissingSubscriptionPricesFromAppStore()
+            let configuredBaseTerritories = Dictionary(
+                uniqueKeysWithValues: catalog.groups
+                    .flatMap(\.subscriptions)
+                    .map { ($0.productID, $0.baseTerritory?.nilIfEmpty?.uppercased() ?? "USA") }
+            )
+            subscriptionBaseTerritoryDrafts = configuredBaseTerritories
+            savedSubscriptionBaseTerritories = configuredBaseTerritories
+            loadCurrentSubscriptionPricesFromAppStore()
             releaseAutomaticallySelection = catalog.publication?.releaseAutomatically
                 ?? model.preferences.appStoreReleaseAutomatically
                 ?? true
@@ -1662,7 +1676,7 @@ private struct PublishingWindowView: View {
         do {
             let snapshot = try await model.loadAppStoreConnectConfiguration(projectID: projectID)
             appStoreConfiguration = .loaded(snapshot)
-            fillMissingSubscriptionPricesFromAppStore()
+            loadCurrentSubscriptionPricesFromAppStore()
         } catch is CancellationError {
             return
         } catch {
@@ -1670,27 +1684,19 @@ private struct PublishingWindowView: View {
         }
     }
 
-    private func fillMissingSubscriptionPricesFromAppStore() {
+    private func loadCurrentSubscriptionPricesFromAppStore() {
         guard let catalog = localPublishingPreview?.catalog,
               let snapshot = currentAppStoreSnapshot else { return }
-        var drafts = subscriptionPriceDrafts
-        var saved = savedSubscriptionPrices
-        let liveSubscriptions = snapshot.subscriptionGroups.flatMap(\.subscriptions)
-        for definition in catalog.groups.flatMap(\.subscriptions) {
-            guard drafts[definition.productID]?.nilIfEmpty == nil,
-                  let live = liveSubscriptions.first(where: {
-                      $0.productID == definition.productID
-                  }),
-                  let price = live.currentPrice(
-                      in: definition.baseTerritory?.nilIfEmpty ?? "USA"
-                  ) else { continue }
-            drafts[definition.productID] = price
-            if saved[definition.productID]?.nilIfEmpty == nil {
-                saved[definition.productID] = price
-            }
-        }
-        subscriptionPriceDrafts = drafts
-        savedSubscriptionPrices = saved
+        // A network refresh must never erase text the user is actively editing.
+        guard subscriptionPriceDrafts == savedSubscriptionPrices,
+              subscriptionBaseTerritoryDrafts == savedSubscriptionBaseTerritories else { return }
+        let current = SubscriptionPriceDraftPolicy.currentPrices(
+            configured: savedSubscriptionPrices,
+            definitions: catalog.groups.flatMap(\.subscriptions),
+            liveGroups: snapshot.subscriptionGroups
+        )
+        subscriptionPriceDrafts = current
+        savedSubscriptionPrices = current
     }
 
     private enum SubscriptionSummary: Equatable {
@@ -2388,7 +2394,18 @@ private struct PublishingWindowView: View {
     }
 
     private func saveSubscriptionPrices() {
-        guard let preview = localPublishingPreview else { return }
+        _ = persistSubscriptionPrices()
+    }
+
+    private func saveSubscriptionPricesForPublishing() -> Bool {
+        guard subscriptionPriceDrafts != savedSubscriptionPrices
+            || subscriptionBaseTerritoryDrafts != savedSubscriptionBaseTerritories
+        else { return true }
+        return persistSubscriptionPrices()
+    }
+
+    private func persistSubscriptionPrices() -> Bool {
+        guard let preview = localPublishingPreview else { return false }
         isSavingSubscriptionPrices = true
         defer { isSavingSubscriptionPrices = false }
         do {
@@ -2398,9 +2415,17 @@ private struct PublishingWindowView: View {
                 }
                 return (productID, price)
             })
+            let normalizedBaseTerritories = try Dictionary(
+                uniqueKeysWithValues: subscriptionBaseTerritoryDrafts.map { productID, value in
+                    guard let territory = SubscriptionTerritoryValidation.normalized(value) else {
+                        throw SubscriptionPriceSaveError.invalidBaseTerritory(productID)
+                    }
+                    return (productID, territory)
+                }
+            )
             let configurationURL = selectedProject?.folderURL
                 .appendingPathComponent("app-store-publishing.json")
-            guard let configurationURL else { return }
+            guard let configurationURL else { return false }
             var manifest: AppStorePublishingManifest
             if FileManager.default.fileExists(atPath: configurationURL.path) {
                 manifest = try JSONDecoder().decode(
@@ -2420,12 +2445,16 @@ private struct PublishingWindowView: View {
                 for subscriptionIndex in groups[groupIndex].subscriptions.indices {
                     let productID = groups[groupIndex].subscriptions[subscriptionIndex].productID
                     groups[groupIndex].subscriptions[subscriptionIndex].basePrice = normalized[productID]
+                    groups[groupIndex].subscriptions[subscriptionIndex].baseTerritory =
+                        normalizedBaseTerritories[productID]
                 }
             }
             let existing = manifest.subscriptions
+            let distinctBaseTerritories = Set(normalizedBaseTerritories.values)
             manifest.subscriptions = AppStoreSubscriptionsConfiguration(
-                baseTerritory: existing?.baseTerritory
-                    ?? groups.flatMap(\.subscriptions).compactMap(\.baseTerritory).first,
+                baseTerritory: distinctBaseTerritories.count == 1
+                    ? distinctBaseTerritories.first
+                    : existing?.baseTerritory,
                 availableInAllTerritories: existing?.availableInAllTerritories
                     ?? groups.flatMap(\.subscriptions).allSatisfy { $0.availableInAllTerritories == true },
                 familySharable: existing?.familySharable
@@ -2440,12 +2469,15 @@ private struct PublishingWindowView: View {
             try data.write(to: configurationURL, options: .atomic)
             subscriptionPriceDrafts = normalized
             savedSubscriptionPrices = normalized
+            subscriptionBaseTerritoryDrafts = normalizedBaseTerritories
+            savedSubscriptionBaseTerritories = normalizedBaseTerritories
             subscriptionPriceSaveStatus = .success(
                 L10n.text("Subscription prices were saved and will be applied during Publish.")
             )
-            configurationRevision += 1
+            return true
         } catch {
             subscriptionPriceSaveStatus = .failure(error.localizedDescription)
+            return false
         }
     }
 

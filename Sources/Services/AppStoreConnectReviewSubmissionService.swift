@@ -95,6 +95,7 @@ extension AppStoreConnectService {
                 L10n.text("The App Store version was not attached to the active review submission.")
             )
         }
+        try await resolveRejectedReviewItems(in: verified, desiredItems: desiredItems)
         try await submitReviewSubmission(selected.id)
     }
 

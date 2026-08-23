@@ -1151,7 +1151,9 @@
 "Generated What’s New for %d language(s) from changes after approved version %@ using %@." = "Generated What’s New for %d language(s) from changes after approved version %@ using %@.";
 "App Store Connect has no earlier approved version to use as the What’s New baseline." = "App Store Connect has no earlier approved version to use as the What’s New baseline.";
 "Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n" = "Apple does not offer subscription price %@ in %@ for %@; using nearest available price %@.\n";
-"Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment." = "Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment.";
+"Current prices are loaded from App Store Connect. Changes are saved when you publish, and Apple’s nearest valid price point is used when an exact value is unavailable." = "Current prices are loaded from App Store Connect. Changes are saved when you publish, and Apple’s nearest valid price point is used when an exact value is unavailable.";
+"Choose a base territory." = "Choose a base territory.";
+"Choose a valid three-letter base territory for %@." = "Choose a valid three-letter base territory for %@.";
 "The shared Xcode scheme %@ could not be found, so its build actions could not be checked." = "The shared Xcode scheme %@ could not be found, so its build actions could not be checked.";
 "Scheme script" = "Scheme script";
 "Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n" = "Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n";

@@ -163,6 +163,72 @@ final class AppStoreConnectReviewSubmissionTests: XCTestCase {
         })
     }
 
+    func testReadyDraftResolvesAttachedRejectedItemBeforeSubmission() async throws {
+        var resolvedSubscriptionItem = false
+        var submitted = false
+        let service = try makeService { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/apps/app-id/reviewSubmissions"):
+                return try Self.response(for: request, status: 200, json: [
+                    "data": [Self.submission(id: "draft-id", state: "READY_FOR_REVIEW")]
+                ])
+            case ("GET", "/v1/reviewSubmissions/draft-id/items"):
+                return try Self.response(for: request, status: 200, json: [
+                    "data": [
+                        Self.item(
+                            id: "version-item",
+                            state: "READY_FOR_REVIEW",
+                            relationship: "appStoreVersion",
+                            type: "appStoreVersions",
+                            relatedID: "version-id"
+                        ),
+                        Self.item(
+                            id: "subscription-item",
+                            state: "REJECTED",
+                            relationship: "subscriptionVersion",
+                            type: "subscriptionVersions",
+                            relatedID: "subscription-version-id"
+                        )
+                    ]
+                ])
+            case ("PATCH", "/v1/reviewSubmissionItems/subscription-item"):
+                XCTAssertEqual(
+                    try Self.attributes(in: request)["resolved"] as? Bool,
+                    true
+                )
+                resolvedSubscriptionItem = true
+                return try Self.response(for: request, status: 200, json: [:])
+            case ("PATCH", "/v1/reviewSubmissions/draft-id"):
+                XCTAssertEqual(
+                    try Self.attributes(in: request)["submitted"] as? Bool,
+                    true
+                )
+                submitted = true
+                return try Self.response(for: request, status: 200, json: [:])
+            default:
+                XCTFail("Unexpected request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
+                return try Self.response(for: request, status: 500, json: [:])
+            }
+        }
+
+        try await service.submitForReview(
+            appID: "app-id",
+            versionID: "version-id",
+            additionalItems: [
+                AppStoreConnectReviewItem(
+                    relationship: "subscriptionVersion",
+                    resourceType: "subscriptionVersions",
+                    id: "subscription-version-id",
+                    label: "Premium"
+                )
+            ],
+            intent: .publish
+        )
+
+        XCTAssertTrue(resolvedSubscriptionItem)
+        XCTAssertTrue(submitted)
+    }
+
     func testNewReviewSubmissionAttachesAndVerifiesEveryDesiredItem() async throws {
         var attachedItems: [[String: Any]] = []
         var submitted = false

@@ -423,4 +423,11 @@ final class PublishingExperienceTests: XCTestCase {
         XCTAssertNil(SubscriptionPriceValidation.normalized("-1"))
         XCTAssertNil(SubscriptionPriceValidation.normalized("price"))
     }
+
+    func testSubscriptionBaseTerritoryValidationNormalizesISOCode() {
+        XCTAssertEqual(SubscriptionTerritoryValidation.normalized(" isr "), "ISR")
+        XCTAssertEqual(SubscriptionTerritoryValidation.normalized("usa"), "USA")
+        XCTAssertNil(SubscriptionTerritoryValidation.normalized("IL"))
+        XCTAssertNil(SubscriptionTerritoryValidation.normalized("12A"))
+    }
 }

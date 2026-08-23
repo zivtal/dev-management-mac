@@ -1516,6 +1516,69 @@ final class AppStorePublishingTests: XCTestCase {
         )
     }
 
+    func testSubscriptionPriceDraftUsesLivePriceInConfiguredBaseTerritory() throws {
+        let definition = AppStoreSubscriptionDefinition(
+            referenceName: "Premium Annual",
+            productID: "com.example.yearly",
+            period: "ONE_YEAR",
+            basePrice: "199.90",
+            baseTerritory: "ISR",
+            availableInAllTerritories: true,
+            familySharable: false,
+            groupLevel: 1,
+            reviewNote: nil,
+            reviewScreenshot: nil,
+            localizations: []
+        )
+        let live = AppStoreConnectSubscriptionSnapshot(
+            id: "subscription-id",
+            referenceName: "Premium Annual",
+            productID: definition.productID,
+            state: "READY_FOR_REVIEW",
+            period: "ONE_YEAR",
+            familySharable: false,
+            groupLevel: 1,
+            reviewNote: nil,
+            localizations: [],
+            availableTerritoryIDs: ["ISR", "USA"],
+            availableInNewTerritories: true,
+            prices: [
+                AppStoreConnectSubscriptionPriceSnapshot(
+                    territory: "ISR",
+                    price: "199.99",
+                    currency: "ILS",
+                    startDate: nil,
+                    endDate: nil,
+                    preserved: false
+                ),
+                AppStoreConnectSubscriptionPriceSnapshot(
+                    territory: "USA",
+                    price: "66.99",
+                    currency: "USD",
+                    startDate: nil,
+                    endDate: nil,
+                    preserved: false
+                )
+            ],
+            offers: []
+        )
+        let liveGroup = AppStoreConnectSubscriptionGroupSnapshot(
+            id: "group-id",
+            referenceName: "Premium",
+            state: "READY_FOR_REVIEW",
+            localizations: [],
+            subscriptions: [live]
+        )
+
+        let prices = SubscriptionPriceDraftPolicy.currentPrices(
+            configured: [definition.productID: "199.90"],
+            definitions: [definition],
+            liveGroups: [liveGroup]
+        )
+
+        XCTAssertEqual(prices[definition.productID], "199.99")
+    }
+
     func testReadyForReviewSubscriptionVersionIsReused() {
         let versions: [[String: Any]] = [
             [
@@ -1534,7 +1597,7 @@ final class AppStorePublishingTests: XCTestCase {
         )
     }
 
-    func testDeveloperRejectedSubscriptionVersionRequiresFreshDraftAfterReviewCancellation() {
+    func testDeveloperRejectedSubscriptionVersionIsReusedAfterReviewCancellation() {
         let versions: [[String: Any]] = [
             [
                 "id": "rejected-version",
@@ -1546,11 +1609,14 @@ final class AppStorePublishingTests: XCTestCase {
             ]
         ]
 
-        XCTAssertNil(AppStoreConnectService.reusableSubscriptionVersionID(in: versions))
+        XCTAssertEqual(
+            AppStoreConnectService.reusableSubscriptionVersionID(in: versions),
+            "developer-rejected-version"
+        )
     }
 
-    func testRejectedSubscriptionGroupVersionIsReplacedWithFreshDraft() async throws {
-        var createdFreshDraft = false
+    func testRejectedSubscriptionGroupVersionIsReused() async throws {
+        var attemptedToCreateFreshDraft = false
         let service = try appStoreConnectTestService { request in
             switch (request.httpMethod, request.url?.path) {
             case ("GET", "/v1/apps/app-id/subscriptionGroups"):
@@ -1580,17 +1646,13 @@ final class AppStorePublishingTests: XCTestCase {
                     ]]]
                 )
             case ("POST", "/v1/subscriptionGroupVersions"):
-                createdFreshDraft = true
+                attemptedToCreateFreshDraft = true
                 return try Self.appStoreConnectResponse(
                     for: request,
-                    status: 201,
-                    json: ["data": [
-                        "type": "subscriptionGroupVersions",
-                        "id": "fresh-version",
-                        "attributes": ["state": "PREPARE_FOR_SUBMISSION", "version": 2]
-                    ]]
+                    status: 500,
+                    json: [:]
                 )
-            case ("GET", "/v1/subscriptionGroupVersions/fresh-version/localizations"):
+            case ("GET", "/v1/subscriptionGroupVersions/withdrawn-version/localizations"):
                 return try Self.appStoreConnectResponse(
                     for: request,
                     status: 200,
@@ -1624,11 +1686,11 @@ final class AppStorePublishingTests: XCTestCase {
             onOutput: { _ in }
         )
 
-        XCTAssertTrue(createdFreshDraft)
+        XCTAssertFalse(attemptedToCreateFreshDraft)
         XCTAssertEqual(reviewItems, [AppStoreConnectReviewItem(
             relationship: "subscriptionGroupVersion",
             resourceType: "subscriptionGroupVersions",
-            id: "fresh-version",
+            id: "withdrawn-version",
             label: "Premium"
         )])
     }
@@ -1659,11 +1721,11 @@ final class AppStorePublishingTests: XCTestCase {
                 let data: [[String: Any]] = versionListRequestCount == 1 ? [] : [[
                     "type": "subscriptionGroupVersions",
                     "id": inflightVersionID,
-                    "attributes": ["state": "READY_FOR_REVIEW", "version": 2]
+                    "attributes": ["state": "DEVELOPER_REJECTED", "version": 2]
                 ], [
                     "type": "subscriptionGroupVersions",
                     "id": "different-newer-version",
-                    "attributes": ["state": "DEVELOPER_REJECTED", "version": 3]
+                    "attributes": ["state": "REJECTED", "version": 3]
                 ]]
                 return try Self.appStoreConnectResponse(
                     for: request,

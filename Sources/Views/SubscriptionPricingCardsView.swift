@@ -23,13 +23,49 @@ enum SubscriptionPriceValidation {
     }
 }
 
+enum SubscriptionTerritoryValidation {
+    static func normalized(_ rawValue: String) -> String? {
+        let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard normalized.count == 3,
+              normalized.unicodeScalars.allSatisfy(CharacterSet.letters.contains) else {
+            return nil
+        }
+        return normalized
+    }
+}
+
+enum SubscriptionPriceDraftPolicy {
+    static func currentPrices(
+        configured: [String: String],
+        definitions: [AppStoreSubscriptionDefinition],
+        liveGroups: [AppStoreConnectSubscriptionGroupSnapshot],
+        referenceDate: Date = Date()
+    ) -> [String: String] {
+        var result = configured
+        let liveSubscriptions = liveGroups.flatMap(\.subscriptions)
+        for definition in definitions {
+            guard let live = liveSubscriptions.first(where: {
+                $0.productID == definition.productID
+            }), let price = live.currentPrice(
+                in: definition.baseTerritory?.nilIfEmpty ?? "USA",
+                referenceDate: referenceDate
+            ) else { continue }
+            result[definition.productID] = price
+        }
+        return result
+    }
+}
+
 enum SubscriptionPriceSaveError: LocalizedError {
     case invalidPrice(String)
+    case invalidBaseTerritory(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidPrice(let productID):
             L10n.format("Enter a valid price greater than zero for %@.", productID)
+        case .invalidBaseTerritory(let productID):
+            L10n.format("Choose a valid three-letter base territory for %@.", productID)
         }
     }
 }
@@ -37,6 +73,8 @@ enum SubscriptionPriceSaveError: LocalizedError {
 struct SubscriptionPricingCardsView: View {
     let groups: [AppStoreSubscriptionGroupDefinition]
     @Binding var prices: [String: String]
+    @Binding var baseTerritories: [String: String]
+    let territoryIDs: [String]
     let hasChanges: Bool
     let isSaving: Bool
     let saveStatus: SubscriptionPriceSaveStatus?
@@ -54,7 +92,7 @@ struct SubscriptionPricingCardsView: View {
                 }
             }
 
-            Text("Enter the intended base-territory price. Publish uses the nearest Apple price point when an exact match is unavailable and reports the adjustment.")
+            Text("Current prices are loaded from App Store Connect. Changes are saved when you publish, and Apple’s nearest valid price point is used when an exact value is unavailable.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -83,7 +121,11 @@ struct SubscriptionPricingCardsView: View {
 
     private func productCard(_ subscription: AppStoreSubscriptionDefinition) -> some View {
         let price = priceBinding(for: subscription.productID)
+        let baseTerritory = baseTerritoryBinding(for: subscription.productID)
         let isInvalid = SubscriptionPriceValidation.normalized(price.wrappedValue) == nil
+        let territoryIsInvalid = SubscriptionTerritoryValidation.normalized(
+            baseTerritory.wrappedValue
+        ) == nil
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -124,8 +166,18 @@ struct SubscriptionPricingCardsView: View {
                     Text("Base territory")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(verbatim: subscription.baseTerritory ?? "USA")
-                        .font(.body.monospaced())
+                    AppStoreTerritoryPicker(
+                        title: "Base territory",
+                        selection: baseTerritory,
+                        territoryIDs: territoryIDs
+                    )
+                    .labelsHidden()
+                    .frame(width: 190)
+                    if territoryIsInvalid {
+                        Text("Choose a base territory.")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                    }
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Availability")
@@ -145,6 +197,9 @@ struct SubscriptionPricingCardsView: View {
     private var hasInvalidPrice: Bool {
         groups.flatMap(\.subscriptions).contains {
             SubscriptionPriceValidation.normalized(prices[$0.productID] ?? "") == nil
+                || SubscriptionTerritoryValidation.normalized(
+                    baseTerritories[$0.productID] ?? ""
+                ) == nil
         }
     }
 
@@ -152,6 +207,13 @@ struct SubscriptionPricingCardsView: View {
         Binding(
             get: { prices[productID] ?? "" },
             set: { prices[productID] = $0 }
+        )
+    }
+
+    private func baseTerritoryBinding(for productID: String) -> Binding<String> {
+        Binding(
+            get: { baseTerritories[productID] ?? "USA" },
+            set: { baseTerritories[productID] = $0.uppercased() }
         )
     }
 

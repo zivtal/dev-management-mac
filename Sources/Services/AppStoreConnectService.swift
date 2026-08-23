@@ -3084,7 +3084,12 @@ final class AppStoreConnectService {
             "PREPARE_FOR_SUBMISSION",
             "READY_FOR_REVIEW",
             "WAITING_FOR_REVIEW",
-            "IN_REVIEW"
+            "IN_REVIEW",
+            // Apple continues to treat withdrawn and rejected versions as the
+            // single inflight version. Reuse them and resolve their review items
+            // instead of attempting to create a conflicting replacement.
+            "REJECTED",
+            "DEVELOPER_REJECTED"
         ]
         return versions.filter {
             guard let state = Self.attributes($0)["state"] as? String else { return false }
@@ -3378,14 +3383,12 @@ final class AppStoreConnectService {
             }
         }
 
-        var pointIDsByOverrideTerritory: [String: Set<String>] = [:]
         for (rawTerritory, overridePrice) in territoryPrices.sorted(by: { $0.key < $1.key }) {
             let territory = rawTerritory.uppercased()
             let points = try await pagedData(
                 path: "/v1/subscriptions/\(subscriptionID)/pricePoints",
                 query: ["filter[territory]": territory, "limit": "200"]
             )
-            pointIDsByOverrideTerritory[territory] = Set(points.compactMap { $0["id"] as? String })
             guard let selection = Self.closestSubscriptionPricePoint(
                 in: points,
                 requestedPrice: overridePrice
@@ -3424,12 +3427,12 @@ final class AppStoreConnectService {
         var createdCount = 0
         for pointID in desiredPointIDs.subtracting(existingPointIDs).sorted() {
             try Task.checkCancellation()
-            let territory = desiredPointsByTerritory.first(where: { $0.value == pointID })?.key
-            let hasCurrentTerritoryPrice = territory.flatMap { pointIDsByOverrideTerritory[$0] }
-                .map { !$0.isDisjoint(with: existingPointIDs) }
-                ?? false
             var attributes: [String: Any] = ["preserveCurrentPrice": false]
-            if hasCurrentTerritoryPrice {
+            if !existingPointIDs.isEmpty {
+                // App Store Connect permits one active price per territory. When
+                // changing the anchor territory or price, schedule the complete
+                // equalized set together instead of mixing immediate and future
+                // prices across storefronts.
                 attributes["startDate"] = Self.tomorrowDateString()
             }
             do {
