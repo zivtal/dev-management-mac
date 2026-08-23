@@ -312,7 +312,9 @@ actor AppStoreProvisioningProfileService {
                 order.append(identifier)
             }
             entitlementsByIdentifier[identifier, default: []]
-                .formUnion(target.requiredEntitlementKeys)
+                .formUnion(DeveloperTeamService.canonicalProvisioningEntitlementKeys(
+                    target.requiredEntitlementKeys
+                ))
         }
         return order.map {
             AppStoreProvisioningTarget(
@@ -330,7 +332,10 @@ actor AppStoreProvisioningProfileService {
         requiredEntitlementKeys: Set<String> = [],
         now: Date = Date()
     ) -> ProvisioningProfileRecord? {
-        profiles.first { profile in
+        let required = DeveloperTeamService.canonicalProvisioningEntitlementKeys(
+            requiredEntitlementKeys
+        )
+        return profiles.first { profile in
             profile.isAppStoreProfile
                 && !profile.hasWildcardBundleIdentifier
                 && profile.teamID == teamID
@@ -338,7 +343,8 @@ actor AppStoreProvisioningProfileService {
                 && profile.name?.isEmpty == false
                 && profile.expirationDate.map { $0 > now } != false
                 && profile.certificateSHA1Fingerprints.contains(certificateSHA1)
-                && requiredEntitlementKeys.isSubset(of: profile.entitlementKeys)
+                && required.isSubset(of: DeveloperTeamService
+                    .canonicalProvisioningEntitlementKeys(profile.entitlementKeys))
         }
     }
 
@@ -367,15 +373,20 @@ actor AppStoreProvisioningProfileService {
         _ required: Set<String>,
         inProfileContent content: Data?
     ) -> Set<String> {
-        guard !required.isEmpty else { return [] }
+        let canonicalRequired = DeveloperTeamService.canonicalProvisioningEntitlementKeys(
+            required
+        )
+        guard !canonicalRequired.isEmpty else { return [] }
         guard let content,
               let record = DeveloperTeamService.provisioningProfileRecord(
                 fromProfileContent: content
               )
         else {
-            return required
+            return canonicalRequired
         }
-        return required.subtracting(record.entitlementKeys)
+        return canonicalRequired.subtracting(
+            DeveloperTeamService.canonicalProvisioningEntitlementKeys(record.entitlementKeys)
+        )
     }
 
     static func matchingCertificateID(

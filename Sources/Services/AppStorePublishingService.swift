@@ -1360,7 +1360,9 @@ final class AppStorePublishingService {
             "keychain-access-groups",
             "beta-reports-active"
         ]
-        return Set(entitlements.keys).subtracting(signingMetadata)
+        return DeveloperTeamService.canonicalProvisioningEntitlementKeys(
+            entitlements.keys
+        ).subtracting(signingMetadata)
     }
 
     private static func requiredProfileEntitlementKeys(

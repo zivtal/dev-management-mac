@@ -373,8 +373,28 @@ final class DeveloperTeamService {
             hasProvisionedDevices: (dictionary["ProvisionedDevices"] as? [String])?.isEmpty == false,
             provisionsAllDevices: dictionary["ProvisionsAllDevices"] as? Bool == true,
             isBetaReportsActive: entitlements?["beta-reports-active"] as? Bool == true,
-            entitlementKeys: Set(entitlements?.keys.map { $0 } ?? [])
+            entitlementKeys: canonicalProvisioningEntitlementKeys(
+                entitlements?.keys.map { $0 } ?? []
+            )
         )
+    }
+
+    /// Xcode 26 emits the executable Push entitlement with the namespaced spelling,
+    /// while Apple's provisioning profiles continue to authorize `aps-environment`.
+    /// Treat both as the same capability before comparing archive and profile data.
+    static func canonicalProvisioningEntitlementKey(_ key: String) -> String {
+        switch key {
+        case "com.apple.developer.aps-environment":
+            return "aps-environment"
+        default:
+            return key
+        }
+    }
+
+    static func canonicalProvisioningEntitlementKeys<S: Sequence>(
+        _ keys: S
+    ) -> Set<String> where S.Element == String {
+        Set(keys.map(canonicalProvisioningEntitlementKey))
     }
 
     /// Accepts either a decoded profile plist (useful to callers and tests) or the

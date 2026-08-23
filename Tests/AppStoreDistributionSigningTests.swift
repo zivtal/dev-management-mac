@@ -157,7 +157,7 @@ final class AppStoreDistributionSigningTests: XCTestCase {
             "com.apple.developer.team-identifier": "TEAM",
             "get-task-allow": true,
             "keychain-access-groups": ["TEAM.*"],
-            "aps-environment": "development",
+            "com.apple.developer.aps-environment": "development",
             "com.apple.security.application-groups": ["group.com.example.app"]
         ])
 
@@ -686,6 +686,23 @@ final class AppStoreDistributionSigningTests: XCTestCase {
             ),
             profile
         )
+        XCTAssertEqual(
+            AppStoreProvisioningProfileService.installedAppStoreProfile(
+                in: [Self.installedProfile(
+                    bundleIdentifier: "com.example.app",
+                    teamID: "TEAM123",
+                    fingerprints: ["BBBB"],
+                    expires: Date().addingTimeInterval(60 * 60 * 24 * 365),
+                    hasDevices: false,
+                    entitlementKeys: ["aps-environment"]
+                )],
+                bundleIdentifier: "com.example.app",
+                teamID: "TEAM123",
+                certificateSHA1: "BBBB",
+                requiredEntitlementKeys: ["com.apple.developer.aps-environment"]
+            )?.entitlementKeys,
+            ["aps-environment"]
+        )
     }
 
     func testWildcardAccountProfileIsNeverReused() {
@@ -774,6 +791,23 @@ final class AppStoreDistributionSigningTests: XCTestCase {
                 requiredEntitlementKeys: ["com.apple.security.application-groups"]
             ),
             profile
+        )
+
+        let pushProfile = Self.profile(
+            state: "ACTIVE",
+            expires: nil,
+            bundleIdentifier: "com.example.app",
+            certificateIDs: ["CERT1"],
+            content: try Self.profileContent(entitlementKeys: ["aps-environment"])
+        )
+        XCTAssertEqual(
+            AppStoreProvisioningProfileService.reusableAccountProfile(
+                in: [pushProfile],
+                bundleIdentifier: "com.example.app",
+                certificateID: "CERT1",
+                requiredEntitlementKeys: ["com.apple.developer.aps-environment"]
+            ),
+            pushProfile
         )
     }
 
