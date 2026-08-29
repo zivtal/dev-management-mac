@@ -450,7 +450,7 @@ struct SimulatorRunWindowView: View {
             }
             .disabled(!session.isSessionActive)
             .help(session.isSessionActive
-                ? L10n.text("Images and videos go to the Photos library; other files are copied into the app's Documents folder for the app to import.")
+                ? L10n.text("Images and videos go to the Photos library; other files land in Files › On My iPhone, ready for the app's import picker.")
                 : L10n.text("Run the app in the Simulator before importing files."))
             if session.isSessionActive {
                 Button(role: .destructive) {

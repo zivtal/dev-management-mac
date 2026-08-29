@@ -1314,11 +1314,13 @@
 "Import files…" = "Import files…";
 "Import" = "Import";
 "Or drop files here." = "Or drop files here.";
-"Images and videos go to the Photos library; other files are copied into the app's Documents folder for the app to import." = "Images and videos go to the Photos library; other files are copied into the app's Documents folder for the app to import.";
+"Images and videos go to the Photos library; other files land in Files › On My iPhone, ready for the app's import picker." = "Images and videos go to the Photos library; other files land in Files › On My iPhone, ready for the app's import picker.";
 "Run the app in the Simulator before importing files." = "Run the app in the Simulator before importing files.";
 "Run the app in the Simulator before importing files.\n" = "Run the app in the Simulator before importing files.\n";
 "Added %d file(s) to the Photos library.\n" = "Added %d file(s) to the Photos library.\n";
 "Could not add media to the Photos library: %@\n" = "Could not add media to the Photos library: %@\n";
+"Copied %@ into Files › On My iPhone.\n" = "Copied %@ into Files › On My iPhone.\n";
+"Could not copy files into Files › On My iPhone: %@\n" = "Could not copy files into Files › On My iPhone: %@\n";
 "Copied %@ into the app's Documents folder.\n" = "Copied %@ into the app's Documents folder.\n";
 "Could not copy files into the app's Documents folder: %@\n" = "Could not copy files into the app's Documents folder: %@\n";
 "✓ marks a Simulator this app was run on before." = "✓ marks a Simulator this app was run on before.";

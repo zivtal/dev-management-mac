@@ -345,9 +345,10 @@ final class SimulatorSessionController: ObservableObject {
     ]
 
     /// Injects files into the booted simulator: images and videos land in the
-    /// Photos library, everything else is copied into the app's Documents
-    /// folder so the app can import it (visible in Files for apps with file
-    /// sharing enabled).
+    /// Photos library, everything else is copied into the Files app's local
+    /// storage so every document picker can reach it under "On My iPhone".
+    /// Apps only see their own Documents folder in a picker when they publish
+    /// it with file sharing, so that folder is used only as a fallback.
     func importFiles(_ fileURLs: [URL]) {
         guard !fileURLs.isEmpty else { return }
         guard let deviceUDID = activeDevice?.udid else {
@@ -378,6 +379,15 @@ final class SimulatorSessionController: ObservableObject {
                 }
             }
             guard !documentURLs.isEmpty else { return }
+            if let onMyDeviceURL = SimulatorFilesStorage.onMyDeviceDirectory(udid: deviceUDID) {
+                self.copyDocuments(
+                    documentURLs,
+                    into: onMyDeviceURL,
+                    successKey: "Copied %@ into Files › On My iPhone.\n",
+                    failureKey: "Could not copy files into Files › On My iPhone: %@\n"
+                )
+                return
+            }
             guard let bundleIdentifier else {
                 self.appendOutput(L10n.text("Run the app in the Simulator before importing files.\n"))
                 return
@@ -387,26 +397,40 @@ final class SimulatorSessionController: ObservableObject {
                     udid: deviceUDID,
                     bundleIdentifier: bundleIdentifier
                 )
-                let documentsURL = container.appendingPathComponent("Documents", isDirectory: true)
-                let fileManager = FileManager.default
-                try fileManager.createDirectory(at: documentsURL, withIntermediateDirectories: true)
-                for fileURL in documentURLs {
-                    let destination = documentsURL.appendingPathComponent(fileURL.lastPathComponent)
-                    if fileManager.fileExists(atPath: destination.path) {
-                        try fileManager.removeItem(at: destination)
-                    }
-                    try fileManager.copyItem(at: fileURL, to: destination)
-                    self.appendOutput(L10n.format(
-                        "Copied %@ into the app's Documents folder.\n",
-                        fileURL.lastPathComponent
-                    ))
-                }
+                self.copyDocuments(
+                    documentURLs,
+                    into: container.appendingPathComponent("Documents", isDirectory: true),
+                    successKey: "Copied %@ into the app's Documents folder.\n",
+                    failureKey: "Could not copy files into the app's Documents folder: %@\n"
+                )
             } catch {
                 self.appendOutput(L10n.format(
                     "Could not copy files into the app's Documents folder: %@\n",
                     error.localizedDescription
                 ))
             }
+        }
+    }
+
+    private func copyDocuments(
+        _ fileURLs: [URL],
+        into directory: URL,
+        successKey: String,
+        failureKey: String
+    ) {
+        let fileManager = FileManager.default
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            for fileURL in fileURLs {
+                let destination = directory.appendingPathComponent(fileURL.lastPathComponent)
+                if fileManager.fileExists(atPath: destination.path) {
+                    try fileManager.removeItem(at: destination)
+                }
+                try fileManager.copyItem(at: fileURL, to: destination)
+                appendOutput(L10n.format(successKey, fileURL.lastPathComponent))
+            }
+        } catch {
+            appendOutput(L10n.format(failureKey, error.localizedDescription))
         }
     }
 
