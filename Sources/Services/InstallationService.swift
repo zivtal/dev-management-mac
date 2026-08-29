@@ -849,18 +849,32 @@ final class InstallationService {
         )
 
         if let output = settingsResult?.output,
-           let appURL = applicationURL(fromBuildSettingsJSON: output),
+           let appURL = Self.applicationURL(fromBuildSettingsJSON: output),
            fileManager.fileExists(atPath: appURL.path) {
             return appURL
         }
 
         return try fallbackBuiltApplication(
             project: project,
-            productsURL: derivedDataURL.appendingPathComponent("Build/Products", isDirectory: true)
+            productsURL: derivedDataURL.appendingPathComponent("Build/Products", isDirectory: true),
+            configuration: Self.configuration(inXcodeArguments: commonArguments)
         )
     }
 
-    private func fallbackBuiltApplication(project: ManagedProject, productsURL: URL) throws -> URL {
+    static func configuration(inXcodeArguments arguments: [String]) -> String? {
+        guard let flagIndex = arguments.firstIndex(of: "-configuration"),
+              arguments.indices.contains(flagIndex + 1)
+        else {
+            return nil
+        }
+        return arguments[flagIndex + 1]
+    }
+
+    private func fallbackBuiltApplication(
+        project: ManagedProject,
+        productsURL: URL,
+        configuration: String?
+    ) throws -> URL {
         guard let enumerator = fileManager.enumerator(
             at: productsURL,
             includingPropertiesForKeys: [.isDirectoryKey],
@@ -878,23 +892,56 @@ final class InstallationService {
             enumerator.skipDescendants()
         }
 
-        guard let appURL = candidates.sorted(by: { lhs, rhs in
-            let lhsMatches = lhs.deletingPathExtension().lastPathComponent
-                .localizedCaseInsensitiveContains(project.scheme)
-            let rhsMatches = rhs.deletingPathExtension().lastPathComponent
-                .localizedCaseInsensitiveContains(project.scheme)
-            if lhsMatches != rhsMatches { return lhsMatches }
-            return lhs.pathComponents.count < rhs.pathComponents.count
-        }).first else {
+        guard let appURL = Self.preferredBuiltApplication(
+            from: candidates,
+            scheme: project.scheme,
+            configuration: configuration
+        ) else {
             throw InstallationServiceError.noBuiltApplication
         }
         return appURL
     }
 
-    private func applicationURL(fromBuildSettingsJSON output: String) -> URL? {
-        guard let data = output.data(using: .utf8),
-              let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
-        else {
+    /// Products from earlier builds of other configurations survive in the shared
+    /// derived data, so anything outside the configuration that was just built is
+    /// discarded before the scheme is matched — otherwise a stale
+    /// `Release-iphonesimulator` app can be installed in place of the new one.
+    static func preferredBuiltApplication(
+        from candidates: [URL],
+        scheme: String,
+        configuration: String?
+    ) -> URL? {
+        let sameConfiguration = candidates.filter {
+            productsDirectory($0, belongsTo: configuration)
+        }
+        let searchSpace = sameConfiguration.isEmpty ? candidates : sameConfiguration
+        return searchSpace.sorted { lhs, rhs in
+            let lhsMatches = lhs.deletingPathExtension().lastPathComponent
+                .localizedCaseInsensitiveContains(scheme)
+            let rhsMatches = rhs.deletingPathExtension().lastPathComponent
+                .localizedCaseInsensitiveContains(scheme)
+            if lhsMatches != rhsMatches { return lhsMatches }
+            return lhs.pathComponents.count < rhs.pathComponents.count
+        }.first
+    }
+
+    /// Build products live in `<Configuration>` or `<Configuration>-<sdk>` folders.
+    private static func productsDirectory(_ url: URL, belongsTo configuration: String?) -> Bool {
+        guard let configuration, !configuration.isEmpty else { return false }
+        let prefix = configuration.lowercased() + "-"
+        return url.deletingLastPathComponent().pathComponents.contains { component in
+            component.caseInsensitiveCompare(configuration) == .orderedSame
+                || component.lowercased().hasPrefix(prefix)
+        }
+    }
+
+    /// `ProcessRunner` merges standard error into standard output, so xcodebuild
+    /// warnings — "Using the first of multiple matching destinations" for a
+    /// simulator that resolves to several architectures, for instance — arrive
+    /// wrapped around the JSON. Parsing tolerantly keeps a warning from silently
+    /// pushing the caller onto the products-directory fallback.
+    static func applicationURL(fromBuildSettingsJSON output: String) -> URL? {
+        guard let entries = ProjectDiscoveryService.buildSettingsEntries(from: output) else {
             return nil
         }
 

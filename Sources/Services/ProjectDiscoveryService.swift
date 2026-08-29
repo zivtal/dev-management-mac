@@ -213,7 +213,10 @@ final class ProjectDiscoveryService {
         return nil
     }
 
-    private static func buildSettingsEntries(from output: String) -> [[String: Any]]? {
+    /// `xcodebuild -showBuildSettings -json` shares a stream with the warnings it
+    /// writes to standard error, so the JSON payload is located inside the output
+    /// rather than assumed to be the whole of it.
+    static func buildSettingsEntries(from output: String) -> [[String: Any]]? {
         if let data = output.data(using: .utf8),
            let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
             return entries

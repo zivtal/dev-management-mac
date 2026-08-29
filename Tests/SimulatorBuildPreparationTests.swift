@@ -167,4 +167,121 @@ final class SimulatorBuildPreparationTests: XCTestCase {
         ))
         XCTAssertFalse(SourceChangeWatcher.shouldIgnore(path: "/repo/Resources/he.lproj/Localizable.strings"))
     }
+
+    // MARK: - Locating the built application
+
+    private func applicationBuildSettingsJSON(
+        targetBuildDirectory: String,
+        wrapperName: String = "TripFlow.app"
+    ) -> String {
+        """
+        [
+          {
+            "action" : "build",
+            "target" : "TripFlow",
+            "buildSettings" : {
+              "SKIP_INSTALL" : "NO",
+              "TARGET_BUILD_DIR" : "\(targetBuildDirectory)",
+              "WRAPPER_EXTENSION" : "app",
+              "WRAPPER_NAME" : "\(wrapperName)"
+            }
+          }
+        ]
+        """
+    }
+
+    func testBuiltApplicationURLIsReadFromCleanBuildSettingsJSON() {
+        let url = InstallationService.applicationURL(
+            fromBuildSettingsJSON: applicationBuildSettingsJSON(
+                targetBuildDirectory: "/derived/Build/Products/Debug-iphonesimulator"
+            )
+        )
+        XCTAssertEqual(url?.path, "/derived/Build/Products/Debug-iphonesimulator/TripFlow.app")
+    }
+
+    func testBuiltApplicationURLSurvivesXcodebuildStandardErrorNoise() {
+        // `ProcessRunner` merges standard error into standard output, so the
+        // destination warning xcodebuild prints for a simulator that resolves to
+        // several architectures arrives ahead of the JSON payload.
+        let noisyOutput = """
+        --- xcodebuild: WARNING: Using the first of multiple matching destinations:
+        { platform:iOS Simulator, arch:arm64, id:SIM-UDID, OS:17.2, name:iPhone 15 Pro }
+        { platform:iOS Simulator, arch:x86_64, id:SIM-UDID, OS:17.2, name:iPhone 15 Pro }
+        \(applicationBuildSettingsJSON(
+            targetBuildDirectory: "/derived/Build/Products/Debug-iphonesimulator"
+        ))
+        """
+        let url = InstallationService.applicationURL(fromBuildSettingsJSON: noisyOutput)
+        XCTAssertEqual(url?.path, "/derived/Build/Products/Debug-iphonesimulator/TripFlow.app")
+    }
+
+    func testConfigurationIsReadBackFromTheSimulatorArguments() {
+        let arguments = InstallationService.simulatorXcodeArguments(
+            project: project,
+            simulatorUDID: "SIM-UDID",
+            derivedDataURL: URL(fileURLWithPath: "/tmp/derived")
+        )
+        XCTAssertEqual(InstallationService.configuration(inXcodeArguments: arguments), "Debug")
+        XCTAssertNil(InstallationService.configuration(inXcodeArguments: ["-scheme", "TripFlow"]))
+        XCTAssertNil(InstallationService.configuration(inXcodeArguments: ["-configuration"]))
+    }
+
+    func testProductsFallbackIgnoresOtherConfigurationsThatLingerInDerivedData() {
+        // A stale Release product from an earlier build must never be installed in
+        // place of the Debug product the simulator build just produced.
+        let products = URL(fileURLWithPath: "/derived/Build/Products", isDirectory: true)
+        let release = products
+            .appendingPathComponent("Release-iphonesimulator/TripFlow.app", isDirectory: true)
+        let debug = products
+            .appendingPathComponent("Debug-iphonesimulator/TripFlow.app", isDirectory: true)
+
+        XCTAssertEqual(
+            InstallationService.preferredBuiltApplication(
+                from: [release, debug],
+                scheme: "TripFlow",
+                configuration: "Debug"
+            ),
+            debug
+        )
+        XCTAssertEqual(
+            InstallationService.preferredBuiltApplication(
+                from: [debug, release],
+                scheme: "TripFlow",
+                configuration: "Release"
+            ),
+            release
+        )
+    }
+
+    func testProductsFallbackStillPicksTheSchemeWhenNoConfigurationMatches() {
+        let products = URL(fileURLWithPath: "/derived/Build/Products", isDirectory: true)
+        let helper = products
+            .appendingPathComponent("Release-iphonesimulator/Helper.app", isDirectory: true)
+        let app = products
+            .appendingPathComponent("Release-iphonesimulator/TripFlow.app", isDirectory: true)
+
+        XCTAssertEqual(
+            InstallationService.preferredBuiltApplication(
+                from: [helper, app],
+                scheme: "TripFlow",
+                configuration: "Debug"
+            ),
+            app
+        )
+        XCTAssertEqual(
+            InstallationService.preferredBuiltApplication(
+                from: [helper, app],
+                scheme: "TripFlow",
+                configuration: nil
+            ),
+            app
+        )
+        XCTAssertNil(
+            InstallationService.preferredBuiltApplication(
+                from: [],
+                scheme: "TripFlow",
+                configuration: "Debug"
+            )
+        )
+    }
 }

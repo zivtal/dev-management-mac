@@ -1925,7 +1925,9 @@ final class AppStorePublishingService {
         from output: String,
         platform: AppStoreScreenshotPlatform
     ) -> SimulatorBuildTarget? {
-        guard let entries = jsonBuildSettingsEntries(from: output) else { return nil }
+        guard let entries = ProjectDiscoveryService.buildSettingsEntries(from: output) else {
+            return nil
+        }
         return entries.compactMap { entry -> SimulatorBuildTarget? in
             guard let settings = entry["buildSettings"] as? [String: Any],
                   let name = entry["target"] as? String,
@@ -1951,24 +1953,6 @@ final class AppStorePublishingService {
         let platformName = (settings["PLATFORM_NAME"] as? String)?.lowercased() ?? ""
         return supported.contains(platform.simulatorPlatformToken)
             || platformName == platform.simulatorPlatformToken
-    }
-
-    private static func jsonBuildSettingsEntries(from output: String) -> [[String: Any]]? {
-        if let data = output.data(using: .utf8),
-           let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-            return entries
-        }
-        guard let finalBracket = output.lastIndex(of: "]") else { return nil }
-        var searchStart = output.startIndex
-        while searchStart < finalBracket,
-              let openingBracket = output[searchStart...].firstIndex(of: "[") {
-            let candidate = Data(output[openingBracket...finalBracket].utf8)
-            if let entries = try? JSONSerialization.jsonObject(with: candidate) as? [[String: Any]] {
-                return entries
-            }
-            searchStart = output.index(after: openingBracket)
-        }
-        return nil
     }
 
     private func imageDimensions(at url: URL) -> (width: Int, height: Int)? {
