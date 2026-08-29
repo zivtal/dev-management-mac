@@ -162,6 +162,11 @@ struct AppStoreGeneratedMetadata: Codable, Equatable, Sendable {
     var secondaryCategory: String
     var localizations: [AppStoreLocalizedMetadata]
     var compliance: AppStoreComplianceDraft
+    /// The Apple-approved version the generated release notes were diffed
+    /// against, and the change evidence that described that diff. Both stay nil
+    /// for a first submission, where no approved version exists to compare with.
+    var releaseNotesPreviousApprovedVersion: String?
+    var releaseNotesEvidenceSource: String?
 
     func normalized() -> AppStoreGeneratedMetadata {
         var seen = Set<String>()
@@ -178,7 +183,9 @@ struct AppStoreGeneratedMetadata: Codable, Equatable, Sendable {
                     normalized.locale = locale
                     return normalized
                 },
-            compliance: compliance
+            compliance: compliance,
+            releaseNotesPreviousApprovedVersion: releaseNotesPreviousApprovedVersion,
+            releaseNotesEvidenceSource: releaseNotesEvidenceSource
         )
     }
 }

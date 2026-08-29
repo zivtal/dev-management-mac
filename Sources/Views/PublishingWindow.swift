@@ -4268,6 +4268,15 @@ private struct PerAppPublishingConfigurationEditor: View {
             applyGeneratedPrivacyDraft(from: compliance)
             complianceEvidence = compliance.evidence
             complianceConfidence = compliance.confidence
+            if let approvedVersion = generated.releaseNotesPreviousApprovedVersion,
+               let evidenceSource = generated.releaseNotesEvidenceSource {
+                aiGenerationNotice = L10n.format(
+                    "Generated What’s New for %d language(s) from changes after approved version %@ using %@.",
+                    generated.localizations.count,
+                    approvedVersion,
+                    evidenceSource
+                )
+            }
             validationMessage = nil
         } catch {
             validationMessage = error.localizedDescription

@@ -1124,8 +1124,32 @@ final class AppModel: ObservableObject {
             project: project,
             locales: locales,
             apiKey: apiKey,
-            model: preferences.openAIModel?.nilIfEmpty ?? "gpt-5.6-luna"
+            model: preferences.openAIModel?.nilIfEmpty ?? "gpt-5.6-luna",
+            previousApprovedVersion: try? await latestApprovedVersion(for: project)
         )
+    }
+
+    /// The App Store version the generated release notes describe changes
+    /// against. A first submission, an unreachable App Store Connect, or a
+    /// macOS project simply leaves the listing generation without change
+    /// evidence rather than failing it.
+    private func latestApprovedVersion(for project: ManagedProject) async throws -> String? {
+        guard !project.isMacOSApplication,
+              let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty,
+              let currentVersion = project.marketingVersion?.nilIfEmpty else {
+            return nil
+        }
+        let credential = try appStoreConnectCredentialMaterial(for: project)
+        let appStoreConnect = try AppStoreConnectService(
+            issuerID: credential.issuerID,
+            keyID: credential.keyID,
+            privateKeyPEM: credential.privateKey
+        )
+        let appID = try await appStoreConnect.applicationID(bundleIdentifier: bundleIdentifier)
+        return try await appStoreConnect.latestApprovedVersion(
+            appID: appID,
+            excluding: currentVersion
+        )?.versionString
     }
 
     func generateAppStoreReleaseNotes(

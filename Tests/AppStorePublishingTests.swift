@@ -390,6 +390,104 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertFalse(evidence?.content.contains("Release 1.0.0") == true)
     }
 
+    func testListingPromptFeedsChangeEvidenceIntoGeneratedReleaseNotes() {
+        let root = FileManager.default.temporaryDirectory
+        let evidence = AppStoreReleaseNotesEvidence(
+            source: .git,
+            sourceDescription: "Git changes after approved version 1.0.0 (v1.0.0)",
+            content: "abc1234\t2026-08-29\tAdd offline route viewing"
+        )
+
+        let prompt = OpenAIStoreMetadataService.localizedMetadataPrompt(
+            project: managedProject(at: root),
+            languages: "en-US (English)",
+            summary: "PROJECT_SUMMARY_MARKER",
+            previousApprovedVersion: "1.0.0",
+            evidence: evidence
+        )
+
+        XCTAssertTrue(prompt.contains("Add offline route viewing"))
+        XCTAssertTrue(prompt.contains("Git changes after approved version 1.0.0 (v1.0.0)"))
+        XCTAssertTrue(prompt.contains("1.0.0"))
+        XCTAssertTrue(prompt.contains("PROJECT_SUMMARY_MARKER"))
+    }
+
+    func testListingPromptOmitsChangeEvidenceForAFirstSubmission() {
+        let root = FileManager.default.temporaryDirectory
+
+        let prompt = OpenAIStoreMetadataService.localizedMetadataPrompt(
+            project: managedProject(at: root),
+            languages: "en-US (English)",
+            summary: "PROJECT_SUMMARY_MARKER",
+            previousApprovedVersion: nil,
+            evidence: nil
+        )
+
+        XCTAssertFalse(prompt.contains("Release-change evidence"))
+        XCTAssertTrue(prompt.contains("PROJECT_SUMMARY_MARKER"))
+    }
+
+    func testReleaseEvidenceBlockIsEmptyWithoutEvidence() {
+        XCTAssertTrue(OpenAIStoreMetadataService.releaseEvidenceBlock(nil).isEmpty)
+    }
+
+    func testReleaseEvidenceBlockNamesItsSourceAndContent() {
+        let block = OpenAIStoreMetadataService.releaseEvidenceBlock(
+            AppStoreReleaseNotesEvidence(
+                source: .readme,
+                sourceDescription: "README.md",
+                content: "- Adds offline route viewing."
+            )
+        )
+
+        XCTAssertTrue(block.contains("Release-change evidence source: README.md"))
+        XCTAssertTrue(block.contains("- Adds offline route viewing."))
+    }
+
+    func testGeneratedMetadataKeepsItsReleaseEvidenceProvenanceWhenNormalized() {
+        var generated = AppStoreGeneratedMetadata(
+            primaryCategory: "TRAVEL",
+            secondaryCategory: "",
+            localizations: [
+                AppStoreLocalizedMetadata(
+                    locale: "en-US",
+                    appName: "Example",
+                    subtitle: "Subtitle",
+                    description: "Description",
+                    keywords: "trip",
+                    promotionalText: "Promo",
+                    whatsNew: "Adds offline route viewing."
+                )
+            ],
+            compliance: AppStoreComplianceDraft(
+                contentRightsDeclaration: "DOES_NOT_USE_THIRD_PARTY_CONTENT",
+                appIsFree: true,
+                demoAccountRequired: false,
+                copyright: "2026 Example",
+                ageRating: [:],
+                ageRatingEvidenceSufficient: true,
+                privacy: AppStorePrivacyDraft(
+                    collectsData: false,
+                    dataTypes: [],
+                    notes: []
+                ),
+                privacyEvidenceSufficient: true,
+                evidence: [],
+                confidence: 0.9
+            )
+        )
+        generated.releaseNotesPreviousApprovedVersion = "1.0.0"
+        generated.releaseNotesEvidenceSource = "Git changes after approved version 1.0.0 (v1.0.0)"
+
+        let normalized = generated.normalized()
+
+        XCTAssertEqual(normalized.releaseNotesPreviousApprovedVersion, "1.0.0")
+        XCTAssertEqual(
+            normalized.releaseNotesEvidenceSource,
+            "Git changes after approved version 1.0.0 (v1.0.0)"
+        )
+    }
+
     func testOpenAIComplianceRequestUsesStrictEnumsAndDoesNotStoreProjectData() throws {
         let body = OpenAIStoreMetadataService.complianceRequestBody(
             model: "gpt-5.6-luna",
