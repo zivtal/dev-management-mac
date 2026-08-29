@@ -1319,6 +1319,7 @@
 "Run the app in the Simulator before importing files.\n" = "יש להריץ את האפליקציה בסימולטור לפני ייבוא קבצים.\n";
 "Added %d file(s) to the Photos library.\n" = "%d קבצים נוספו לספריית התמונות.\n";
 "Could not add media to the Photos library: %@\n" = "לא ניתן להוסיף מדיה לספריית התמונות: %@\n";
+"%@ and %@" = "%@ ו-%@";
 "Copied %@ into Files › On My iPhone.\n" = "%@ הועתק ל-Files › On My iPhone.\n";
 "Could not copy files into Files › On My iPhone: %@\n" = "לא ניתן להעתיק קבצים ל-Files › On My iPhone: %@\n";
 "Copied %@ into the app's Documents folder.\n" = "%@ הועתק לתיקיית Documents של האפליקציה.\n";

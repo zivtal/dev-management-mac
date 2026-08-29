@@ -4,6 +4,7 @@ struct AppStoreReleaseNotesEvidence: Equatable, Sendable {
     enum Source: String, Equatable, Sendable {
         case readme
         case git
+        case combined
     }
 
     let source: Source
@@ -25,23 +26,62 @@ final class AppStoreReleaseNotesEvidenceService {
         self.fileManager = fileManager
     }
 
+    /// The release notes documented in the README and the commits made since
+    /// the approved version answer different halves of "what changed", so both
+    /// are sent when both exist.
     func evidence(
         project: ManagedProject,
         previousVersion: String,
         currentVersion: String
     ) async -> AppStoreReleaseNotesEvidence? {
-        if let readme = readmeURL(in: project.folderURL),
-           let text = try? String(contentsOf: readme, encoding: .utf8),
-           let section = Self.releaseSection(in: text, currentVersion: currentVersion) {
-            return AppStoreReleaseNotesEvidence(
-                source: .readme,
-                sourceDescription: readme.lastPathComponent,
-                content: String(section.prefix(Self.maximumEvidenceCharacters))
-            )
-        }
-        return await gitEvidence(
+        let readme = readmeEvidence(project: project, currentVersion: currentVersion)
+        let git = await gitEvidence(
             projectDirectory: project.folderURL,
             previousVersion: previousVersion
+        )
+        guard let readme else { return git }
+        guard let git else { return readme }
+        return Self.combining(readme: readme, git: git)
+    }
+
+    static func combining(
+        readme: AppStoreReleaseNotesEvidence,
+        git: AppStoreReleaseNotesEvidence
+    ) -> AppStoreReleaseNotesEvidence {
+        // Split the budget so a long README cannot crowd out the commits.
+        let readmeContent = String(readme.content.prefix(maximumEvidenceCharacters / 2))
+        let gitContent = String(
+            git.content.prefix(maximumEvidenceCharacters - readmeContent.count)
+        )
+        return AppStoreReleaseNotesEvidence(
+            source: .combined,
+            sourceDescription: L10n.format(
+                "%@ and %@",
+                readme.sourceDescription,
+                git.sourceDescription
+            ),
+            content: """
+            --- Release notes documented in \(readme.sourceDescription) ---
+            \(readmeContent)
+
+            \(gitContent)
+            """
+        )
+    }
+
+    private func readmeEvidence(
+        project: ManagedProject,
+        currentVersion: String
+    ) -> AppStoreReleaseNotesEvidence? {
+        guard let readme = readmeURL(in: project.folderURL),
+              let text = try? String(contentsOf: readme, encoding: .utf8),
+              let section = Self.releaseSection(in: text, currentVersion: currentVersion) else {
+            return nil
+        }
+        return AppStoreReleaseNotesEvidence(
+            source: .readme,
+            sourceDescription: readme.lastPathComponent,
+            content: String(section.prefix(Self.maximumEvidenceCharacters))
         )
     }
 

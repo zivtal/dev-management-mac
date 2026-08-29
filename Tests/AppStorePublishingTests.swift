@@ -390,6 +390,92 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertFalse(evidence?.content.contains("Release 1.0.0") == true)
     }
 
+    func testReleaseEvidenceCombinesTheReadmeSectionWithGitChanges() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CombinedEvidence-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runner = ProcessRunner()
+        let git = URL(fileURLWithPath: "/usr/bin/git")
+        try await runner.runAndRequireSuccess(executable: git, arguments: ["init"], workingDirectory: root)
+        try """
+        # Example
+
+        ## 2.0.0
+        - Adds offline route viewing.
+        """.write(
+            to: root.appendingPathComponent("README.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try await runner.runAndRequireSuccess(executable: git, arguments: ["add", "."], workingDirectory: root)
+        try await runner.runAndRequireSuccess(
+            executable: git,
+            arguments: [
+                "-c", "user.name=Tests", "-c", "user.email=tests@example.com",
+                "commit", "-m", "Release 1.0.0"
+            ],
+            workingDirectory: root
+        )
+        try await runner.runAndRequireSuccess(
+            executable: git,
+            arguments: ["tag", "v1.0.0"],
+            workingDirectory: root
+        )
+        try "struct SharedTrips {}\n".write(
+            to: root.appendingPathComponent("SharedTrips.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try await runner.runAndRequireSuccess(executable: git, arguments: ["add", "."], workingDirectory: root)
+        try await runner.runAndRequireSuccess(
+            executable: git,
+            arguments: [
+                "-c", "user.name=Tests", "-c", "user.email=tests@example.com",
+                "commit", "-m", "Make shared trips easier to update"
+            ],
+            workingDirectory: root
+        )
+
+        let evidence = await AppStoreReleaseNotesEvidenceService().evidence(
+            project: managedProject(at: root),
+            previousVersion: "1.0.0",
+            currentVersion: "2.0.0"
+        )
+
+        XCTAssertEqual(evidence?.source, .combined)
+        XCTAssertTrue(evidence?.content.contains("Adds offline route viewing") == true)
+        XCTAssertTrue(evidence?.content.contains("Make shared trips easier to update") == true)
+        XCTAssertTrue(evidence?.sourceDescription.contains("README.md") == true)
+        XCTAssertTrue(evidence?.sourceDescription.contains("v1.0.0") == true)
+    }
+
+    func testReleaseEvidenceUsesTheReadmeAloneOutsideAGitRepository() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ReadmeEvidence-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try """
+        # Example
+
+        ## 2.0.0
+        - Adds offline route viewing.
+        """.write(
+            to: root.appendingPathComponent("README.md"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let evidence = await AppStoreReleaseNotesEvidenceService().evidence(
+            project: managedProject(at: root),
+            previousVersion: "1.0.0",
+            currentVersion: "2.0.0"
+        )
+
+        XCTAssertEqual(evidence?.source, .readme)
+        XCTAssertTrue(evidence?.content.contains("Adds offline route viewing") == true)
+    }
+
     func testListingPromptFeedsChangeEvidenceIntoGeneratedReleaseNotes() {
         let root = FileManager.default.temporaryDirectory
         let evidence = AppStoreReleaseNotesEvidence(

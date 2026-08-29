@@ -1319,6 +1319,7 @@
 "Run the app in the Simulator before importing files.\n" = "Run the app in the Simulator before importing files.\n";
 "Added %d file(s) to the Photos library.\n" = "Added %d file(s) to the Photos library.\n";
 "Could not add media to the Photos library: %@\n" = "Could not add media to the Photos library: %@\n";
+"%@ and %@" = "%@ and %@";
 "Copied %@ into Files › On My iPhone.\n" = "Copied %@ into Files › On My iPhone.\n";
 "Could not copy files into Files › On My iPhone: %@\n" = "Could not copy files into Files › On My iPhone: %@\n";
 "Copied %@ into the app's Documents folder.\n" = "Copied %@ into the app's Documents folder.\n";
