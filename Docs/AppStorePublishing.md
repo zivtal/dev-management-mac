@@ -12,11 +12,13 @@ can ask OpenAI to prepare a conservative, evidence-backed draft from bounded
 normal editable field and must be reviewed and saved before either release
 action can start. Upload and Publish never generate or change saved metadata.
 The dedicated What’s New button looks up the earlier Apple-approved version and
-prefers a current-version or release-notes section in the managed app's
-`README.md`; when none exists, it uses Git changes after the approved version's
-tag or version commit, falling back transparently to the 20 latest commits when
-no matching baseline exists. The draft is constrained by the current bounded
-source scan and must be reviewed and saved before submission.
+resolves its ancestor release tag or exact marketing-version declaration in Git.
+The evidence covers the full commit interval, net changed files, and bounded
+source diffs through the current tracked working tree. README release notes are
+supplementary. Major new capabilities take priority over their later fixes.
+A missing Git baseline produces an actionable error instead of silently using
+recent commits. Excerpts have separate size budgets and disclose omissions.
+The draft must be reviewed and saved before submission.
 
 ```json
 {
@@ -150,8 +152,8 @@ offer-code terms. Copyright input such as `Company Name` is normalized to
 
 The Store Description section has a dedicated **Generate What’s New with
 OpenAI** button. It looks up the latest earlier Apple-approved version, uses its
-matching release tag or version commit as the Git baseline (with bounded recent
-history as a fallback), and drafts a short localized customer-facing summary.
+matching ancestor release tag or exact version declaration as the Git baseline,
+and drafts a short localized customer-facing summary across the full interval.
 Only the primary and existing localized What’s New fields are replaced.
 
 Optional map, AI, imported-document, flight, hotel, or other provider content is

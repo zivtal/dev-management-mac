@@ -207,9 +207,9 @@ Settings contains six tabs and is the only ordinary app window.
   agreements, subscription prices, review contacts, credentials, and publisher
   attestations remain manual fields.
 - When an app has an earlier Apple-approved version, use the dedicated button to
-  draft each localized **What’s New** field from the current-version README
-  release section or Git changes after that approved version. Review and save
-  the draft before Publish.
+  draft each localized **What’s New** field from all Git changes since that
+  approved version, supported by source differences and README release notes.
+  Review and save the draft before Publish.
 - Store a Fastlane App Store Connect session in Keychain to publish an explicitly
   authorized **Data Not Collected** App Privacy declaration automatically.
 - Configure a default App Store Connect API and any number of named additional
@@ -282,10 +282,12 @@ permission failures are reported with the exact account permission or local
 certificate action required.
 The publishing configuration editor provides a dedicated **Generate What’s New
 with OpenAI** button beside that field. It detects the latest approved App Store
-version, prefers a matching current-version or release-notes section in
-`README.md`, otherwise uses Git commits and changed-file summaries after that
-version, and generates a short customer-facing summary for each configured
-locale. Only the editable What’s New values are replaced. Generation never runs
+version and resolves a matching ancestor release tag or an exact marketing-version
+declaration in Git. It compares the full interval through the current working
+tree, including source differences and added files, with README release notes
+as supplementary context. Major new features lead the localized summary, even
+when many later commits refine them. Missing release history is reported instead
+of substituting the latest few commits. Only the editable What’s New values are replaced. Generation never runs
 inside Publish; readiness requires saved release notes for every configured
 locale when an earlier approved version exists.
 When another App Store version is in review, TestFlight upload continues while

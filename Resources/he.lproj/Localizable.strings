@@ -1160,7 +1160,6 @@
 "The requested App Store name %@ is unavailable for %@. Keeping the existing name %@ and continuing.\n" = "השם המבוקש ב־App Store, ‏%@, אינו זמין עבור %@. השם הקיים %@ נשמר והתהליך ממשיך.\n";
 "No README release section or Git changes could be found after approved version %@." = "לא נמצא ב־README מקטע הפצה או שינויי Git לאחר הגרסה המאושרת %@.";
 "Git changes after approved version %@ (%@)" = "שינויי Git לאחר הגרסה המאושרת %@ ‏(%@)";
-"the 20 latest Git commits because approved version %@ has no matching tag or version commit" = "20 הקומיטים האחרונים ב־Git, מכיוון שלגרסה המאושרת %@ אין תג או קומיט גרסה תואם";
 "Generate What’s New with OpenAI" = "יצירת ״מה חדש״ באמצעות OpenAI";
 "Generating What’s New…" = "יצירת ״מה חדש״…";
 "Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced." = "הגרסה האחרונה שאושרה ב־App Store משמשת כנקודת הבסיס, והשינויים הגלויים למשתמשים מאז מסוכמים. רק הטקסט של ״מה חדש״ מוחלף.";
@@ -1328,3 +1327,5 @@
 "The simulated date and time are UTC; the app also runs with its timezone set to UTC." = "התאריך והשעה המדומים הם ב־UTC; האפליקציה גם רצה עם אזור זמן UTC.";
 "Show the full log" = "הצגת היומן המלא";
 "Show only the latest log lines" = "הצגת השורות האחרונות בלבד";
+
+"Could not locate approved version %@ in this repository’s release tags or version settings. Restore its Git history or add a release tag at the approved commit, then try again." = "לא ניתן לאתר את הגרסה המאושרת %@ בתגי ההפצה או בהגדרות הגרסה של המאגר. יש לשחזר את היסטוריית Git או להוסיף תג הפצה בקומיט המאושר, ואז לנסות שוב.";

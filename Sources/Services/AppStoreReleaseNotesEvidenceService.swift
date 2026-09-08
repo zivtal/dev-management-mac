@@ -33,9 +33,9 @@ final class AppStoreReleaseNotesEvidenceService {
         project: ManagedProject,
         previousVersion: String,
         currentVersion: String
-    ) async -> AppStoreReleaseNotesEvidence? {
+    ) async throws -> AppStoreReleaseNotesEvidence? {
         let readme = readmeEvidence(project: project, currentVersion: currentVersion)
-        let git = await gitEvidence(
+        let git = try await gitEvidence(
             projectDirectory: project.folderURL,
             previousVersion: previousVersion
         )
@@ -49,7 +49,7 @@ final class AppStoreReleaseNotesEvidenceService {
         git: AppStoreReleaseNotesEvidence
     ) -> AppStoreReleaseNotesEvidence {
         // Split the budget so a long README cannot crowd out the commits.
-        let readmeContent = String(readme.content.prefix(maximumEvidenceCharacters / 2))
+        let readmeContent = String(readme.content.prefix(12_000))
         let gitContent = String(
             git.content.prefix(maximumEvidenceCharacters - readmeContent.count)
         )
@@ -132,105 +132,164 @@ final class AppStoreReleaseNotesEvidenceService {
     private func gitEvidence(
         projectDirectory: URL,
         previousVersion: String
-    ) async -> AppStoreReleaseNotesEvidence? {
+    ) async throws -> AppStoreReleaseNotesEvidence? {
         guard await git(["rev-parse", "--is-inside-work-tree"], in: projectDirectory)?
             .trimmingCharacters(in: .whitespacesAndNewlines) == "true" else {
             return nil
         }
-
-        let baseline = await baselineReference(
+        guard let baseline = await baselineReference(
             previousVersion: previousVersion,
             projectDirectory: projectDirectory
-        )
-        let historyArguments: [String]
-        let sourceDescription: String
-        if let baseline {
-            historyArguments = [
-                "log", "--no-merges", "--date=short",
-                "--pretty=format:%h%x09%ad%x09%s", "--stat", "--max-count=80",
-                "\(baseline)..HEAD"
-            ]
-            sourceDescription = L10n.format(
-                "Git changes after approved version %@ (%@)",
-                previousVersion,
-                baseline
-            )
-        } else {
-            historyArguments = [
-                "log", "--no-merges", "--date=short",
-                "--pretty=format:%h%x09%ad%x09%s", "--stat", "--max-count=20", "HEAD"
-            ]
-            sourceDescription = L10n.format(
-                "the 20 latest Git commits because approved version %@ has no matching tag or version commit",
-                previousVersion
-            )
+        ) else {
+            // Recent commits cannot establish what changed since an approved release.
+            throw OpenAIStoreMetadataError.missingReleaseBaseline(previousVersion)
         }
 
-        let history = await git(historyArguments, in: projectDirectory) ?? ""
+        // Keep the entire interval, oldest first, without per-commit stats drowning
+        // out the commit that introduced a feature before its subsequent fixes.
+        let history = await git([
+            "log", "--reverse", "--date=short", "--pretty=format:%h%x09%ad%x09%s",
+            "\(baseline)..HEAD", "--", "."
+        ], in: projectDirectory) ?? ""
+        let changes = await git([
+            "diff", "--no-ext-diff", "--no-textconv", "--name-status", baseline, "--", "."
+        ], in: projectDirectory) ?? ""
         let status = await git(["status", "--short"], in: projectDirectory) ?? ""
-        let workingDiffStat = await git(["diff", "--stat", "HEAD"], in: projectDirectory) ?? ""
-        let stagedDiffStat = await git(["diff", "--cached", "--stat"], in: projectDirectory) ?? ""
+        let patches = await sourceChanges(since: baseline, in: projectDirectory)
         let content = """
         Previous approved App Store version: \(previousVersion)
-        Git baseline: \(baseline ?? "not found; bounded recent history used")
+        Git baseline: \(baseline)
+        Comparison: approved baseline through HEAD and the current tracked working tree.
+        A = added since approval, M = modified, D = removed. Newly added features take priority over later refinements.
 
-        --- Commit history and changed files ---
-        \(history.isEmpty ? "No committed changes were found." : history)
+        --- Commit history across the full release interval (oldest first) ---
+        \(Self.bounded(history, limit: 45_000))
 
-        --- Current working-tree status ---
-        \(status.isEmpty ? "Clean" : status)
+        --- Net changed files since approval (including staged and unstaged changes) ---
+        \(Self.bounded(changes, limit: 20_000))
 
-        --- Uncommitted changed-file summary ---
-        \(workingDiffStat.isEmpty ? "None" : workingDiffStat)
+        --- Source changes from the approved baseline to now ---
+        \(patches)
 
-        --- Staged changed-file summary ---
-        \(stagedDiffStat.isEmpty ? "None" : stagedDiffStat)
+        --- Current working-tree status (untracked files have no baseline diff) ---
+        \(Self.bounded(status.isEmpty ? "Clean" : status, limit: 4_000))
         """
-        guard !history.isEmpty || !status.isEmpty else { return nil }
+        guard !history.isEmpty || !changes.isEmpty || !status.isEmpty else { return nil }
         return AppStoreReleaseNotesEvidence(
             source: .git,
-            sourceDescription: sourceDescription,
-            content: String(content.prefix(Self.maximumEvidenceCharacters))
+            sourceDescription: L10n.format(
+                "Git changes after approved version %@ (%@)", previousVersion, baseline
+            ),
+            content: content
         )
+    }
+
+    private func sourceChanges(since baseline: String, in directory: URL) async -> String {
+        let paths = await git([
+            "diff", "--no-ext-diff", "--no-textconv", "--name-only", "-z", baseline, "--", "."
+        ], in: directory)?.split(separator: "\0").map(String.init).filter { path in
+            let url = URL(fileURLWithPath: path)
+            return ["swift", "m", "mm", "h", "js", "jsx", "ts", "tsx", "dart", "strings"].contains(url.pathExtension)
+                && !path.split(separator: "/").contains(where: {
+                    OpenAIStoreMetadataService.isExcludedDirectory(String($0))
+                })
+                && !OpenAIStoreMetadataService.isSensitiveFile(url.lastPathComponent)
+        } ?? []
+        guard !paths.isEmpty else { return "No supported source changes." }
+        let perFileBudget = min(4_000, 34_000 / paths.count)
+        // The full file inventory above still covers every path if excerpts cannot fit.
+        guard perFileBudget >= 200 else { return "Source excerpts omitted due to size; use the full-interval history and file inventory." }
+        var sections: [String] = []
+        for path in paths {
+            guard let patch = await git([
+                "diff", "--no-ext-diff", "--no-textconv", "--unified=2", baseline, "--", path
+            ], in: directory) else { continue }
+            sections.append(Self.bounded(patch, limit: perFileBudget))
+        }
+        return sections.joined(separator: "\n")
+    }
+
+    /// Preserve both ends and disclose limits instead of silently keeping only
+    /// the most recent changes or allowing a single large file to consume the budget.
+    static func bounded(_ text: String, limit: Int) -> String {
+        guard text.count > limit else { return text.isEmpty ? "None" : text }
+        let marker = "\n[Middle omitted due to evidence size limit]\n"
+        let half = max(0, (limit - marker.count) / 2)
+        return String(text.prefix(half)) + marker + String(text.suffix(half))
     }
 
     private func baselineReference(
         previousVersion: String,
         projectDirectory: URL
     ) async -> String? {
-        if let tags = await git(["tag", "--list"], in: projectDirectory)?
-            .components(separatedBy: .newlines)
-            .filter({ !$0.isEmpty }) {
-            let exactCandidates = [previousVersion, "v\(previousVersion)"]
-            if let exact = exactCandidates.first(where: { candidate in
-                tags.contains(where: { $0.caseInsensitiveCompare(candidate) == .orderedSame })
-            }) {
-                return exact
+        let tags = await git(["tag", "--list"], in: projectDirectory)?
+            .components(separatedBy: .newlines).filter { !$0.isEmpty } ?? []
+        let matchingTags = tags.filter { tag in
+            let tail = tag.split(separator: "/").last.map(String.init) ?? tag
+            return [previousVersion, "v\(previousVersion)", "release-\(previousVersion)"].contains {
+                tail.caseInsensitiveCompare($0) == .orderedSame
             }
-            if let releaseTag = tags.first(where: { tag in
-                let tail = tag.split(separator: "/").last.map(String.init) ?? tag
-                return tail.caseInsensitiveCompare("release-\(previousVersion)") == .orderedSame
-                    || tail.caseInsensitiveCompare("v\(previousVersion)") == .orderedSame
-            }) {
-                return releaseTag
+        }.sorted { lhs, rhs in
+            if lhs.contains("/") != rhs.contains("/") { return !lhs.contains("/") }
+            return lhs < rhs
+        }
+        for tag in matchingTags {
+            // Ignore matching releases on unrelated branches and resolve the actual
+            // spelling of tags (Git references are case sensitive).
+            if await gitCommandSucceeded([
+                "merge-base", "--is-ancestor", "refs/tags/\(tag)", "HEAD"
+            ], in: projectDirectory) {
+                return tag
             }
         }
 
-        guard let changeCommit = await git(
-            ["log", "--all", "-S\(previousVersion)", "--format=%H", "--max-count=1"],
-            in: projectDirectory
-        )?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
-            return nil
+        // Only actual version declarations qualify. README, publishing metadata,
+        // lockfiles, and arbitrary occurrences of the number are not release markers.
+        let paths = await git(["ls-tree", "-r", "--name-only", "HEAD", "--", "."], in: projectDirectory)?
+            .components(separatedBy: .newlines).filter { path in
+                let url = URL(fileURLWithPath: path)
+                return (url.pathExtension == "xcconfig" || url.lastPathComponent == "project.yml"
+                    || url.lastPathComponent == "project.pbxproj" || url.lastPathComponent == "Info.plist")
+                    && !path.split(separator: "/").contains(where: {
+                        OpenAIStoreMetadataService.isExcludedDirectory(String($0))
+                    })
+            }.sorted { lhs, rhs in
+                func priority(_ path: String) -> Int {
+                    if path.lowercased().hasSuffix("version.xcconfig") { return 0 }
+                    if path.hasSuffix(".xcconfig") { return 1 }
+                    if path.hasSuffix("project.yml") { return 2 }
+                    return 3
+                }
+                return priority(lhs) == priority(rhs) ? lhs < rhs : priority(lhs) < priority(rhs)
+            } ?? []
+        for path in paths {
+            let commits = await git([
+                "log", "--first-parent", "--format=%H", "-G\(NSRegularExpression.escapedPattern(for: previousVersion))",
+                "HEAD", "--", path
+            ], in: projectDirectory)?.split(whereSeparator: \.isNewline).map(String.init) ?? []
+            for commit in commits {
+                if let contents = await git(["show", "\(commit):\(path)"], in: projectDirectory),
+                   Self.containsMarketingVersion(previousVersion, in: contents) {
+                    return commit
+                }
+                // A delivery commit can bump the version and add a new feature
+                // together. Its parent is the final snapshot of the approved version.
+                if let contents = await git(["show", "\(commit)^:\(path)"], in: projectDirectory),
+                   Self.containsMarketingVersion(previousVersion, in: contents) {
+                    return await git(["rev-parse", "\(commit)^"], in: projectDirectory)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
         }
-        let commitContainsVersion = await gitCommandSucceeded(
-            ["grep", "-q", "-F", previousVersion, changeCommit],
-            in: projectDirectory
-        )
-        if commitContainsVersion {
-            return changeCommit
-        }
-        return await git(["rev-parse", "\(changeCommit)^"], in: projectDirectory)?
-            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        return nil
+    }
+
+    static func containsMarketingVersion(_ version: String, in contents: String) -> Bool {
+        let escaped = NSRegularExpression.escapedPattern(for: version)
+        let assignment = "(?m)^\\s*MARKETING_VERSION\\s*[=:]\\s*[\\\"']?\(escaped)[\\\"']?\\s*(?:;|//[^\\n]*|#[^\\n]*)?$"
+        let plist = "<key>CFBundleShortVersionString</key>\\s*<string>\(escaped)</string>"
+        return contents.range(of: assignment, options: .regularExpression) != nil
+            || contents.range(of: plist, options: .regularExpression) != nil
     }
 
     private func git(_ arguments: [String], in directory: URL) async -> String? {

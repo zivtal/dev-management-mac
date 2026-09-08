@@ -1160,7 +1160,6 @@
 "The requested App Store name %@ is unavailable for %@. Keeping the existing name %@ and continuing.\n" = "The requested App Store name %@ is unavailable for %@. Keeping the existing name %@ and continuing.\n";
 "No README release section or Git changes could be found after approved version %@." = "No README release section or Git changes could be found after approved version %@.";
 "Git changes after approved version %@ (%@)" = "Git changes after approved version %@ (%@)";
-"the 20 latest Git commits because approved version %@ has no matching tag or version commit" = "the 20 latest Git commits because approved version %@ has no matching tag or version commit";
 "Generate What’s New with OpenAI" = "Generate What’s New with OpenAI";
 "Generating What’s New…" = "Generating What’s New…";
 "Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced." = "Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced.";
@@ -1328,3 +1327,5 @@
 "The simulated date and time are UTC; the app also runs with its timezone set to UTC." = "The simulated date and time are UTC; the app also runs with its timezone set to UTC.";
 "Show the full log" = "Show the full log";
 "Show only the latest log lines" = "Show only the latest log lines";
+
+"Could not locate approved version %@ in this repository’s release tags or version settings. Restore its Git history or add a release tag at the approved commit, then try again." = "Could not locate approved version %@ in this repository’s release tags or version settings. Restore its Git history or add a release tag at the approved commit, then try again.";

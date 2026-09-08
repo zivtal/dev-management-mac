@@ -378,7 +378,7 @@ final class AppStorePublishingTests: XCTestCase {
             workingDirectory: root
         )
 
-        let evidence = await AppStoreReleaseNotesEvidenceService().evidence(
+        let evidence = try await AppStoreReleaseNotesEvidenceService().evidence(
             project: managedProject(at: root),
             previousVersion: "1.0.0",
             currentVersion: "2.0.0"
@@ -437,7 +437,7 @@ final class AppStorePublishingTests: XCTestCase {
             workingDirectory: root
         )
 
-        let evidence = await AppStoreReleaseNotesEvidenceService().evidence(
+        let evidence = try await AppStoreReleaseNotesEvidenceService().evidence(
             project: managedProject(at: root),
             previousVersion: "1.0.0",
             currentVersion: "2.0.0"
@@ -466,7 +466,7 @@ final class AppStorePublishingTests: XCTestCase {
             encoding: .utf8
         )
 
-        let evidence = await AppStoreReleaseNotesEvidenceService().evidence(
+        let evidence = try await AppStoreReleaseNotesEvidenceService().evidence(
             project: managedProject(at: root),
             previousVersion: "1.0.0",
             currentVersion: "2.0.0"
