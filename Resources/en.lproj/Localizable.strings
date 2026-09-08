@@ -1293,7 +1293,8 @@
 "Session stopped; the app keeps running in the Simulator." = "Session stopped; the app keeps running in the Simulator.";
 "Source change detected; rebuilding.\n" = "Source change detected; rebuilding.\n";
 "Could not watch the project folder; automatic rebuilds are unavailable.\n" = "Could not watch the project folder; automatic rebuilds are unavailable.\n";
-"Fix the error and save a watched file to try again.\n" = "Fix the error and save a watched file to try again.\n";
+"Will retry automatically in 5 minutes. Save a watched file or choose Rebuild now to try sooner.\n" = "Will retry automatically in 5 minutes. Save a watched file or choose Rebuild now to try sooner.\n";
+"Retrying the failed Simulator session.\n" = "Retrying the failed Simulator session.\n";
 "A change arrived during the build; refreshing again.\n" = "A change arrived during the build; refreshing again.\n";
 "Booting %@…" = "Booting %@…";
 "Using Simulator %@ (%@).\n" = "Using Simulator %@ (%@).\n";

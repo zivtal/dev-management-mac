@@ -1293,7 +1293,8 @@
 "Session stopped; the app keeps running in the Simulator." = "ההפעלה הופסקה; האפליקציה ממשיכה לרוץ בסימולטור.";
 "Source change detected; rebuilding.\n" = "זוהה שינוי בקוד; בנייה מחדש.\n";
 "Could not watch the project folder; automatic rebuilds are unavailable.\n" = "לא ניתן לעקוב אחר תיקיית הפרויקט; בנייה מחדש אוטומטית אינה זמינה.\n";
-"Fix the error and save a watched file to try again.\n" = "יש לתקן את השגיאה ולשמור קובץ במעקב כדי לנסות שוב.\n";
+"Will retry automatically in 5 minutes. Save a watched file or choose Rebuild now to try sooner.\n" = "ניסיון חוזר אוטומטי בעוד 5 דקות. כדי לנסות מוקדם יותר, יש לשמור קובץ במעקב או לבחור בבנייה מחדש כעת.\n";
+"Retrying the failed Simulator session.\n" = "מנסה שוב להפעיל את הסשן שנכשל בסימולטור.\n";
 "A change arrived during the build; refreshing again.\n" = "שינוי התקבל במהלך הבנייה; מרענן שוב.\n";
 "Booting %@…" = "מפעיל את %@…";
 "Using Simulator %@ (%@).\n" = "משתמש בסימולטור %@ (%@).\n";

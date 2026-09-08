@@ -1,5 +1,16 @@
 import Foundation
 
+protocol SimulatorBuilding {
+    func buildForSimulator(
+        project: ManagedProject,
+        simulatorUDID: String,
+        derivedDataURL: URL,
+        eventHandler: @escaping InstallationService.EventHandler
+    ) async throws -> SimulatorBuildProduct
+}
+
+extension InstallationService: SimulatorBuilding {}
+
 /// Drives one project's live simulator session: boot, build, install, launch,
 /// then watch the sources and rebuild on changes, with live control over the
 /// simulator while the app runs.
@@ -40,10 +51,12 @@ final class SimulatorSessionController: ObservableObject {
 
     private(set) var project: ManagedProject
     private let simulatorService: SimulatorService
-    private let installationService: InstallationService
+    private let installationService: any SimulatorBuilding
     private let derivedDataURL: URL
+    private let retrySleep: @MainActor (Duration) async throws -> Void
 
     private var sessionTask: Task<Void, Never>?
+    private var retryTask: Task<Void, Never>?
     private var watcher: SourceChangeWatcher?
     private var buildProduct: SimulatorBuildProduct?
     private var pendingRebuild = false
@@ -53,13 +66,17 @@ final class SimulatorSessionController: ObservableObject {
     init(
         project: ManagedProject,
         simulatorService: SimulatorService,
-        installationService: InstallationService,
-        derivedDataURL: URL
+        installationService: any SimulatorBuilding,
+        derivedDataURL: URL,
+        retrySleep: @escaping @MainActor (Duration) async throws -> Void = {
+            try await Task.sleep(for: $0)
+        }
     ) {
         self.project = project
         self.simulatorService = simulatorService
         self.installationService = installationService
         self.derivedDataURL = derivedDataURL
+        self.retrySleep = retrySleep
     }
 
     func updateProject(_ project: ManagedProject) {
@@ -100,6 +117,8 @@ final class SimulatorSessionController: ObservableObject {
     /// Stops watching and rebuilding. The simulator and the app keep running,
     /// matching run-emulator.sh's Ctrl-C behavior.
     func stop() {
+        retryTask?.cancel()
+        retryTask = nil
         sessionTask?.cancel()
         sessionTask = nil
         watcher?.stop()
@@ -111,13 +130,19 @@ final class SimulatorSessionController: ObservableObject {
     }
 
     func rebuildNow() {
-        guard let settings = appliedSettings else { return }
+        guard isSessionActive, let settings = appliedSettings else { return }
         guard sessionTask == nil else {
             pendingRebuild = true
             return
         }
+        let needsPreparation = phase == .failed || activeDevice == nil
+            || activeDevice?.udid != settings.deviceUDID && settings.deviceUDID != nil
         runSession { [weak self] in
-            try await self?.buildInstallAndLaunch(settings: settings)
+            if needsPreparation {
+                try await self?.prepareDeviceAndRun(settings: settings, reinstallOnly: false)
+            } else {
+                try await self?.buildInstallAndLaunch(settings: settings)
+            }
         }
     }
 
@@ -132,6 +157,11 @@ final class SimulatorSessionController: ObservableObject {
         appliedSettings = settings
         guard sessionTask == nil else {
             pendingRebuild = true
+            return
+        }
+
+        if phase == .failed {
+            rebuildNow()
             return
         }
 
@@ -203,19 +233,45 @@ final class SimulatorSessionController: ObservableObject {
     }
 
     private func runSession(_ work: @escaping () async throws -> Void) {
+        retryTask?.cancel()
+        retryTask = nil
         sessionTask = Task { [weak self] in
             do {
+                try Task.checkCancellation()
                 try await work()
+                try Task.checkCancellation()
             } catch is CancellationError {
                 // Stopping the session cancels in-flight work silently.
+                return
             } catch {
+                guard !Task.isCancelled else { return }
                 self?.phase = .failed
                 self?.statusMessage = error.localizedDescription
                 self?.appendOutput("\n" + error.localizedDescription + "\n")
-                self?.appendOutput(L10n.text("Fix the error and save a watched file to try again.\n"))
+                self?.appendOutput(L10n.text("Will retry automatically in 5 minutes. Save a watched file or choose Rebuild now to try sooner.\n"))
+                self?.scheduleRetry()
             }
             self?.sessionTask = nil
             self?.runPendingRebuildIfNeeded()
+        }
+    }
+
+    private func scheduleRetry() {
+        guard isSessionActive else { return }
+        retryTask?.cancel()
+        let sleep = retrySleep
+        retryTask = Task { [weak self] in
+            do {
+                try await sleep(.seconds(5 * 60))
+                try Task.checkCancellation()
+            } catch {
+                return
+            }
+            guard let self, self.isSessionActive, self.phase == .failed else { return }
+            self.retryTask = nil
+            self.appendOutput(L10n.text("Retrying the failed Simulator session.\n"))
+            // Retry even when sources have the same fingerprint as the failed build.
+            self.rebuildNow()
         }
     }
 
