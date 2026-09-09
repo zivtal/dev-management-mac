@@ -35,7 +35,7 @@ struct MenuBarView: View {
         .padding(.vertical, 14)
         .padding(.leading, 14)
         .padding(.trailing, 16)
-        .frame(width: showsGitBranchColumn ? 735 : 635)
+        .frame(width: showsGitBranchColumn ? 765 : 635)
         .frame(height: popoverSizing.popoverHeight, alignment: .top)
         .background {
             MenuBarOpenObserver {
@@ -376,7 +376,7 @@ struct MenuBarView: View {
                             .frame(width: 160, alignment: .leading)
                         if showsGitBranchColumn {
                             Text("Branch")
-                                .frame(width: 90, alignment: .leading)
+                                .frame(width: 120, alignment: .leading)
                         }
                         Text("Devices")
                             .frame(width: 55, alignment: .center)
@@ -407,12 +407,7 @@ struct MenuBarView: View {
                             .frame(width: 160, alignment: .leading)
 
                             if showsGitBranchColumn {
-                                Text(model.activeGitBranch(for: project.id) ?? "—")
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 90, alignment: .leading)
-                                    .lineLimit(1)
-                                    .help(model.activeGitBranch(for: project.id) ?? L10n.text("Not a Git worktree"))
+                                buildBranchCell(for: project)
                             }
 
                             selectedDeviceCountCell(for: project)
@@ -645,6 +640,85 @@ struct MenuBarView: View {
 
     private var showsGitBranchColumn: Bool {
         !model.gitBranchesByProjectID.isEmpty
+    }
+
+    /// Branch column: shows what the next install builds and lets the user
+    /// pick a different branch without touching the repository's checkout.
+    @ViewBuilder
+    private func buildBranchCell(for project: ManagedProject) -> some View {
+        let workingCopyBranch = model.activeGitBranch(for: project.id)
+        let options = project.buildBranchOptions(available: model.availableGitBranches(for: project.id))
+        if workingCopyBranch == nil && options.isEmpty {
+            Text("—")
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .frame(width: 120, alignment: .leading)
+                .help(L10n.text("Not a Git worktree"))
+        } else {
+            Menu {
+                Button {
+                    model.setProjectBuildBranch(nil, for: project.id)
+                } label: {
+                    branchMenuItemLabel(
+                        workingCopyTitle(workingCopyBranch),
+                        isSelected: project.buildsFromWorkingCopy
+                    )
+                }
+                if !options.isEmpty {
+                    Divider()
+                }
+                ForEach(options, id: \.self) { branch in
+                    Button {
+                        model.setProjectBuildBranch(branch, for: project.id)
+                    } label: {
+                        branchMenuItemLabel(branch, isSelected: project.normalizedBuildBranch == branch)
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: project.buildsFromWorkingCopy ? "folder" : "arrow.triangle.branch")
+                        .font(.caption2)
+                    Text(project.buildBranchDisplayName(workingCopyBranch: workingCopyBranch))
+                        .font(.caption.monospaced())
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .foregroundStyle(project.buildsFromWorkingCopy ? .secondary : .primary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: 120, alignment: .leading)
+            .help(buildBranchHelp(for: project, workingCopyBranch: workingCopyBranch))
+            .accessibilityLabel(L10n.format("Build branch for %@", project.displayName))
+        }
+    }
+
+    private func branchMenuItemLabel(_ title: String, isSelected: Bool) -> some View {
+        HStack {
+            if isSelected {
+                Image(systemName: "checkmark")
+            }
+            Text(title)
+        }
+    }
+
+    private func workingCopyTitle(_ branch: String?) -> String {
+        if let branch {
+            return L10n.format("Working copy (%@)", branch)
+        }
+        return L10n.text("Working copy")
+    }
+
+    private func buildBranchHelp(for project: ManagedProject, workingCopyBranch: String?) -> String {
+        if let branch = project.normalizedBuildBranch {
+            return L10n.format(
+                "Installs build the committed tip of %@ from a separate checkout; the repository stays on %@.",
+                branch,
+                workingCopyBranch ?? L10n.text("its current branch")
+            )
+        }
+        return L10n.text("Installs build the working copy exactly as checked out. Choose a branch to build it without changing the checkout.")
     }
 
     private func hasSubscriptions(_ project: ManagedProject) -> Bool {

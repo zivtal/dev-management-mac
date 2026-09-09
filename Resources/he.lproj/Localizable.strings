@@ -1330,3 +1330,20 @@
 "Show only the latest log lines" = "הצגת השורות האחרונות בלבד";
 
 "Could not locate approved version %@ in this repository’s release tags or version settings. Restore its Git history or add a release tag at the approved commit, then try again." = "לא ניתן לאתר את הגרסה המאושרת %@ בתגי ההפצה או בהגדרות הגרסה של המאגר. יש לשחזר את היסטוריית Git או להוסיף תג הפצה בקומיט המאושר, ואז לנסות שוב.";
+
+"Build branch" = "ענף לבנייה";
+"Working copy" = "עותק העבודה";
+"Working copy (%@)" = "עותק העבודה (%@)";
+"its current branch" = "הענף הנוכחי שלו";
+"Build branch for %@" = "ענף הבנייה של %@";
+"Installs build the committed tip of %@ from a separate checkout; the repository stays on %@." = "ההתקנות בונות את הקומיט האחרון של %@ מתוך checkout נפרד; המאגר נשאר על %@.";
+"Installs build the working copy exactly as checked out. Choose a branch to build it without changing the checkout." = "ההתקנות בונות את עותק העבודה בדיוק כפי שהוא. בחרו ענף כדי לבנות אותו בלי לשנות את ה‑checkout.";
+"Installs build the working copy exactly as checked out." = "ההתקנות בונות את עותק העבודה בדיוק כפי שהוא.";
+"Installs build this branch's committed tip from a separate checkout; the repository's checked-out branch is never changed." = "ההתקנות בונות את הקומיט האחרון של הענף מתוך checkout נפרד; הענף הפעיל במאגר לעולם אינו משתנה.";
+"%@ now installs from the working copy" = "%@ יותקן מעתה מעותק העבודה";
+"%@ now installs from branch %@" = "%@ יותקן מעתה מהענף %@";
+"%@ is not a Git repository, so a build branch cannot be checked out." = "%@ אינו מאגר Git, ולכן לא ניתן לבצע checkout לענף הבנייה.";
+"Branch %@ was not found in the repository." = "הענף %@ לא נמצא במאגר.";
+"Preparing a detached checkout of branch %@…\n" = "מכין checkout מנותק של הענף %@…\n";
+"Building branch %@ at %@ from %@; the repository's checked-out branch was left unchanged.\n" = "בונה את הענף %@ בקומיט %@ מתוך %@; הענף הפעיל במאגר לא שונה.\n";
+"Could not fetch %@ from %@; building the last known revision.\n" = "לא ניתן למשוך את %@ מ‑%@; בונה את הגרסה האחרונה הידועה.\n";

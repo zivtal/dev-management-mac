@@ -1330,3 +1330,20 @@
 "Show only the latest log lines" = "Show only the latest log lines";
 
 "Could not locate approved version %@ in this repository’s release tags or version settings. Restore its Git history or add a release tag at the approved commit, then try again." = "Could not locate approved version %@ in this repository’s release tags or version settings. Restore its Git history or add a release tag at the approved commit, then try again.";
+
+"Build branch" = "Build branch";
+"Working copy" = "Working copy";
+"Working copy (%@)" = "Working copy (%@)";
+"its current branch" = "its current branch";
+"Build branch for %@" = "Build branch for %@";
+"Installs build the committed tip of %@ from a separate checkout; the repository stays on %@." = "Installs build the committed tip of %@ from a separate checkout; the repository stays on %@.";
+"Installs build the working copy exactly as checked out. Choose a branch to build it without changing the checkout." = "Installs build the working copy exactly as checked out. Choose a branch to build it without changing the checkout.";
+"Installs build the working copy exactly as checked out." = "Installs build the working copy exactly as checked out.";
+"Installs build this branch's committed tip from a separate checkout; the repository's checked-out branch is never changed." = "Installs build this branch's committed tip from a separate checkout; the repository's checked-out branch is never changed.";
+"%@ now installs from the working copy" = "%@ now installs from the working copy";
+"%@ now installs from branch %@" = "%@ now installs from branch %@";
+"%@ is not a Git repository, so a build branch cannot be checked out." = "%@ is not a Git repository, so a build branch cannot be checked out.";
+"Branch %@ was not found in the repository." = "Branch %@ was not found in the repository.";
+"Preparing a detached checkout of branch %@…\n" = "Preparing a detached checkout of branch %@…\n";
+"Building branch %@ at %@ from %@; the repository's checked-out branch was left unchanged.\n" = "Building branch %@ at %@ from %@; the repository's checked-out branch was left unchanged.\n";
+"Could not fetch %@ from %@; building the last known revision.\n" = "Could not fetch %@ from %@; building the last known revision.\n";

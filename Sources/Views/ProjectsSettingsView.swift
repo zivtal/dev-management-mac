@@ -313,6 +313,44 @@ struct ProjectsSettingsView: View {
 
             settingsDivider
 
+            settingsPickerRow("Build branch") {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Picker(
+                        "Build branch",
+                        selection: Binding(
+                            get: { project.normalizedBuildBranch ?? "" },
+                            set: { model.setProjectBuildBranch($0.isEmpty ? nil : $0, for: project.id) }
+                        )
+                    ) {
+                        Text(workingCopyTitle(model.activeGitBranch(for: project.id))).tag("")
+                        let options = project.buildBranchOptions(
+                            available: model.availableGitBranches(for: project.id)
+                        )
+                        if !options.isEmpty {
+                            Divider()
+                        }
+                        ForEach(options, id: \.self) { Text($0).tag($0) }
+                    }
+                    .labelsHidden()
+                    .disabled(
+                        model.activeGitBranch(for: project.id) == nil
+                            && model.availableGitBranches(for: project.id).isEmpty
+                    )
+                    Text(
+                        project.buildsFromWorkingCopy
+                            ? "Installs build the working copy exactly as checked out."
+                            : "Installs build this branch's committed tip from a separate checkout; the repository's checked-out branch is never changed."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 6)
+            }
+
+            settingsDivider
+
             settingsPickerRow("Signing team") {
                 HStack(spacing: 8) {
                         Picker(
@@ -575,6 +613,13 @@ struct ProjectsSettingsView: View {
         }
         .padding(.horizontal, 12)
         .frame(minHeight: 44)
+    }
+
+    private func workingCopyTitle(_ branch: String?) -> String {
+        if let branch {
+            return L10n.format("Working copy (%@)", branch)
+        }
+        return L10n.text("Working copy")
     }
 
     private var settingsDivider: some View {

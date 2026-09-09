@@ -53,9 +53,56 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
     var appStoreConnectCredentialProfileID: UUID? = nil
     var simulatorRunSettings: SimulatorRunSettings? = nil
     var simulatorTestedDeviceUDIDs: Set<String>? = nil
+    /// Git branch whose committed tip is built for installs. `nil` (or blank)
+    /// builds the working copy at `folderPath` exactly as checked out.
+    var buildBranch: String? = nil
 
     var folderURL: URL { URL(fileURLWithPath: folderPath, isDirectory: true) }
     var containerURL: URL { URL(fileURLWithPath: containerPath) }
+
+    var normalizedBuildBranch: String? {
+        guard let branch = buildBranch?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !branch.isEmpty else { return nil }
+        return branch
+    }
+
+    var buildsFromWorkingCopy: Bool {
+        normalizedBuildBranch == nil
+    }
+
+    /// Text for the popover's Branch column: the selected build branch, or
+    /// the working copy's current branch when installs follow the checkout.
+    func buildBranchDisplayName(workingCopyBranch: String?) -> String {
+        normalizedBuildBranch ?? workingCopyBranch ?? "—"
+    }
+
+    /// Branch choices for pickers in the Git service's order (local branches,
+    /// then remote-only ones), always including the selected branch so a
+    /// branch that has since been deleted still shows as chosen.
+    func buildBranchOptions(available: [String]) -> [String] {
+        guard let selected = normalizedBuildBranch, !available.contains(selected) else {
+            return available
+        }
+        return [selected] + available
+    }
+
+    /// Returns a copy whose folder and container point into `checkoutURL`,
+    /// preserving the container's path relative to the repository root.
+    func rerooted(to checkoutURL: URL) -> ManagedProject {
+        var copy = self
+        let originalFolder = folderURL.standardizedFileURL.path
+        let originalContainer = containerURL.standardizedFileURL.path
+        var relativeContainer = originalContainer.hasPrefix(originalFolder)
+            ? String(originalContainer.dropFirst(originalFolder.count))
+            : containerURL.lastPathComponent
+        while relativeContainer.hasPrefix("/") { relativeContainer.removeFirst() }
+        let newFolder = checkoutURL.standardizedFileURL
+        copy.folderPath = newFolder.path
+        copy.containerPath = relativeContainer.isEmpty
+            ? newFolder.path
+            : newFolder.appendingPathComponent(relativeContainer).path
+        return copy
+    }
 
     var effectiveApplicationPlatform: ApplicationPlatform {
         applicationPlatform ?? .iOS

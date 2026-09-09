@@ -149,8 +149,10 @@ The menu-bar popover is the app's primary status surface. It displays:
 - Concurrent per-application App Store publishing progress with **View** and
   cancel actions.
 - Every managed application with its icon, enabled state, version, next due
-  date, most recent installation, and current Git branch when its folder belongs
-  to a Git worktree. Detached HEADs show their short revision.
+  date, most recent installation, and a **Branch** menu when its folder belongs
+  to a Git worktree. The menu shows the branch the next install builds and lists
+  **Working copy** plus every local and remote branch. Detached HEADs show
+  their short revision.
 - A paper-plane action for publishing each eligible direct-build iOS app, plus
   a ticket action that opens a focused Redeem Codes window for apps with
   subscription products.
@@ -400,15 +402,25 @@ image is used as a fallback.
 Direct installation does not require any repository-specific script. For the
 selected project/workspace, scheme, configuration, and device, Development Management:
 
-1. Regenerates a root-level XcodeGen project when `project.yml` is present.
-2. Creates a temporary copy of the selected scheme without pre/post action
+1. Resolves the application's **Build branch**. The default, **Working copy**,
+   builds the repository folder exactly as checked out. When a branch is
+   selected, Development Management checks out that branch's committed tip as
+   a detached Git worktree under `~/Library/Application Support/Development
+   Management/Build Checkouts/<application-id>` and builds there. The
+   repository's own checkout, index, and working files are never modified, so
+   another IDE or agent can keep working in it. Remote-only branches are
+   fetched best-effort before checkout. The same rule applies to macOS
+   installs; the DMG still lands in the repository's `dist` folder. Simulator
+   sessions and App Store publishing continue to use the working copy.
+2. Regenerates a root-level XcodeGen project when `project.yml` is present.
+3. Creates a temporary copy of the selected scheme without pre/post action
    scripts, so workflow scripts cannot mutate the repository or its version.
-3. Creates a temporary Derived Data directory.
-4. Runs `xcodebuild` for `platform=iOS,id=<device-udid>` with a 45-second
+4. Creates a temporary Derived Data directory.
+5. Runs `xcodebuild` for `platform=iOS,id=<device-udid>` with a 45-second
    destination timeout.
-5. Passes `-allowProvisioningUpdates` and
+6. Passes `-allowProvisioningUpdates` and
    `-allowProvisioningDeviceRegistration`.
-6. Uses the project's resolved signing team when it has one. Otherwise,
+7. Uses the project's resolved signing team when it has one. Otherwise,
    automatically selects a unique team whose valid Xcode provisioning profiles
    match the application's bundle-ID namespace. A team selected explicitly for
    the managed application overrides `DEVELOPMENT_TEAM` and enables Xcode
@@ -416,11 +428,11 @@ selected project/workspace, scheme, configuration, and device, Development Manag
    from local Apple Development identities and valid Xcode provisioning profiles
    and can be refreshed in Settings. If no unique match exists, Settings requires
    an explicit per-application selection before the build starts.
-7. Resolves the built application with `xcodebuild -showBuildSettings -json`,
+8. Resolves the built application with `xcodebuild -showBuildSettings -json`,
    with a Derived Data scan as fallback.
-8. Runs `xcrun devicectl device install app --device <device-udid>
+9. Runs `xcrun devicectl device install app --device <device-udid>
    --timeout 180 <built-app>`.
-9. Removes the temporary build directory and temporary scheme.
+10. Removes the temporary build directory and temporary scheme.
 
 Paired devices reported by CoreDevice remain visible and keep their per-application
 selection while their developer tunnel is connecting. Development Management actively

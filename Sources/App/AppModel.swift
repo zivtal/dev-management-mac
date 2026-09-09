@@ -43,6 +43,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var pendingInstallAllCount = 0
     @Published private(set) var projectIconURLs: [UUID: URL] = [:]
     @Published private(set) var gitBranchesByProjectID: [UUID: String] = [:]
+    @Published private(set) var availableGitBranchesByProjectID: [UUID: [String]] = [:]
     @Published private(set) var developerTeams: [DeveloperTeam] = []
     @Published private(set) var isRefreshingDeveloperTeams = false
     @Published private(set) var isSettingsWindowOpen = false
@@ -134,6 +135,26 @@ final class AppModel: ObservableObject {
         gitBranchesByProjectID[projectID]
     }
 
+    func availableGitBranches(for projectID: UUID) -> [String] {
+        availableGitBranchesByProjectID[projectID] ?? []
+    }
+
+    /// Selects the Git branch whose committed tip future installs build.
+    /// `nil` returns to building the working copy as checked out.
+    func setProjectBuildBranch(_ branch: String?, for projectID: UUID) {
+        let normalized = branch?.trimmingCharacters(in: .whitespacesAndNewlines)
+        updateProject(id: projectID) {
+            $0.buildBranch = normalized?.isEmpty == false ? normalized : nil
+        }
+        guard let project = projects.first(where: { $0.id == projectID }) else { return }
+        addActivity(
+            level: .info,
+            title: project.buildsFromWorkingCopy
+                ? L10n.format("%@ now installs from the working copy", project.displayName)
+                : L10n.format("%@ now installs from branch %@", project.displayName, project.buildBranch ?? "")
+        )
+    }
+
     private struct ProjectInstallationTarget {
         let identifier: String
         let name: String
@@ -164,6 +185,7 @@ final class AppModel: ObservableObject {
     private let notificationService: NotificationService
     private let projectIconService: ProjectIconService
     private let projectGitService: ProjectGitService
+    private let buildCheckoutService: ProjectBuildCheckoutService
     private let developerTeamService: DeveloperTeamService
     private let credentialStore: KeychainCredentialStore
     private let publishingService: AppStorePublishingService
@@ -193,6 +215,7 @@ final class AppModel: ObservableObject {
         notificationService: NotificationService = NotificationService(),
         projectIconService: ProjectIconService = ProjectIconService(),
         projectGitService: ProjectGitService = ProjectGitService(),
+        buildCheckoutService: ProjectBuildCheckoutService = ProjectBuildCheckoutService(),
         developerTeamService: DeveloperTeamService = DeveloperTeamService(),
         credentialStore: KeychainCredentialStore = KeychainCredentialStore(),
         publishingService: AppStorePublishingService = AppStorePublishingService(),
@@ -208,6 +231,7 @@ final class AppModel: ObservableObject {
         self.notificationService = notificationService
         self.projectIconService = projectIconService
         self.projectGitService = projectGitService
+        self.buildCheckoutService = buildCheckoutService
         self.developerTeamService = developerTeamService
         self.credentialStore = credentialStore
         self.publishingService = publishingService
@@ -433,8 +457,12 @@ final class AppModel: ObservableObject {
         clearTransientInstallationState(for: id)
         projectIconURLs[id] = nil
         gitBranchesByProjectID[id] = nil
+        availableGitBranchesByProjectID[id] = nil
         installationRecords.removeAll { $0.projectID == id }
         addActivity(level: .info, title: L10n.format("Removed %@", project.displayName))
+        Task { [buildCheckoutService] in
+            await buildCheckoutService.removeCheckout(for: project)
+        }
     }
 
     func updateProject(id: UUID, mutation: (inout ManagedProject) -> Void) {
@@ -2134,17 +2162,22 @@ final class AppModel: ObservableObject {
     private func refreshProjectGitBranches() async {
         let currentProjects = projects
         var branches: [UUID: String] = [:]
-        await withTaskGroup(of: (UUID, String?).self) { group in
+        var availableBranches: [UUID: [String]] = [:]
+        await withTaskGroup(of: (UUID, String?, [String]).self) { group in
             for project in currentProjects {
                 group.addTask { [projectGitService] in
-                    (project.id, await projectGitService.activeBranch(for: project))
+                    async let active = projectGitService.activeBranch(for: project)
+                    async let available = projectGitService.availableBranches(for: project)
+                    return (project.id, await active, await available)
                 }
             }
-            for await (projectID, branch) in group {
+            for await (projectID, branch, available) in group {
                 if let branch { branches[projectID] = branch }
+                if !available.isEmpty { availableBranches[projectID] = available }
             }
         }
         gitBranchesByProjectID = branches
+        availableGitBranchesByProjectID = availableBranches
     }
 
     private func refreshUnknownProjectMetadata(restartMonitoringAfterUpdate: Bool) async {

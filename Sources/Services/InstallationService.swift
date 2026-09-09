@@ -182,17 +182,23 @@ final class InstallationService {
     private let versionService: ProjectVersionService
     private let xcodeGenPreparationService: XcodeGenProjectPreparationService
     private let xcodeSchemePreparationService: XcodeSchemeBuildPreparationService
+    private let checkoutService: ProjectBuildCheckoutService
 
     init(
         processRunner: ProcessRunner = ProcessRunner(),
         fileManager: FileManager = .default,
         developerTeamService: DeveloperTeamService = DeveloperTeamService(),
-        versionService: ProjectVersionService = ProjectVersionService()
+        versionService: ProjectVersionService = ProjectVersionService(),
+        checkoutService: ProjectBuildCheckoutService? = nil
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
         self.developerTeamService = developerTeamService
         self.versionService = versionService
+        self.checkoutService = checkoutService ?? ProjectBuildCheckoutService(
+            processRunner: processRunner,
+            fileManager: fileManager
+        )
         self.xcodeGenPreparationService = XcodeGenProjectPreparationService(
             processRunner: processRunner,
             fileManager: fileManager
@@ -228,7 +234,11 @@ final class InstallationService {
     ) async throws -> InstallationBatchOutcome {
         guard !devices.isEmpty else { throw InstallationServiceError.noInstallationDevices }
         eventHandler(.phase(.preparing))
-        return try await buildAndInstall(project: project, devices: devices, eventHandler: eventHandler)
+        let buildSource = try await checkoutService.prepare(
+            project: project,
+            onOutput: { eventHandler(.output($0)) }
+        )
+        return try await buildAndInstall(project: buildSource, devices: devices, eventHandler: eventHandler)
     }
 
     func install(
@@ -236,9 +246,14 @@ final class InstallationService {
         eventHandler: @escaping EventHandler
     ) async throws -> InstallationOutcome {
         eventHandler(.phase(.preparing))
+        let buildSource = try await checkoutService.prepare(
+            project: project,
+            onOutput: { eventHandler(.output($0)) }
+        )
 
         return try await buildPackageAndInstallMacApplication(
-            project: project,
+            project: buildSource,
+            dmgURL: project.macOSDMGURL,
             eventHandler: eventHandler
         )
     }
@@ -248,9 +263,7 @@ final class InstallationService {
         devices: [ConnectedDevice],
         eventHandler: @escaping EventHandler
     ) async throws -> InstallationBatchOutcome {
-        guard fileManager.fileExists(atPath: project.containerPath) else {
-            throw InstallationServiceError.missingProjectContainer
-        }
+        try await requireProjectContainer(project)
 
         try await xcodeGenPreparationService.prepare(
             project: project,
@@ -385,13 +398,22 @@ final class InstallationService {
         )
     }
 
+    /// The container must exist unless a fresh XcodeGen checkout can still
+    /// generate it; in that case `project.yml` must be present instead.
+    private func requireProjectContainer(_ project: ManagedProject) async throws {
+        if fileManager.fileExists(atPath: project.containerPath) { return }
+        if XcodeGenProjectPreparation.specificationURL(for: project, fileManager: fileManager) != nil {
+            return
+        }
+        throw InstallationServiceError.missingProjectContainer
+    }
+
     private func buildPackageAndInstallMacApplication(
         project: ManagedProject,
+        dmgURL: URL,
         eventHandler: @escaping EventHandler
     ) async throws -> InstallationOutcome {
-        guard fileManager.fileExists(atPath: project.containerPath) else {
-            throw InstallationServiceError.missingProjectContainer
-        }
+        try await requireProjectContainer(project)
 
         try await xcodeGenPreparationService.prepare(
             project: project,
@@ -460,7 +482,7 @@ final class InstallationService {
         eventHandler(.phase(.packaging))
         try fileManager.createDirectory(at: stagingURL, withIntermediateDirectories: true)
         try fileManager.createDirectory(
-            at: project.macOSDMGURL.deletingLastPathComponent(),
+            at: dmgURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         let stagedAppURL = stagingURL.appendingPathComponent(appURL.lastPathComponent, isDirectory: true)
@@ -479,20 +501,20 @@ final class InstallationService {
                 "-fs", "HFS+",
                 "-format", "UDZO",
                 "-ov",
-                project.macOSDMGURL.path
+                dmgURL.path
             ],
             workingDirectory: project.folderURL,
             onOutput: { eventHandler(.output($0)) }
         )
         let verifyResult = try await processRunner.runAndRequireSuccess(
             executable: URL(fileURLWithPath: "/usr/bin/hdiutil"),
-            arguments: ["verify", project.macOSDMGURL.path],
+            arguments: ["verify", dmgURL.path],
             workingDirectory: project.folderURL,
             onOutput: { eventHandler(.output($0)) }
         )
         eventHandler(.output(L10n.format(
             "Created and verified DMG at %@.\n",
-            project.macOSDMGURL.path
+            dmgURL.path
         )))
 
         try fileManager.createDirectory(at: mountURL, withIntermediateDirectories: true)
@@ -501,7 +523,7 @@ final class InstallationService {
             let attachResult = try await processRunner.runAndRequireSuccess(
                 executable: URL(fileURLWithPath: "/usr/bin/hdiutil"),
                 arguments: [
-                    "attach", project.macOSDMGURL.path,
+                    "attach", dmgURL.path,
                     "-nobrowse", "-readonly", "-mountpoint", mountURL.path
                 ],
                 workingDirectory: project.folderURL,
@@ -565,14 +587,14 @@ final class InstallationService {
                 copyResult.output,
                 detachResult.output,
                 launchResult.output,
-                L10n.format("Created and verified DMG at %@.", project.macOSDMGURL.path),
+                L10n.format("Created and verified DMG at %@.", dmgURL.path),
                 L10n.format("Installed and launched %@.", installationURL.path)
             ]
                 .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
                 .joined(separator: "\n\n")
             return InstallationOutcome(
                 log: Self.trimmedLog(log),
-                artifactURL: project.macOSDMGURL,
+                artifactURL: dmgURL,
                 profileExpirationDate: profileExpirationDate,
                 profileExpirationWasChecked: true
             )
@@ -740,9 +762,7 @@ final class InstallationService {
         derivedDataURL: URL,
         eventHandler: @escaping EventHandler
     ) async throws -> SimulatorBuildProduct {
-        guard fileManager.fileExists(atPath: project.containerPath) else {
-            throw InstallationServiceError.missingProjectContainer
-        }
+        try await requireProjectContainer(project)
 
         try await xcodeGenPreparationService.prepare(
             project: project,
