@@ -14,11 +14,26 @@ enum ProjectBuildCheckoutError: LocalizedError, Equatable {
     }
 }
 
+/// Resolves the sources a build should use: the working copy, or a checkout
+/// of the application's selected build branch.
+protocol BuildSourcePreparing {
+    /// The project to build, rerooted into an up-to-date checkout of the
+    /// selected branch; the project itself for working-copy builds.
+    func prepare(
+        project: ManagedProject,
+        onOutput: @escaping ProjectBuildCheckoutService.OutputHandler
+    ) async throws -> ManagedProject
+
+    /// The commit the selected branch currently points at, without preparing
+    /// anything. `nil` for working-copy builds or when the branch is missing.
+    func sourceRevision(for project: ManagedProject) async -> String?
+}
+
 /// Materialises a managed application's selected build branch as a detached
 /// Git worktree owned by Development Management. The repository's own
 /// checkout (branch, index, and working files) is never modified, so other
 /// tools may keep working there while a different branch is built.
-final class ProjectBuildCheckoutService {
+final class ProjectBuildCheckoutService: BuildSourcePreparing {
     typealias OutputHandler = @Sendable (String) -> Void
 
     private let processRunner: ProcessRunner
@@ -47,6 +62,24 @@ final class ProjectBuildCheckoutService {
         rootDirectory.appendingPathComponent(project.id.uuidString, isDirectory: true)
     }
 
+    /// Where the project's sources are read from without preparing anything:
+    /// the project itself for working-copy builds, otherwise a copy rerooted
+    /// into the branch checkout folder (which `prepare` keeps current).
+    func sourceProject(for project: ManagedProject) -> ManagedProject {
+        guard project.normalizedBuildBranch != nil else { return project }
+        return project.rerooted(to: checkoutURL(for: project))
+    }
+
+    func sourceRevision(for project: ManagedProject) async -> String? {
+        guard let branch = project.normalizedBuildBranch else { return nil }
+        let repository = project.folderURL
+        guard await isGitWorkTree(repository),
+              let reference = await existingReference(for: branch, in: repository) else {
+            return nil
+        }
+        return await commit(of: reference, in: repository)
+    }
+
     /// Returns the project to build: the project itself for working-copy
     /// builds, otherwise a copy rerooted into an up-to-date detached worktree
     /// of the selected branch.
@@ -66,9 +99,15 @@ final class ProjectBuildCheckoutService {
         _ = try? await run(["worktree", "prune"], in: repository)
 
         if await isRegisteredWorktree(checkout, of: repository) {
-            _ = try await run(["checkout", "--quiet", "--detach", reference], in: checkout)
-            _ = try await run(["reset", "--quiet", "--hard"], in: checkout)
-            _ = try await run(["clean", "--quiet", "-fd"], in: checkout)
+            // A checkout already at the branch tip is left exactly as it is, so
+            // generated projects and a build in progress there are not disturbed.
+            let target = await commit(of: reference, in: repository)
+            let current = await commit(of: "HEAD", in: checkout)
+            if target == nil || current == nil || target != current {
+                _ = try await run(["checkout", "--quiet", "--detach", reference], in: checkout)
+                _ = try await run(["reset", "--quiet", "--hard"], in: checkout)
+                _ = try await run(["clean", "--quiet", "-fd"], in: checkout)
+            }
         } else {
             if fileManager.fileExists(atPath: checkout.path) {
                 try fileManager.removeItem(at: checkout)
@@ -116,6 +155,30 @@ final class ProjectBuildCheckoutService {
             }
         }
         throw ProjectBuildCheckoutError.branchNotFound(branch)
+    }
+
+    /// The local or remote-tracking ref for `branch`, without fetching.
+    private func existingReference(for branch: String, in repository: URL) async -> String? {
+        if await referenceExists("refs/heads/\(branch)", in: repository) {
+            return "refs/heads/\(branch)"
+        }
+        if branch.contains("/"), await referenceExists("refs/remotes/\(branch)", in: repository) {
+            return "refs/remotes/\(branch)"
+        }
+        return nil
+    }
+
+    private func commit(of reference: String, in directory: URL) async -> String? {
+        let result = try? await processRunner.run(
+            executable: git,
+            arguments: ["-C", directory.path, "rev-parse", "--verify", "--quiet", "\(reference)^{commit}"]
+        )
+        guard result?.terminationStatus == 0,
+              let output = result?.output.trimmingCharacters(in: .whitespacesAndNewlines),
+              !output.isEmpty else {
+            return nil
+        }
+        return output
     }
 
     private func referenceExists(_ reference: String, in repository: URL) async -> Bool {

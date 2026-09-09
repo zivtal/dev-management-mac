@@ -12,18 +12,26 @@ final class SourceChangeWatcher {
     private static let ignoredFileNames: Set<String> = [".DS_Store"]
     private static let ignoredFileExtensions: Set<String> = ["md"]
 
+    private static let gitReferencePaths: Set<String> = ["refs", "packed-refs", "HEAD"]
+
     private let queue = DispatchQueue(label: "com.zivtal.DevManagement.SourceChangeWatcher")
     private let debounceInterval: TimeInterval
+    private let includesGitReferences: Bool
     private let onChange: ChangeHandler
     private var stream: FSEventStreamRef?
     private var pendingChange: DispatchWorkItem?
 
+    /// `includesGitReferences` also reports commits and fetches (changes under
+    /// the repository's `.git` refs), which is what a build from a selected
+    /// branch reacts to instead of edits in the working copy.
     init?(
         directoryURL: URL,
         debounceInterval: TimeInterval = 0.5,
+        includesGitReferences: Bool = false,
         onChange: @escaping ChangeHandler
     ) {
         self.debounceInterval = debounceInterval
+        self.includesGitReferences = includesGitReferences
         self.onChange = onChange
 
         var context = FSEventStreamContext(
@@ -41,7 +49,9 @@ final class SourceChangeWatcher {
                 return
             }
             let relevantPaths = paths.prefix(Int(eventCount)).filter {
-                !SourceChangeWatcher.shouldIgnore(path: $0)
+                !SourceChangeWatcher.shouldIgnore(
+                    path: $0, includesGitReferences: watcher.includesGitReferences
+                )
             }
             if !relevantPaths.isEmpty {
                 watcher.scheduleChange()
@@ -86,12 +96,22 @@ final class SourceChangeWatcher {
         }
     }
 
-    static func shouldIgnore(path: String) -> Bool {
+    static func shouldIgnore(path: String, includesGitReferences: Bool = false) -> Bool {
         let url = URL(fileURLWithPath: path)
         let fileName = url.lastPathComponent
+        if includesGitReferences, isGitReference(url) { return false }
         if ignoredFileNames.contains(fileName) { return true }
         if ignoredFileExtensions.contains(url.pathExtension.lowercased()) { return true }
         return url.pathComponents.contains { ignoredDirectoryNames.contains($0) }
+    }
+
+    /// `.git/HEAD`, `.git/packed-refs`, and anything under `.git/refs`.
+    private static func isGitReference(_ url: URL) -> Bool {
+        let components = url.pathComponents
+        guard let gitIndex = components.lastIndex(of: ".git"), gitIndex + 1 < components.count else {
+            return false
+        }
+        return gitReferencePaths.contains(components[gitIndex + 1])
     }
 
     private func scheduleChange() {

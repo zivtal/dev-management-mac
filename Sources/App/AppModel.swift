@@ -153,6 +153,11 @@ final class AppModel: ObservableObject {
                 ? L10n.format("%@ now installs from the working copy", project.displayName)
                 : L10n.format("%@ now installs from branch %@", project.displayName, project.buildBranch ?? "")
         )
+        refreshProjectVersions()
+        Task { @MainActor [weak self] in
+            await self?.refreshBuildBranchVersions()
+            await self?.prepareBuildCheckoutIfIdle(projectID: projectID)
+        }
     }
 
     private struct ProjectInstallationTarget {
@@ -279,6 +284,7 @@ final class AppModel: ObservableObject {
             async let icons: Void = self.refreshProjectIcons()
             async let branches: Void = self.refreshProjectGitBranches()
             _ = await (icons, branches)
+            await self.refreshBuildBranchVersions()
         }
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
             startMonitoring()
@@ -331,6 +337,7 @@ final class AppModel: ObservableObject {
         await refreshUnknownProjectMetadata(restartMonitoringAfterUpdate: false)
         refreshProjectVersions()
         await refreshProjectGitBranches()
+        await refreshBuildBranchVersions()
 
         do {
             let devices = try await deviceService.availableDevices()
@@ -418,6 +425,7 @@ final class AppModel: ObservableObject {
             project: project,
             simulatorService: simulatorService,
             installationService: installationService,
+            sourcePreparer: buildCheckoutService,
             derivedDataURL: Self.simulatorDerivedDataURL(projectID: projectID)
         )
         controller.onDeviceTested = { [weak self] deviceUDID in
@@ -806,7 +814,8 @@ final class AppModel: ObservableObject {
             return
         }
         refreshProjectVersions()
-        guard let project = projects.first(where: { $0.id == projectID }) else { return }
+        guard let managedProject = projects.first(where: { $0.id == projectID }) else { return }
+        let project = publishingSourceProject(for: managedProject)
         guard !project.isMacOSApplication else {
             presentedError = AppStorePublishingError.unsupportedProject.localizedDescription
             return
@@ -970,7 +979,7 @@ final class AppModel: ObservableObject {
             replaceActiveReviewVersion: intent == .publish && replaceActiveReviewVersion,
             testFlight: testFlightConfiguration
         )
-        beginPublishing(project: project, configuration: publishingConfiguration)
+        beginPublishing(project: managedProject, configuration: publishingConfiguration)
     }
 
     private func beginPublishing(
@@ -1015,8 +1024,12 @@ final class AppModel: ObservableObject {
                         self?.handlePublishingEvent(event, projectID: project.id, logID: logID)
                     }
                 }
-                let result = try await publishingService.publish(
+                let buildSource = try await buildCheckoutService.prepare(
                     project: project,
+                    onOutput: { eventHandler(.output($0)) }
+                )
+                let result = try await publishingService.publish(
+                    project: buildSource,
                     configuration: configuration,
                     eventHandler: eventHandler
                 )
@@ -1090,7 +1103,7 @@ final class AppModel: ObservableObject {
     func loadAppStoreConnectConfiguration(
         projectID: UUID
     ) async throws -> AppStoreConnectConfigurationSnapshot {
-        guard let project = projects.first(where: { $0.id == projectID }),
+        guard let project = publishingSourceProject(id: projectID),
               !project.isMacOSApplication else {
             throw AppStorePublishingError.unsupportedProject
         }
@@ -1133,7 +1146,7 @@ final class AppModel: ObservableObject {
         projectID: UUID,
         preferredLocale: String
     ) async throws -> AppStoreGeneratedMetadata {
-        guard let project = projects.first(where: { $0.id == projectID }) else {
+        guard let project = publishingSourceProject(id: projectID) else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let apiKey = try credentialStore.string(for: .openAIAPIKey)?.nilIfEmpty else {
@@ -1184,7 +1197,7 @@ final class AppModel: ObservableObject {
         projectID: UUID,
         locales: [String]
     ) async throws -> AppStoreReleaseNotesGeneration {
-        guard let project = projects.first(where: { $0.id == projectID }),
+        guard let project = publishingSourceProject(id: projectID),
               !project.isMacOSApplication else {
             throw AppStorePublishingError.unsupportedProject
         }
@@ -1228,7 +1241,7 @@ final class AppModel: ObservableObject {
     func generateAppStoreComplianceDraft(
         projectID: UUID
     ) async throws -> AppStoreComplianceDraft {
-        guard let project = projects.first(where: { $0.id == projectID }) else {
+        guard let project = publishingSourceProject(id: projectID) else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let apiKey = try credentialStore.string(for: .openAIAPIKey)?.nilIfEmpty else {
@@ -1274,7 +1287,7 @@ final class AppModel: ObservableObject {
         }
 
         refreshProjectVersions()
-        guard let project = projects.first(where: { $0.id == projectID }),
+        guard let project = publishingSourceProject(id: projectID),
               !project.isMacOSApplication else {
             throw AppStorePublishingError.unsupportedProject
         }
@@ -1325,7 +1338,7 @@ final class AppModel: ObservableObject {
         projectID: UUID,
         offerID: String
     ) async throws -> AppStoreConnectOfferCodeDetailSnapshot {
-        guard let project = projects.first(where: { $0.id == projectID }),
+        guard let project = publishingSourceProject(id: projectID),
               !project.isMacOSApplication else {
             throw AppStorePublishingError.unsupportedProject
         }
@@ -2134,10 +2147,13 @@ final class AppModel: ObservableObject {
         device.isInstallReady || checkedInstalledApplicationDeviceUDIDs.contains(device.udid)
     }
 
+    /// Re-reads working-copy versions from disk. Applications that build a
+    /// selected branch keep their last branch reading until
+    /// `refreshBuildBranchVersions()` reads the branch tip again.
     func refreshProjectVersions() {
         var refreshedProjects = projects
         var changed = false
-        for index in refreshedProjects.indices {
+        for index in refreshedProjects.indices where refreshedProjects[index].buildsFromWorkingCopy {
             let version = versionService.currentVersion(for: refreshedProjects[index])
             if refreshedProjects[index].marketingVersion != version.marketingVersion
                 || refreshedProjects[index].buildNumber != version.buildNumber {
@@ -2147,6 +2163,88 @@ final class AppModel: ObservableObject {
             }
         }
         if changed { projects = refreshedProjects }
+    }
+
+    /// Reads the version committed at each selected build branch's tip, so the
+    /// popover, scheduling comparisons, and installation records describe what
+    /// an install actually builds rather than whatever the working copy has
+    /// checked out. Falls back to the working copy when the branch is missing.
+    func refreshBuildBranchVersions() async {
+        let branchProjects = projects.filter { !$0.buildsFromWorkingCopy }
+        guard !branchProjects.isEmpty else { return }
+        var versions: [UUID: ProjectVersion] = [:]
+        await withTaskGroup(of: (UUID, ProjectVersion).self) { group in
+            for project in branchProjects {
+                group.addTask { [versionService] in
+                    let branchVersion = await versionService.currentVersion(
+                        for: project, branch: project.normalizedBuildBranch ?? ""
+                    )
+                    return (project.id, branchVersion ?? versionService.currentVersion(for: project))
+                }
+            }
+            for await (projectID, version) in group {
+                versions[projectID] = version
+            }
+        }
+        var refreshedProjects = projects
+        var changed = false
+        for index in refreshedProjects.indices {
+            guard let version = versions[refreshedProjects[index].id],
+                  refreshedProjects[index].marketingVersion != version.marketingVersion
+                    || refreshedProjects[index].buildNumber != version.buildNumber else { continue }
+            refreshedProjects[index].marketingVersion = version.marketingVersion
+            refreshedProjects[index].buildNumber = version.buildNumber
+            changed = true
+        }
+        if changed { projects = refreshedProjects }
+    }
+
+    /// Brings the application's branch checkout up to date so the publishing
+    /// window and simulator read the branch's files, unless a build that may
+    /// be using that checkout is in progress. Returns whether it ran.
+    @discardableResult
+    func prepareBuildCheckoutIfIdle(projectID: UUID) async -> Bool {
+        guard let project = projects.first(where: { $0.id == projectID }),
+              !project.buildsFromWorkingCopy,
+              !isInstalling(projectID: projectID),
+              !isPublishing(projectID: projectID),
+              !isSimulatorSessionActive(projectID: projectID) else {
+            return false
+        }
+        do {
+            _ = try await buildCheckoutService.prepare(project: project, onOutput: { _ in })
+            return true
+        } catch {
+            addActivity(
+                level: .warning,
+                title: L10n.format("Could not prepare the %@ checkout of %@", project.buildBranch ?? "", project.displayName),
+                details: error.localizedDescription,
+                projectID: project.id
+            )
+            return false
+        }
+    }
+
+    /// The project whose files publishing reads and edits: the branch
+    /// checkout for branch builds, otherwise the working copy.
+    func publishingSourceProject(for project: ManagedProject) -> ManagedProject {
+        buildCheckoutService.sourceProject(for: project)
+    }
+
+    private func publishingSourceProject(id projectID: UUID) -> ManagedProject? {
+        projects.first(where: { $0.id == projectID }).map(publishingSourceProject(for:))
+    }
+
+    /// Where edits to `app-store-publishing.json` are written: the branch
+    /// checkout the publishing window reads, plus the repository's working
+    /// copy so the change survives the next checkout refresh and can be committed.
+    func publishingManifestURLs(forProjectID projectID: UUID) -> [URL] {
+        guard let project = projects.first(where: { $0.id == projectID }) else { return [] }
+        let folders = [publishingSourceProject(for: project).folderURL, project.folderURL]
+        var seen = Set<String>()
+        return folders
+            .filter { seen.insert($0.standardizedFileURL.path).inserted }
+            .map { $0.appendingPathComponent("app-store-publishing.json") }
     }
 
     private func refreshProjectIcons() async {

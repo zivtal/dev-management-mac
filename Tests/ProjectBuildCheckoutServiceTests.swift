@@ -138,6 +138,54 @@ final class ProjectBuildCheckoutServiceTests: XCTestCase {
         XCTAssertFalse(worktrees.contains(project.id.uuidString))
     }
 
+    func testSourceProjectPointsIntoCheckoutOnlyForBranchBuilds() {
+        let service = makeService()
+        let workingCopy = makeProject(buildBranch: nil)
+        XCTAssertEqual(service.sourceProject(for: workingCopy), workingCopy)
+
+        let branchProject = makeProject(buildBranch: "main")
+        let source = service.sourceProject(for: branchProject)
+        let expectedFolder = checkoutsURL.appendingPathComponent(branchProject.id.uuidString, isDirectory: true)
+        XCTAssertEqual(source.folderURL.standardizedFileURL, expectedFolder.standardizedFileURL)
+        XCTAssertEqual(
+            source.containerURL.standardizedFileURL,
+            expectedFolder.appendingPathComponent("Example.xcodeproj").standardizedFileURL
+        )
+        XCTAssertEqual(source.id, branchProject.id)
+        XCTAssertEqual(source.buildBranch, "main")
+    }
+
+    func testSourceRevisionFollowsTheSelectedBranchTip() async throws {
+        let service = makeService()
+        let mainTip = try await output(["rev-parse", "main"], in: repositoryURL)
+        let featureTip = try await output(["rev-parse", "feature/branch-build"], in: repositoryURL)
+
+        let mainRevision = await service.sourceRevision(for: makeProject(buildBranch: "main"))
+        let featureRevision = await service.sourceRevision(for: makeProject(buildBranch: "feature/branch-build"))
+        let workingCopyRevision = await service.sourceRevision(for: makeProject(buildBranch: nil))
+        let missingRevision = await service.sourceRevision(for: makeProject(buildBranch: "does/not/exist"))
+
+        XCTAssertEqual(mainRevision, mainTip)
+        XCTAssertEqual(featureRevision, featureTip)
+        XCTAssertNotEqual(mainTip, featureTip)
+        XCTAssertNil(workingCopyRevision)
+        XCTAssertNil(missingRevision)
+    }
+
+    func testPreparingAnUpToDateCheckoutLeavesItsFilesAlone() async throws {
+        let project = makeProject(buildBranch: "feature/branch-build")
+        let service = makeService()
+        let first = try await service.prepare(project: project, onOutput: { _ in })
+        let generated = first.folderURL.appendingPathComponent("generated.txt")
+        try "kept while the tip is unchanged".write(to: generated, atomically: true, encoding: .utf8)
+
+        let second = try await service.prepare(project: project, onOutput: { _ in })
+
+        XCTAssertEqual(first.folderPath, second.folderPath)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: generated.path))
+        XCTAssertEqual(try contents(of: second.folderURL.appendingPathComponent("VERSION")), "feature version\n")
+    }
+
     // MARK: - Helpers
 
     private func makeService() -> ProjectBuildCheckoutService {

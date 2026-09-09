@@ -1344,6 +1344,7 @@
 "%@ now installs from branch %@" = "%@ now installs from branch %@";
 "%@ is not a Git repository, so a build branch cannot be checked out." = "%@ is not a Git repository, so a build branch cannot be checked out.";
 "Branch %@ was not found in the repository." = "Branch %@ was not found in the repository.";
+"Could not prepare the %@ checkout of %@" = "Could not prepare the %@ checkout of %@";
 "Preparing a detached checkout of branch %@…\n" = "Preparing a detached checkout of branch %@…\n";
 "Building branch %@ at %@ from %@; the repository's checked-out branch was left unchanged.\n" = "Building branch %@ at %@ from %@; the repository's checked-out branch was left unchanged.\n";
 "Could not fetch %@ from %@; building the last known revision.\n" = "Could not fetch %@ from %@; building the last known revision.\n";

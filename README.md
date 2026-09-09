@@ -152,7 +152,9 @@ The menu-bar popover is the app's primary status surface. It displays:
   date, most recent installation, and a **Branch** menu when its folder belongs
   to a Git worktree. The menu shows the branch the next install builds and lists
   **Working copy** plus every local and remote branch. Detached HEADs show
-  their short revision.
+  their short revision. The version and build number shown for an application
+  are read from the selected branch's committed tip, so they describe what an
+  install builds even while the working copy sits on another branch.
 - A paper-plane action for publishing each eligible direct-build iOS app, plus
   a ticket action that opens a focused Redeem Codes window for apps with
   subscription products.
@@ -411,7 +413,14 @@ selected project/workspace, scheme, configuration, and device, Development Manag
    another IDE or agent can keep working in it. Remote-only branches are
    fetched best-effort before checkout. The same rule applies to macOS
    installs; the DMG still lands in the repository's `dist` folder. Simulator
-   sessions and App Store publishing continue to use the working copy.
+   sessions and App Store publishing build the same sources: a branch session
+   rebuilds when the branch tip changes rather than when working-copy files are
+   edited, and the publishing window reads the branch checkout's metadata,
+   screenshots, and release evidence. Edits saved from the publishing window
+   are written to the checkout and to the repository's working copy, so they
+   survive the next checkout refresh and can be committed. A checkout that is
+   already at the branch tip is left untouched, including its generated
+   project.
 2. Regenerates a root-level XcodeGen project when `project.yml` is present.
 3. Creates a temporary copy of the selected scheme without pre/post action
    scripts, so workflow scripts cannot mutate the repository or its version.

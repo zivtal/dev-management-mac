@@ -93,6 +93,33 @@ final class SimulatorSessionRetryTests: XCTestCase {
         XCTAssertEqual(fixture.session.buildCount, 2)
     }
 
+    func testBuildsFromThePreparedSourceAndFingerprintsItsRevision() async throws {
+        let fixture = try Fixture(failures: 0, buildBranch: "release/1.0")
+        defer { fixture.cleanup() }
+        fixture.session.start(settings: SimulatorRunSettings())
+        try await waitUntil { fixture.session.phase == .running }
+
+        let builder = fixture.builder
+        let builtProjects = await builder.builtProjects
+        XCTAssertEqual(builtProjects.map(\.folderPath), [fixture.preparer.checkout.path])
+        XCTAssertEqual(builtProjects.first?.buildBranch, "release/1.0")
+        let prepared = await fixture.preparer.preparedProjects
+        XCTAssertEqual(prepared.map(\.folderPath), [fixture.folder.path])
+
+        // Edits in the working copy do not rebuild a branch session; a new tip does.
+        try "let edited = true\n".write(
+            to: fixture.folder.appendingPathComponent("Main.swift"), atomically: true, encoding: .utf8
+        )
+        fixture.session.handleSourceChange()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(fixture.session.buildCount, 1)
+
+        await fixture.preparer.setRevision("second-commit")
+        fixture.session.handleSourceChange()
+        try await waitUntil { fixture.session.buildCount == 2 }
+        try await waitUntil { fixture.session.phase == .running }
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         let deadline = ContinuousClock.now + .seconds(3)
         while !condition() {
@@ -125,13 +152,15 @@ final class SimulatorSessionRetryTests: XCTestCase {
     private final class Fixture {
         let folder: URL
         let clock = RetryClock()
+        let builder: Builder
+        let preparer: Preparer
         let session: SimulatorSessionController
 
-        init(failures: Int) throws {
+        init(failures: Int, buildBranch: String? = nil) throws {
             folder = FileManager.default.temporaryDirectory
                 .appendingPathComponent("SimulatorRetry-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let project = ProjectDescriptor(
+            var project = ProjectDescriptor(
                 displayName: "Example",
                 folderPath: folder.path,
                 containerPath: folder.appendingPathComponent("Example.xcodeproj").path,
@@ -139,10 +168,14 @@ final class SimulatorSessionRetryTests: XCTestCase {
                 schemes: ["Example"],
                 configurations: ["Debug"]
             ).makeManagedProject()
+            project.buildBranch = buildBranch
+            builder = Builder(failures: failures)
+            preparer = Preparer(checkout: folder.appendingPathComponent("checkout", isDirectory: true))
             session = SimulatorSessionController(
                 project: project,
                 simulatorService: SimulatorService(processRunner: SimulatorRunner()),
-                installationService: Builder(failures: failures),
+                installationService: builder,
+                sourcePreparer: preparer,
                 derivedDataURL: folder.appendingPathComponent("DerivedData"),
                 retrySleep: { [clock] in try await clock.sleep(for: $0) }
             )
@@ -155,8 +188,32 @@ final class SimulatorSessionRetryTests: XCTestCase {
         }
     }
 
+    private actor Preparer: BuildSourcePreparing {
+        let checkout: URL
+        private(set) var preparedProjects: [ManagedProject] = []
+        private var revision = "first-commit"
+
+        init(checkout: URL) { self.checkout = checkout }
+
+        func setRevision(_ revision: String) { self.revision = revision }
+
+        func prepare(
+            project: ManagedProject,
+            onOutput: @escaping @Sendable (String) -> Void
+        ) async throws -> ManagedProject {
+            guard project.normalizedBuildBranch != nil else { return project }
+            preparedProjects.append(project)
+            return project.rerooted(to: checkout)
+        }
+
+        func sourceRevision(for project: ManagedProject) async -> String? {
+            project.normalizedBuildBranch == nil ? nil : revision
+        }
+    }
+
     private actor Builder: SimulatorBuilding {
         var failures: Int
+        private(set) var builtProjects: [ManagedProject] = []
 
         init(failures: Int) { self.failures = failures }
 
@@ -166,6 +223,7 @@ final class SimulatorSessionRetryTests: XCTestCase {
             derivedDataURL: URL,
             eventHandler: @escaping InstallationService.EventHandler
         ) async throws -> SimulatorBuildProduct {
+            builtProjects.append(project)
             if failures > 0 {
                 failures -= 1
                 throw ProcessRunnerError.commandFailed(

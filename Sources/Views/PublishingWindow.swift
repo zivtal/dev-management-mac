@@ -358,6 +358,12 @@ private struct PublishingWindowView: View {
         .padding(20)
         .frame(minWidth: 540, minHeight: 460)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: selectedProjectID) {
+            guard let projectID = selectedProjectID else { return }
+            if await model.prepareBuildCheckoutIfIdle(projectID: projectID) {
+                configurationRevision += 1
+            }
+        }
         .onAppear {
             if let projectID = selectedProjectID,
                let log = model.publishingLog(for: projectID),
@@ -1548,8 +1554,12 @@ private struct PublishingWindowView: View {
         }
     }
 
+    /// Publishing reads and builds the sources an install would: the branch
+    /// checkout for applications with a selected build branch.
     private var eligibleProjects: [ManagedProject] {
-        model.projects.filter { !$0.isMacOSApplication }
+        model.projects
+            .filter { !$0.isMacOSApplication }
+            .map(model.publishingSourceProject(for:))
     }
 
     private var selectedProject: ManagedProject? {
@@ -2425,9 +2435,8 @@ private struct PublishingWindowView: View {
                     return (productID, territory)
                 }
             )
-            let configurationURL = selectedProject?.folderURL
-                .appendingPathComponent("app-store-publishing.json")
-            guard let configurationURL else { return false }
+            let configurationURLs = selectedProject.map { model.publishingManifestURLs(forProjectID: $0.id) } ?? []
+            guard let configurationURL = configurationURLs.first else { return false }
             var manifest: AppStorePublishingManifest
             if FileManager.default.fileExists(atPath: configurationURL.path) {
                 manifest = try JSONDecoder().decode(
@@ -2468,7 +2477,9 @@ private struct PublishingWindowView: View {
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             var data = try encoder.encode(manifest)
             data.append(0x0A)
-            try data.write(to: configurationURL, options: .atomic)
+            for url in configurationURLs {
+                try data.write(to: url, options: .atomic)
+            }
             subscriptionPriceDrafts = normalized
             savedSubscriptionPrices = normalized
             subscriptionBaseTerritoryDrafts = normalizedBaseTerritories
@@ -3766,6 +3777,13 @@ private struct PerAppPublishingConfigurationEditor: View {
         project.folderURL.appendingPathComponent("app-store-publishing.json")
     }
 
+    /// The manifest the editor reads, plus the repository's working copy when
+    /// the editor is showing a branch checkout, so edits are never lost.
+    private var configurationSaveURLs: [URL] {
+        let urls = model.publishingManifestURLs(forProjectID: project.id)
+        return urls.isEmpty ? [configurationURL] : urls
+    }
+
     private func load() {
         defer { isLoading = false }
         do {
@@ -4393,7 +4411,9 @@ private struct PerAppPublishingConfigurationEditor: View {
             }
             try validate(manifest)
             let formatted = try Self.encoded(manifest)
-            try Data(formatted.utf8).write(to: configurationURL, options: .atomic)
+            for url in configurationSaveURLs {
+                try Data(formatted.utf8).write(to: url, options: .atomic)
+            }
             json = formatted
             validationMessage = nil
             onSave()

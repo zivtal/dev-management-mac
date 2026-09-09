@@ -1344,6 +1344,7 @@
 "%@ now installs from branch %@" = "%@ יותקן מעתה מהענף %@";
 "%@ is not a Git repository, so a build branch cannot be checked out." = "%@ אינו מאגר Git, ולכן לא ניתן לבצע checkout לענף הבנייה.";
 "Branch %@ was not found in the repository." = "הענף %@ לא נמצא במאגר.";
+"Could not prepare the %@ checkout of %@" = "לא ניתן להכין את ה‑checkout של הענף %@ עבור %@";
 "Preparing a detached checkout of branch %@…\n" = "מכין checkout מנותק של הענף %@…\n";
 "Building branch %@ at %@ from %@; the repository's checked-out branch was left unchanged.\n" = "בונה את הענף %@ בקומיט %@ מתוך %@; הענף הפעיל במאגר לא שונה.\n";
 "Could not fetch %@ from %@; building the last known revision.\n" = "לא ניתן למשוך את %@ מ‑%@; בונה את הגרסה האחרונה הידועה.\n";

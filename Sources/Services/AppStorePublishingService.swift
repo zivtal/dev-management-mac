@@ -132,7 +132,8 @@ final class AppStorePublishingService {
         guard let bundleIdentifier = project.bundleIdentifier, !bundleIdentifier.isEmpty else {
             throw AppStorePublishingError.missingBundleIdentifier
         }
-        guard fileManager.fileExists(atPath: project.containerPath) else {
+        guard fileManager.fileExists(atPath: project.containerPath)
+            || XcodeGenProjectPreparation.specificationURL(for: project, fileManager: fileManager) != nil else {
             throw AppStorePublishingError.missingProjectContainer
         }
         guard let localVersion = project.marketingVersion?.nilIfEmpty else {

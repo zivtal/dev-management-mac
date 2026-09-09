@@ -52,6 +52,7 @@ final class SimulatorSessionController: ObservableObject {
     private(set) var project: ManagedProject
     private let simulatorService: SimulatorService
     private let installationService: any SimulatorBuilding
+    private let sourcePreparer: any BuildSourcePreparing
     private let derivedDataURL: URL
     private let retrySleep: @MainActor (Duration) async throws -> Void
 
@@ -67,6 +68,7 @@ final class SimulatorSessionController: ObservableObject {
         project: ManagedProject,
         simulatorService: SimulatorService,
         installationService: any SimulatorBuilding,
+        sourcePreparer: any BuildSourcePreparing,
         derivedDataURL: URL,
         retrySleep: @escaping @MainActor (Duration) async throws -> Void = {
             try await Task.sleep(for: $0)
@@ -75,12 +77,17 @@ final class SimulatorSessionController: ObservableObject {
         self.project = project
         self.simulatorService = simulatorService
         self.installationService = installationService
+        self.sourcePreparer = sourcePreparer
         self.derivedDataURL = derivedDataURL
         self.retrySleep = retrySleep
     }
 
     func updateProject(_ project: ManagedProject) {
+        let watchedGitReferences = self.project.normalizedBuildBranch != nil
         self.project = project
+        if isSessionActive, watchedGitReferences != (project.normalizedBuildBranch != nil) {
+            startWatcher()
+        }
     }
 
     func refreshDevices() async {
@@ -202,12 +209,9 @@ final class SimulatorSessionController: ObservableObject {
             return
         }
         isComparingFingerprint = true
-        let folderURL = project.folderURL
         Task { [weak self] in
-            let fingerprint = await Task.detached(priority: .utility) {
-                SourceFingerprintCalculator.fingerprint(of: folderURL)
-            }.value
             guard let self else { return }
+            let fingerprint = await self.currentSourceFingerprint()
             self.isComparingFingerprint = false
             guard self.isSessionActive else { return }
             guard self.sessionTask == nil else {
@@ -220,9 +224,25 @@ final class SimulatorSessionController: ObservableObject {
         }
     }
 
+    /// What a rebuild decision compares: the watched files' content for a
+    /// working-copy session, or the selected branch's tip commit, so edits in
+    /// the working copy never rebuild a branch session.
+    private func currentSourceFingerprint() async -> String {
+        if project.normalizedBuildBranch != nil {
+            return await sourcePreparer.sourceRevision(for: project) ?? ""
+        }
+        let folderURL = project.folderURL
+        return await Task.detached(priority: .utility) {
+            SourceFingerprintCalculator.fingerprint(of: folderURL)
+        }.value
+    }
+
     private func startWatcher() {
         watcher?.stop()
-        watcher = SourceChangeWatcher(directoryURL: project.folderURL) { [weak self] in
+        watcher = SourceChangeWatcher(
+            directoryURL: project.folderURL,
+            includesGitReferences: project.normalizedBuildBranch != nil
+        ) { [weak self] in
             Task { @MainActor [weak self] in
                 self?.handleSourceChange()
             }
@@ -329,18 +349,19 @@ final class SimulatorSessionController: ObservableObject {
         phase = .building
         buildCount += 1
         statusMessage = L10n.format("Building %@ (refresh %d)…", project.displayName, buildCount)
-        let folderURL = project.folderURL
-        lastSourceFingerprint = await Task.detached(priority: .utility) {
-            SourceFingerprintCalculator.fingerprint(of: folderURL)
-        }.value
+        lastSourceFingerprint = await currentSourceFingerprint()
         let coalescer = InstallationEventCoalescer { [weak self] batch in
             Task { @MainActor [weak self] in
                 self?.receive(batch)
             }
         }
         do {
-            buildProduct = try await installationService.buildForSimulator(
+            let buildSource = try await sourcePreparer.prepare(
                 project: project,
+                onOutput: { coalescer.receive(.output($0)) }
+            )
+            buildProduct = try await installationService.buildForSimulator(
+                project: buildSource,
                 simulatorUDID: deviceUDID,
                 derivedDataURL: derivedDataURL,
                 eventHandler: { coalescer.receive($0) }
