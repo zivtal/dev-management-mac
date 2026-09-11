@@ -701,6 +701,30 @@ struct AppStoreConnectSubscriptionSnapshot: Equatable, Sendable, Identifiable {
             ($0.startDate ?? "") < ($1.startDate ?? "")
         }?.price
     }
+
+    /// The price a publish has already scheduled to start after `referenceDate`
+    /// when one exists, otherwise the current price. Price changes take effect
+    /// on a later day, so the editor shows the pending value instead of
+    /// reverting to the price that is about to be replaced.
+    func upcomingOrCurrentPrice(
+        in territory: String,
+        referenceDate: Date = Date()
+    ) -> String? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = calendar.dateComponents([.year, .month, .day], from: referenceDate)
+        let currentDay = String(
+            format: "%04d-%02d-%02d",
+            components.year ?? 0,
+            components.month ?? 0,
+            components.day ?? 0
+        )
+        let upcoming = prices.filter {
+            $0.territory.caseInsensitiveCompare(territory) == .orderedSame
+                && ($0.startDate.map { $0 > currentDay } ?? false)
+        }.min { ($0.startDate ?? "") < ($1.startDate ?? "") }
+        return upcoming?.price ?? currentPrice(in: territory, referenceDate: referenceDate)
+    }
 }
 
 struct AppStoreConnectSubscriptionPriceSnapshot: Equatable, Sendable, Identifiable {

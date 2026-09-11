@@ -46,7 +46,7 @@ enum SubscriptionPriceDraftPolicy {
         for definition in definitions {
             guard let live = liveSubscriptions.first(where: {
                 $0.productID == definition.productID
-            }), let price = live.currentPrice(
+            }), let price = live.upcomingOrCurrentPrice(
                 in: definition.baseTerritory?.nilIfEmpty ?? "USA",
                 referenceDate: referenceDate
             ) else { continue }

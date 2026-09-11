@@ -1902,6 +1902,77 @@ final class AppStorePublishingTests: XCTestCase {
         )
     }
 
+    func testSubscriptionPriceDraftPrefersTheScheduledUpcomingPrice() throws {
+        let definition = AppStoreSubscriptionDefinition(
+            referenceName: "Premium Monthly",
+            productID: "com.example.monthly",
+            period: "ONE_MONTH",
+            basePrice: "59.9",
+            baseTerritory: "ISR",
+            availableInAllTerritories: true,
+            familySharable: false,
+            groupLevel: 1,
+            reviewNote: nil,
+            reviewScreenshot: nil,
+            localizations: []
+        )
+        let live = AppStoreConnectSubscriptionSnapshot(
+            id: "subscription-id",
+            referenceName: "Premium Monthly",
+            productID: definition.productID,
+            state: "APPROVED",
+            period: "ONE_MONTH",
+            familySharable: false,
+            groupLevel: 1,
+            reviewNote: nil,
+            localizations: [],
+            availableTerritoryIDs: ["ISR"],
+            availableInNewTerritories: true,
+            prices: [
+                AppStoreConnectSubscriptionPriceSnapshot(
+                    territory: "ISR",
+                    price: "39.9",
+                    currency: "ILS",
+                    startDate: nil,
+                    endDate: nil,
+                    preserved: false
+                ),
+                AppStoreConnectSubscriptionPriceSnapshot(
+                    territory: "ISR",
+                    price: "59.9",
+                    currency: "ILS",
+                    startDate: "2026-09-12",
+                    endDate: nil,
+                    preserved: false
+                )
+            ],
+            offers: []
+        )
+        let liveGroup = AppStoreConnectSubscriptionGroupSnapshot(
+            id: "group-id",
+            referenceName: "Premium",
+            state: "APPROVED",
+            localizations: [],
+            subscriptions: [live]
+        )
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let publishDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 11)))
+        let afterStart = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 9, day: 13)))
+
+        XCTAssertEqual(
+            SubscriptionPriceDraftPolicy.currentPrices(
+                configured: [definition.productID: "59.9"],
+                definitions: [definition],
+                liveGroups: [liveGroup],
+                referenceDate: publishDay
+            )[definition.productID],
+            "59.9"
+        )
+        XCTAssertEqual(live.currentPrice(in: "ISR", referenceDate: publishDay), "39.9")
+        XCTAssertEqual(live.upcomingOrCurrentPrice(in: "ISR", referenceDate: afterStart), "59.9")
+    }
+
     func testSubscriptionPriceDraftUsesLivePriceInConfiguredBaseTerritory() throws {
         let definition = AppStoreSubscriptionDefinition(
             referenceName: "Premium Annual",
@@ -2167,6 +2238,166 @@ final class AppStorePublishingTests: XCTestCase {
             id: inflightVersionID,
             label: "TripFlow Itinerary Premium"
         )])
+    }
+
+    func testSubscriptionPriceChangeSchedulesOnlyTheNewPricePoint() async throws {
+        // Apple omits `relationships` from `/prices` unless the price point is
+        // included, so the reconciliation must ask for it to see existing prices.
+        var scheduledPricePoints: [String] = []
+        var scheduledStartDates: [String?] = []
+        let service = try appStoreConnectTestService { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/apps/app-id/subscriptionGroups"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [[
+                        "type": "subscriptionGroups",
+                        "id": "22314227",
+                        "attributes": ["referenceName": "Premium"]
+                    ]]]
+                )
+            case ("GET", "/v1/subscriptionGroups/22314227/subscriptions"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [[
+                        "type": "subscriptions",
+                        "id": "6802181925",
+                        "attributes": ["productId": "com.example.monthly"]
+                    ]]]
+                )
+            case ("GET", "/v1/subscriptionGroups/22314227/versions"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [[
+                        "type": "subscriptionGroupVersions",
+                        "id": "group-version",
+                        "attributes": ["state": "PREPARE_FOR_SUBMISSION", "version": 1]
+                    ]]]
+                )
+            case ("GET", "/v1/subscriptionGroupVersions/group-version/localizations"),
+                 ("GET", "/v1/subscriptionVersions/subscription-version/localizations"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": []])
+            case ("PATCH", "/v1/subscriptions/6802181925"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": [:]])
+            case ("GET", "/v1/subscriptions/6802181925/pricePoints"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [
+                        ["type": "subscriptionPricePoints", "id": "isr-39.9", "attributes": ["customerPrice": "39.9"]],
+                        ["type": "subscriptionPricePoints", "id": "isr-59.9", "attributes": ["customerPrice": "59.9"]]
+                    ]]
+                )
+            case ("GET", "/v1/subscriptions/6802181925/prices"):
+                let includesPricePoint = (request.url?.query ?? "").contains("include=subscriptionPricePoint")
+                var price: [String: Any] = ["type": "subscriptionPrices", "id": "existing-price"]
+                if includesPricePoint {
+                    price["relationships"] = [
+                        "subscriptionPricePoint": [
+                            "data": ["type": "subscriptionPricePoints", "id": "isr-39.9"]
+                        ]
+                    ]
+                }
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": [price]])
+            case ("POST", "/v1/subscriptionPrices"):
+                let body = try JSONSerialization.jsonObject(
+                    with: try XCTUnwrap(request.httpBody ?? request.httpBodyStream.map { stream in
+                        stream.open()
+                        defer { stream.close() }
+                        var data = Data()
+                        var buffer = [UInt8](repeating: 0, count: 4096)
+                        while stream.hasBytesAvailable {
+                            let read = stream.read(&buffer, maxLength: buffer.count)
+                            if read <= 0 { break }
+                            data.append(buffer, count: read)
+                        }
+                        return data
+                    })
+                ) as? [String: Any]
+                let data = body?["data"] as? [String: Any]
+                let relationships = data?["relationships"] as? [String: Any]
+                let point = relationships?["subscriptionPricePoint"] as? [String: Any]
+                let pointID = (point?["data"] as? [String: Any])?["id"] as? String ?? ""
+                let attributes = data?["attributes"] as? [String: Any]
+                let startDate = attributes?["startDate"] as? String
+                guard startDate != nil else {
+                    // A live subscription already has an immediate price; Apple rejects a second one.
+                    return try Self.appStoreConnectResponse(
+                        for: request,
+                        status: 409,
+                        json: ["errors": [["detail": "A subscription price already exists for this territory."]]]
+                    )
+                }
+                scheduledPricePoints.append(pointID)
+                scheduledStartDates.append(startDate)
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 201,
+                    json: ["data": ["type": "subscriptionPrices", "id": "scheduled-\(pointID)"]]
+                )
+            case ("GET", "/v1/subscriptions/6802181925/appStoreReviewScreenshot"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": ["type": "subscriptionAppStoreReviewScreenshots", "id": "screenshot"]]
+                )
+            case ("GET", "/v1/subscriptions/6802181925/versions"):
+                return try Self.appStoreConnectResponse(
+                    for: request,
+                    status: 200,
+                    json: ["data": [[
+                        "type": "subscriptionVersions",
+                        "id": "subscription-version",
+                        "attributes": ["state": "PREPARE_FOR_SUBMISSION", "version": 1]
+                    ]]]
+                )
+            default:
+                XCTFail("Unexpected App Store Connect request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
+                return try Self.appStoreConnectResponse(for: request, status: 500, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+
+        let catalog = AppStoreSubscriptionCatalog(
+            publication: nil,
+            application: nil,
+            compliance: nil,
+            groups: [AppStoreSubscriptionGroupDefinition(
+                referenceName: "Premium",
+                localizations: [],
+                subscriptions: [AppStoreSubscriptionDefinition(
+                    referenceName: "Premium Monthly",
+                    productID: "com.example.monthly",
+                    period: "ONE_MONTH",
+                    basePrice: "59.9",
+                    baseTerritory: "ISR",
+                    availableInAllTerritories: false,
+                    familySharable: false,
+                    groupLevel: 1,
+                    reviewNote: nil,
+                    reviewScreenshot: nil,
+                    localizations: nil
+                )]
+            )],
+            detectedProductIDs: ["com.example.monthly"],
+            sourceFiles: [],
+            projectDirectory: FileManager.default.temporaryDirectory
+        )
+
+        var output = ""
+        _ = try await service.reconcileSubscriptions(
+            appID: "app-id",
+            catalog: catalog,
+            requiresReviewAssets: false,
+            onOutput: { output += $0 }
+        )
+
+        XCTAssertEqual(scheduledPricePoints, ["isr-59.9"])
+        XCTAssertEqual(scheduledStartDates.compactMap { $0 }.count, 1)
+        XCTAssertTrue(output.contains("configured 1 missing territory price(s)"), output)
     }
 
     func testInflightSubscriptionGroupVersionIDMustMatchTheExpectedGroup() {

@@ -3493,10 +3493,15 @@ final class AppStoreConnectService {
             }
             desiredPointsByTerritory[territory] = selection.id
         }
+        // App Store Connect only returns the `subscriptionPricePoint`
+        // relationship when the price point is included; requesting it as a
+        // sparse field alone yields bare resources and hides every existing price.
         let existingPrices = try await pagedData(
             path: "/v1/subscriptions/\(subscriptionID)/prices",
             query: [
                 "fields[subscriptionPrices]": "subscriptionPricePoint",
+                "fields[subscriptionPricePoints]": "customerPrice",
+                "include": "subscriptionPricePoint",
                 "limit": "200"
             ]
         )
@@ -3539,8 +3544,15 @@ final class AppStoreConnectService {
                     ]
                 )
                 createdCount += 1
-            } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 {
-                // The same price point is already scheduled.
+            } catch AppStoreConnectError.requestFailed(let status, let message) where status == 409 {
+                // The same price point is already scheduled; report it so a
+                // rejected price change is never silently dropped.
+                onOutput(L10n.format(
+                    "App Store Connect did not accept price point %@ for %@: %@\n",
+                    pointID,
+                    productID,
+                    message
+                ))
             }
         }
         onOutput(L10n.format(

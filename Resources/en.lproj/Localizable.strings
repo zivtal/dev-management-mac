@@ -359,6 +359,7 @@
 "Configured the app as Free with base territory %@.\n" = "Configured the app as Free with base territory %@.\n";
 "Enabled subscription availability in %d territories.\n" = "Enabled subscription availability in %d territories.\n";
 "Price %@ is not an available subscription price point in %@ for %@." = "Price %@ is not an available subscription price point in %@ for %@.";
+"App Store Connect did not accept price point %@ for %@: %@\n" = "App Store Connect did not accept price point %@ for %@: %@\n";
 "Subscription %@ uses %@ in %@; configured %d missing territory price(s).\n" = "Subscription %@ uses %@ in %@; configured %d missing territory price(s).\n";
 "Uploaded the App Review paywall screenshot for %@.\n" = "Uploaded the App Review paywall screenshot for %@.\n";
 "No subscription products were found in the app project.\n" = "No subscription products were found in the app project.\n";

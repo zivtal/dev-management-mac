@@ -359,6 +359,7 @@
 "Configured the app as Free with base territory %@.\n" = "האפליקציה הוגדרה כחינמית עם אזור בסיס %@.\n";
 "Enabled subscription availability in %d territories.\n" = "זמינות המינוי הופעלה ב־%d אזורים.\n";
 "Price %@ is not an available subscription price point in %@ for %@." = "המחיר %@ אינו נקודת מחיר זמינה ב־%@ עבור %@.";
+"App Store Connect did not accept price point %@ for %@: %@\n" = "App Store Connect לא קיבל את נקודת המחיר %@ עבור %@: %@\n";
 "Subscription %@ uses %@ in %@; configured %d missing territory price(s).\n" = "המינוי %@ משתמש במחיר %@ ב־%@; הוגדרו %d מחירים אזוריים חסרים.\n";
 "Uploaded the App Review paywall screenshot for %@.\n" = "צילום מסך התשלום עבור %@ הועלה לבדיקת Apple.\n";
 "No subscription products were found in the app project.\n" = "לא נמצאו מוצרי מינוי בפרויקט האפליקציה.\n";
