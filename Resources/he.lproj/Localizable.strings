@@ -1304,6 +1304,7 @@
 "Launching %@…" = "מפעיל את %@…";
 "Running %@.\n" = "פועל %@.\n";
 "The Debug app will treat %@ as the current date.\n" = "אפליקציית ה־Debug תתייחס אל %@ כתאריך הנוכחי.\n";
+"Restarted the %@ extensions so widgets pick up the simulated date.\n" = "ההרחבות של %@ הופעלו מחדש כדי שהווידג׳טים יקבלו את התאריך המדומה.\n";
 "Simulator location set to %@.\n" = "מיקום הסימולטור הוגדר ל־%@.\n";
 "Watching for changes." = "מעקב אחר שינויים.";
 "No compatible iOS Simulator is available. Install a Simulator runtime from Xcode Settings > Components." = "אין סימולטור iOS תואם זמין. יש להתקין סביבת סימולטור מ־Xcode Settings > Components.";

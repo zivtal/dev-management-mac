@@ -5,6 +5,7 @@ final class SimulatorService: Sendable {
 
     private static let xcrunURL = URL(fileURLWithPath: "/usr/bin/xcrun")
     private static let openURL = URL(fileURLWithPath: "/usr/bin/open")
+    private static let pkillURL = URL(fileURLWithPath: "/usr/bin/pkill")
 
     init(processRunner: any ProcessRunning = ProcessRunner()) {
         self.processRunner = processRunner
@@ -81,6 +82,35 @@ final class SimulatorService: Sendable {
             additionalEnvironment: environment
         )
         return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Terminates the app's extension processes (widgets, share extension)
+    /// on the simulator so they respawn and read the values the app relays
+    /// through its app group. `simctl launch` reaches only the app process:
+    /// extensions are spawned by the simulator's launchd with a clean
+    /// environment, and a long-lived widget process keeps whatever it read
+    /// at its own start. simctl cannot address extension processes, but
+    /// simulator processes are host processes whose executables live under
+    /// the app bundle's PlugIns folder, so they are matched by path. No
+    /// running extension is not a failure.
+    func restartApplicationExtensions(udid: String, applicationName: String) async {
+        _ = try? await run(
+            executable: Self.pkillURL,
+            arguments: [
+                "-TERM", "-f",
+                Self.extensionProcessPattern(udid: udid, applicationName: applicationName)
+            ]
+        )
+    }
+
+    /// Regular expression for `pkill -f` that matches executables inside
+    /// `<app bundle>/PlugIns/` of the given app installed on the given
+    /// simulator, and nothing on other devices or in the app itself.
+    static func extensionProcessPattern(udid: String, applicationName: String) -> String {
+        "/Devices/" + NSRegularExpression.escapedPattern(for: udid)
+            + "/data/Containers/Bundle/Application/[^/]+/"
+            + NSRegularExpression.escapedPattern(for: applicationName)
+            + "/PlugIns/"
     }
 
     func setLocation(udid: String, latitude: Double, longitude: Double) async throws {

@@ -1304,6 +1304,7 @@
 "Launching %@…" = "Launching %@…";
 "Running %@.\n" = "Running %@.\n";
 "The Debug app will treat %@ as the current date.\n" = "The Debug app will treat %@ as the current date.\n";
+"Restarted the %@ extensions so widgets pick up the simulated date.\n" = "Restarted the %@ extensions so widgets pick up the simulated date.\n";
 "Simulator location set to %@.\n" = "Simulator location set to %@.\n";
 "Watching for changes." = "Watching for changes.";
 "No compatible iOS Simulator is available. Install a Simulator runtime from Xcode Settings > Components." = "No compatible iOS Simulator is available. Install a Simulator runtime from Xcode Settings > Components.";

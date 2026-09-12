@@ -391,7 +391,8 @@ final class SimulatorSessionController: ObservableObject {
 
     private func launchApplication(settings: SimulatorRunSettings) async throws {
         guard let deviceUDID = activeDeviceUDID(settings: settings),
-              let bundleIdentifier = buildProduct?.bundleIdentifier else {
+              let product = buildProduct,
+              let bundleIdentifier = product.bundleIdentifier else {
             throw SimulatorSessionError.unknownBundleIdentifier
         }
         phase = .launching
@@ -409,6 +410,18 @@ final class SimulatorSessionController: ObservableObject {
             appendOutput(L10n.format(
                 "The Debug app will treat %@ as the current date.\n",
                 simulatedNow
+            ))
+            // The launch environment never reaches extension processes, and
+            // a widget process that is already running keeps the date it saw
+            // at its own start. Respawned extensions read the date the app
+            // relays through its app group.
+            await simulatorService.restartApplicationExtensions(
+                udid: deviceUDID,
+                applicationName: product.applicationURL.lastPathComponent
+            )
+            appendOutput(L10n.format(
+                "Restarted the %@ extensions so widgets pick up the simulated date.\n",
+                project.displayName
             ))
         }
         phase = .running
