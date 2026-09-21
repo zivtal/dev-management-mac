@@ -738,6 +738,11 @@ Because Development Management is an accessory app, launching it does not create
 Dock icon or ordinary main window. Use its menu-bar icon to open the popover and
 Settings.
 
+Publishing retries resume successful archive, export, validation, and upload
+steps across app restarts. The same version/build reuses its saved binary; a new
+version/build starts fresh. Apple processing delays do not trigger another
+upload. See [resuming a release](Docs/AppStorePublishing.md#resuming-a-release).
+
 ## Tests
 
 Run the unit-test suite with:

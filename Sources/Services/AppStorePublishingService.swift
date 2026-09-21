@@ -154,13 +154,46 @@ final class AppStorePublishingService {
             marketingVersion: localVersion,
             buildNumber: localBuildNumber
         )
+        let checkpoint = try AppStorePublishingCheckpoint(identity: .init(
+            project: project, issuerID: configuration.appStoreConnectIssuerID, appID: appID
+        ), fileManager: fileManager)
+        let existingUpload: AppStoreConnectBuildUpload?
+        if existingBuild == nil {
+            existingUpload = try await appStoreConnect.buildUpload(
+                appID: appID, marketingVersion: localVersion, buildNumber: localBuildNumber
+            )
+            try existingUpload?.checkForFailure()
+        } else {
+            existingUpload = nil
+        }
         var reusedExistingBuild = existingBuild != nil
+            || existingUpload?.wasAccepted == true || checkpoint.uploadAccepted
+        if existingBuild == nil, reusedExistingBuild {
+            eventHandler(.output(L10n.format(
+                "Build %@ (%@) was already uploaded; resuming Apple's processing checks without rebuilding or uploading again.\n",
+                localVersion, localBuildNumber
+            )))
+        }
         if let existingBuild {
             eventHandler(.output(L10n.format(
                 "Reusing TestFlight build %@ (%@); archive and upload are not needed.\n",
                 existingBuild.version,
                 existingBuild.buildNumber
             )))
+        }
+
+        if intent == .publish, let existingBuild, existingBuild.isProcessed,
+           try await appStoreConnect.isBuildSubmitted(
+            appID: appID, marketingVersion: localVersion, buildID: existingBuild.id
+           ) {
+            eventHandler(.output(L10n.format(
+                "Build %@ (%@) is already submitted to App Review or released; publishing is complete.\n",
+                localVersion, localBuildNumber
+            )))
+            checkpoint.removeCompletedArtifacts()
+            return PublishingResult(version: localVersion, buildNumber: localBuildNumber,
+                                    intent: intent, reusedExistingBuild: true,
+                                    deferredStorefrontSetup: false)
         }
 
         var temporaryDirectory: URL?
@@ -333,10 +366,18 @@ final class AppStorePublishingService {
         let artifact: AppStoreBuildArtifact?
         let targetVersion: String
         let targetBuildNumber: String
-        if existingBuild != nil {
+        if reusedExistingBuild {
             artifact = nil
             targetVersion = localVersion
             targetBuildNumber = localBuildNumber
+        } else if let savedArtifact = try checkpoint.artifact() {
+            artifact = savedArtifact
+            targetVersion = localVersion
+            targetBuildNumber = localBuildNumber
+            eventHandler(.output(L10n.format(
+                "Reusing saved archive and IPA for %@ (%@); build and export are not needed.\n",
+                localVersion, localBuildNumber
+            )))
         } else {
             let signingTeamID = project.signingTeamID ?? project.projectSigningTeamID
             // Check the application's identifier before creating any certificate. A
@@ -373,6 +414,7 @@ final class AppStorePublishingService {
                 keyID: configuration.appStoreConnectKeyID,
                 privateKey: configuration.appStoreConnectPrivateKey,
                 temporaryDirectory: directory,
+                checkpoint: checkpoint,
                 eventHandler: eventHandler
             )
             artifact = archived
@@ -396,22 +438,29 @@ final class AppStorePublishingService {
                     actual: archived.buildNumber
                 )
             }
-            if try await appStoreConnect.build(
-                appID: appID,
-                marketingVersion: archived.version,
-                buildNumber: archived.buildNumber
-            ) != nil {
+        }
+
+        // Another publisher may have uploaded this release while local work ran.
+        if artifact != nil, !reusedExistingBuild {
+            let remoteBuild = try await appStoreConnect.build(
+                appID: appID, marketingVersion: targetVersion, buildNumber: targetBuildNumber
+            )
+            let remoteUpload = remoteBuild == nil ? try await appStoreConnect.buildUpload(
+                appID: appID, marketingVersion: targetVersion, buildNumber: targetBuildNumber
+            ) : nil
+            try remoteUpload?.checkForFailure()
+            if remoteBuild != nil || remoteUpload?.wasAccepted == true {
                 reusedExistingBuild = true
                 eventHandler(.output(L10n.format(
                     "TestFlight already contains archived build %@ (%@); skipping the duplicate upload.\n",
-                    archived.version,
-                    archived.buildNumber
+                    targetVersion, targetBuildNumber
                 )))
             }
         }
 
         let processedExistingBuildID: String?
         if reusedExistingBuild {
+            eventHandler(.phase(.waitingForBuild))
             eventHandler(.output(L10n.text("Confirming that the matching TestFlight build finished processing before changing the App Store version…\n")))
             processedExistingBuildID = try await appStoreConnect.waitForBuild(
                 appID: appID,
@@ -520,14 +569,21 @@ final class AppStorePublishingService {
             )
         }
 
-        if let artifact, let temporaryDirectory, !reusedExistingBuild {
+        if let artifact, !reusedExistingBuild {
+            if temporaryDirectory == nil {
+                let directory = fileManager.temporaryDirectory
+                    .appendingPathComponent("DevManagement-Publish-\(UUID().uuidString)", isDirectory: true)
+                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+                temporaryDirectory = directory
+            }
             eventHandler(.phase(.uploadingBuild))
             try await uploadBuild(
                 ipaURL: artifact.ipaURL,
                 issuerID: configuration.appStoreConnectIssuerID,
                 keyID: configuration.appStoreConnectKeyID,
                 privateKey: configuration.appStoreConnectPrivateKey,
-                temporaryDirectory: temporaryDirectory,
+                temporaryDirectory: temporaryDirectory!,
+                checkpoint: checkpoint,
                 eventHandler: eventHandler
             )
         }
@@ -586,6 +642,7 @@ final class AppStorePublishingService {
             eventHandler(.output(L10n.text("Full App Store and TestFlight setup completed. Review submission was intentionally skipped.\n")))
         }
 
+        checkpoint.removeCompletedArtifacts()
         return PublishingResult(
             version: targetVersion,
             buildNumber: targetBuildNumber,
@@ -1134,22 +1191,11 @@ final class AppStorePublishingService {
         keyID: String,
         privateKey: String,
         temporaryDirectory: URL,
+        checkpoint: AppStorePublishingCheckpoint,
         eventHandler: @escaping EventHandler
     ) async throws -> AppStoreBuildArtifact {
-        try await xcodeGenPreparationService.prepare(
-            project: project,
-            onOutput: { eventHandler(.output($0)) }
-        )
-        let preparedScheme = try xcodeSchemePreparationService.prepare(project: project)
-        defer { preparedScheme.removeTemporaryFile(fileManager: fileManager) }
-        if !preparedScheme.removedActionTitles.isEmpty {
-            eventHandler(.output(L10n.format(
-                "Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n",
-                preparedScheme.removedActionTitles.count
-            )))
-        }
-        let archiveURL = temporaryDirectory.appendingPathComponent("\(project.scheme).xcarchive")
-        let exportURL = temporaryDirectory.appendingPathComponent("Export", isDirectory: true)
+        let archiveURL = checkpoint.archiveURL
+        let exportURL = checkpoint.exportURL
         let exportOptionsURL = temporaryDirectory.appendingPathComponent("ExportOptions.plist")
         let authenticationKeyURL = try writeAppStoreConnectAuthenticationKey(
             privateKey,
@@ -1164,25 +1210,47 @@ final class AppStorePublishingService {
         eventHandler(.output(L10n.text(
             "Authenticating Xcode signing with the configured App Store Connect key.\n"
         )))
-        let releaseConfiguration = project.availableConfigurations.first(where: {
-            $0.caseInsensitiveCompare("Release") == .orderedSame
-        }) ?? project.availableConfigurations.first(where: {
-            $0.localizedCaseInsensitiveContains("release")
-        }) ?? project.configuration
-        let archiveArguments = Self.archiveArguments(
-            containerArguments: xcodeContainerArguments(for: project),
-            schemeName: preparedScheme.name,
-            configuration: releaseConfiguration,
-            archiveURL: archiveURL,
-            teamID: project.signingTeamID ?? project.projectSigningTeamID,
-            authenticationArguments: authenticationArguments
-        )
-        _ = try await processRunner.runAndRequireSuccess(
-            executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
-            arguments: archiveArguments,
-            workingDirectory: project.folderURL,
-            onOutput: { eventHandler(.output($0)) }
-        )
+        if checkpoint.hasArchive {
+            eventHandler(.output(L10n.format(
+                "Reusing saved archive for %@ (%@); resuming export.\n",
+                checkpoint.identity.version, checkpoint.identity.buildNumber
+            )))
+        } else {
+            try checkpoint.prepareArchive()
+            try await xcodeGenPreparationService.prepare(
+                project: project,
+                onOutput: { eventHandler(.output($0)) }
+            )
+            let preparedScheme = try xcodeSchemePreparationService.prepare(project: project)
+            defer { preparedScheme.removeTemporaryFile(fileManager: fileManager) }
+            if !preparedScheme.removedActionTitles.isEmpty {
+                eventHandler(.output(L10n.format(
+                    "Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n",
+                    preparedScheme.removedActionTitles.count
+                )))
+            }
+            let releaseConfiguration = project.availableConfigurations.first(where: {
+                $0.caseInsensitiveCompare("Release") == .orderedSame
+            }) ?? project.availableConfigurations.first(where: {
+                $0.localizedCaseInsensitiveContains("release")
+            }) ?? project.configuration
+            let archiveArguments = Self.archiveArguments(
+                containerArguments: xcodeContainerArguments(for: project),
+                schemeName: preparedScheme.name,
+                configuration: releaseConfiguration,
+                archiveURL: archiveURL,
+                teamID: project.signingTeamID ?? project.projectSigningTeamID,
+                authenticationArguments: authenticationArguments
+            )
+            _ = try await processRunner.runAndRequireSuccess(
+                executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
+                arguments: archiveArguments,
+                workingDirectory: project.folderURL,
+                onOutput: { eventHandler(.output($0)) }
+            )
+            try checkpoint.markArchived()
+            eventHandler(.output(L10n.text("Archive saved locally for publishing retries.\n")))
+        }
 
         let archiveMetadata = try Self.archiveMetadata(
             at: archiveURL,
@@ -1228,6 +1296,7 @@ final class AppStorePublishingService {
             signingIdentity.commonName,
             provisioningProfiles.count
         )))
+        try checkpoint.prepareExport()
         do {
             _ = try await processRunner.runAndRequireSuccess(
                 executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
@@ -1251,6 +1320,8 @@ final class AppStorePublishingService {
         ).first(where: { $0.pathExtension.lowercased() == "ipa" }) else {
             throw AppStorePublishingError.noIPA
         }
+        try checkpoint.markExported(ipaURL: ipaURL)
+        eventHandler(.output(L10n.text("Exported IPA saved locally for publishing retries.\n")))
         return AppStoreBuildArtifact(
             ipaURL: ipaURL,
             archiveURL: archiveURL,
@@ -1510,6 +1581,7 @@ final class AppStorePublishingService {
         keyID: String,
         privateKey: String,
         temporaryDirectory: URL,
+        checkpoint: AppStorePublishingCheckpoint,
         eventHandler: @escaping EventHandler
     ) async throws {
         let keyURL = try writeAppStoreConnectAuthenticationKey(
@@ -1520,19 +1592,24 @@ final class AppStorePublishingService {
         let keyDirectory = keyURL.deletingLastPathComponent()
 
         let uploaderURL = try appStoreUploaderURL()
-        eventHandler(.output(L10n.text("Validating the exported IPA with Apple's App Store upload tool…\n")))
-        _ = try await processRunner.runAndRequireSuccess(
-            executable: uploaderURL,
-            arguments: [
-                "--validate-app", ipaURL.path,
-                "--api-key", keyID,
-                "--api-issuer", issuerID,
-                "--output-format", "json"
-            ],
-            workingDirectory: ipaURL.deletingLastPathComponent(),
-            additionalEnvironment: ["API_PRIVATE_KEYS_DIR": keyDirectory.path],
-            onOutput: { eventHandler(.output($0)) }
-        )
+        if checkpoint.isValidated {
+            eventHandler(.output(L10n.text("The saved IPA already passed validation; skipping validation.\n")))
+        } else {
+            eventHandler(.output(L10n.text("Validating the exported IPA with Apple's App Store upload tool…\n")))
+            _ = try await processRunner.runAndRequireSuccess(
+                executable: uploaderURL,
+                arguments: [
+                    "--validate-app", ipaURL.path,
+                    "--api-key", keyID,
+                    "--api-issuer", issuerID,
+                    "--output-format", "json"
+                ],
+                workingDirectory: ipaURL.deletingLastPathComponent(),
+                additionalEnvironment: ["API_PRIVATE_KEYS_DIR": keyDirectory.path],
+                onOutput: { eventHandler(.output($0)) }
+            )
+            try checkpoint.markValidated()
+        }
         eventHandler(.output(L10n.text("Uploading the exported IPA to App Store Connect…\n")))
         let maximumAttempts = 3
         for attempt in 1...maximumAttempts {
@@ -1552,6 +1629,7 @@ final class AppStorePublishingService {
                     onOutput: { eventHandler(.output($0)) },
                     terminateWhenOutput: { failureDetector.observe($0) }
                 )
+                try checkpoint.markUploadAccepted()
                 return
             } catch {
                 try Task.checkCancellation()

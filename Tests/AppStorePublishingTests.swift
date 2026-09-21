@@ -2874,6 +2874,140 @@ final class AppStorePublishingTests: XCTestCase {
         ]))
     }
 
+    func testBuildUploadLookupMatchesReleaseAndExposesProcessingBeforeTestFlight() async throws {
+        let service = try appStoreConnectTestService { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/v1/apps/app-id/buildUploads")
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!
+            XCTAssertTrue(query.contains(URLQueryItem(name: "filter[cfBundleVersion]", value: "1016")))
+            XCTAssertTrue(query.contains(URLQueryItem(name: "filter[cfBundleShortVersionString]", value: "7.4.15")))
+            XCTAssertTrue(query.contains(URLQueryItem(name: "filter[platform]", value: "IOS")))
+            return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": [[
+                "id": "delivery", "attributes": [
+                    "cfBundleVersion": "1016", "cfBundleShortVersionString": "7.4.15",
+                    "platform": "IOS", "state": ["state": "PROCESSING", "errors": []]
+                ]
+            ]]])
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        let upload = try await service.buildUpload(appID: "app-id", marketingVersion: "7.4.15", buildNumber: "1016")
+        XCTAssertEqual(upload?.id, "delivery")
+        XCTAssertEqual(upload?.wasAccepted, true)
+    }
+
+    func testBuildUploadMatchingRejectsOtherReleaseAndIncompleteTransfers() throws {
+        func upload(_ state: String, version: String = "7.4.15", build: String = "1016", platform: String = "IOS") -> [String: Any] {
+            ["id": state, "attributes": ["cfBundleShortVersionString": version, "cfBundleVersion": build,
+                                         "platform": platform, "state": ["state": state]]]
+        }
+        let match = AppStoreConnectService.matchingBuildUpload(in: [
+            upload("COMPLETE", version: "7.4.14"), upload("COMPLETE", build: "1015"),
+            upload("COMPLETE", platform: "MAC_OS"), upload("FAILED"), upload("PROCESSING")
+        ], marketingVersion: "7.4.15", buildNumber: "1016")
+        XCTAssertEqual(match?.state, "PROCESSING")
+        let pending = AppStoreConnectService.matchingBuildUpload(in: [upload("AWAITING_UPLOAD")],
+            marketingVersion: "7.4.15", buildNumber: "1016")
+        XCTAssertEqual(pending?.wasAccepted, false)
+    }
+
+    func testProcessingWaitReportsAppleUploadFailureInsteadOfTimingOut() async throws {
+        let service = try appStoreConnectTestService { request in
+            let data: [[String: Any]] = request.url?.path == "/v1/builds" ? [] : [[
+                "id": "delivery", "attributes": [
+                    "cfBundleVersion": "1016", "cfBundleShortVersionString": "7.4.15", "platform": "IOS",
+                    "state": ["state": "FAILED", "errors": [["code": "ITMS-90000", "description": "Invalid binary"]]]
+                ]
+            ]]
+            return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": data])
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        do {
+            _ = try await service.waitForBuild(appID: "app", marketingVersion: "7.4.15", buildNumber: "1016", onOutput: { _ in })
+            XCTFail("Must report the rejection")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("ITMS-90000: Invalid binary"))
+        }
+        XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.count, 2)
+    }
+
+    func testMatchingBuildAttachmentSkipsPatch() async throws {
+        let service = try appStoreConnectTestService { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            return try Self.appStoreConnectResponse(for: request, status: 200, json: [
+                "data": ["id": "build", "type": "builds"]
+            ])
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        try await service.attachBuild("build", toVersion: "version")
+        XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.count, 1)
+    }
+
+    func testResourceUpdateSkipsUnchangedFieldsButAppliesEditedMetadata() async throws {
+        let service = try appStoreConnectTestService { request in
+            let resource: [String: Any] = ["id": "listing", "type": "appStoreVersionLocalizations",
+                                          "attributes": ["description": "Saved description", "locale": "en-US"]]
+            return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": resource])
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        let path = "/v1/appStoreVersionLocalizations/listing"
+        func body(_ description: String) -> [String: Any] {
+            ["data": ["id": "listing", "type": "appStoreVersionLocalizations", "attributes": ["description": description]]]
+        }
+        _ = try await service.updateResourceIfNeeded(path: path, body: body("Saved description"))
+        XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.map(\.httpMethod), ["GET"])
+        _ = try await service.updateResourceIfNeeded(path: path, body: body("Edited description"))
+        XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.map(\.httpMethod), ["GET", "GET", "PATCH"])
+    }
+
+    func testSubmittedReleaseMustHaveExactBuildAttached() async throws {
+        let service = try appStoreConnectTestService { request in
+            try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": [[
+                "id": "version", "attributes": ["versionString": "7.4.15", "appStoreState": "WAITING_FOR_REVIEW"],
+                "relationships": ["build": ["data": ["id": "submitted-build", "type": "builds"]]]
+            ]]])
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        let submitted = try await service.isBuildSubmitted(appID: "app", marketingVersion: "7.4.15", buildID: "submitted-build")
+        let different = try await service.isBuildSubmitted(appID: "app", marketingVersion: "7.4.15", buildID: "new-build")
+        XCTAssertTrue(submitted)
+        XCTAssertFalse(different)
+    }
+
+    func testReplacementScreenshotsReuseOnlyCompleteIdenticalFilesInOrder() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = directory.appendingPathComponent("first.png")
+        let second = directory.appendingPathComponent("second.png")
+        try Data("first image".utf8).write(to: first)
+        try Data("second image".utf8).write(to: second)
+        let assets = [first, second].map { AppStoreScreenshotAsset(url: $0, displayType: "APP_IPHONE_67") }
+        func screenshot(_ id: String, url: URL, state: String = "COMPLETE") throws -> [String: Any] {
+            let checksum = Insecure.MD5.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
+            return ["id": id, "type": "appScreenshots", "attributes": [
+                "sourceFileChecksum": checksum, "assetDeliveryState": ["state": state]
+            ]]
+        }
+        let screenshots = try [screenshot("first", url: first), screenshot("second", url: second)]
+        XCTAssertTrue(try AppStoreConnectService.screenshotsMatch(screenshots, assets: assets))
+        XCTAssertFalse(try AppStoreConnectService.screenshotsMatch(screenshots.reversed(), assets: assets))
+        XCTAssertFalse(try AppStoreConnectService.screenshotsMatch([screenshots[0]], assets: assets))
+        let pending = try [screenshots[0], screenshot("second", url: second, state: "UPLOAD_COMPLETE")]
+        XCTAssertFalse(try AppStoreConnectService.screenshotsMatch(pending, assets: assets))
+        try Data("edited image".utf8).write(to: first)
+        XCTAssertFalse(try AppStoreConnectService.screenshotsMatch(screenshots, assets: assets))
+    }
+
+    func testScreenshotMatchingUsesRelationshipOrderInsteadOfIncludedResponseOrder() {
+        let response: [String: Any] = [
+            "data": [["id": "set", "attributes": ["screenshotDisplayType": "APP_IPHONE_67"],
+                      "relationships": ["appScreenshots": ["data": [["id": "first"], ["id": "second"]]]]]],
+            "included": [["id": "second", "type": "appScreenshots"], ["id": "first", "type": "appScreenshots"]]
+        ]
+        let contents = AppStoreConnectService.screenshotSetContents(in: response, matching: "APP_IPHONE_67")
+        XCTAssertEqual(contents.screenshots.compactMap { $0["id"] as? String }, ["first", "second"])
+    }
+
     private func decodedJWTComponent(_ component: String) throws -> [String: Any] {
         var base64 = component.replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")

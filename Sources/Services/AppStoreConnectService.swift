@@ -184,7 +184,7 @@ enum AppStoreConnectError: LocalizedError {
         case .missingIdentifier(let name):
             return L10n.format("App Store Connect did not return the %@ identifier.", name)
         case .buildProcessingTimedOut:
-            return L10n.text("The build upload succeeded, but App Store processing did not finish before the timeout.")
+            return L10n.text("Apple has not made the uploaded build ready before the timeout. Try again to resume processing checks without rebuilding or uploading it again.")
         case .incompleteSubscriptionConfiguration(let productID):
             return L10n.format("The app references subscription %@, but it is missing from a local .storekit file or app-store-publishing.json.", productID)
         case .missingSubscriptionPrice(let productID):
@@ -1267,8 +1267,7 @@ final class AppStoreConnectService {
         }
 
         if let contentRights = configuration.contentRightsDeclaration?.nilIfEmpty {
-            _ = try await request(
-                method: "PATCH",
+            _ = try await updateResourceIfNeeded(
                 path: "/v1/apps/\(appID)",
                 body: [
                     "data": [
@@ -1304,8 +1303,7 @@ final class AppStoreConnectService {
                 ]
             }
             if !relationships.isEmpty {
-                _ = try await request(
-                    method: "PATCH",
+                _ = try await updateResourceIfNeeded(
                     path: "/v1/appInfos/\(infoID)",
                     body: [
                         "data": [
@@ -1313,7 +1311,8 @@ final class AppStoreConnectService {
                             "id": infoID,
                             "relationships": relationships
                         ]
-                    ]
+                    ],
+                    existing: info
                 )
                 onOutput(L10n.text("Updated the App Store categories.\n"))
             }
@@ -1323,8 +1322,7 @@ final class AppStoreConnectService {
                     path: "/v1/appInfos/\(infoID)/ageRatingDeclaration"
                 )
                 let ageRatingID = try Self.identifier(in: response, named: "age rating declaration")
-                _ = try await request(
-                    method: "PATCH",
+                _ = try await updateResourceIfNeeded(
                     path: "/v1/ageRatingDeclarations/\(ageRatingID)",
                     body: [
                         "data": [
@@ -1332,7 +1330,8 @@ final class AppStoreConnectService {
                             "id": ageRatingID,
                             "attributes": ageRating.mapValues(\.jsonObject)
                         ]
-                    ]
+                    ],
+                    existing: response["data"] as? [String: Any]
                 )
                 onOutput(L10n.text("Updated the age-rating declaration.\n"))
             }
@@ -1779,7 +1778,9 @@ final class AppStoreConnectService {
             }
             if !existingScreenshots.isEmpty,
                existingScreenshotsAreComplete,
-               !replaceExisting {
+               try (!replaceExisting || Self.screenshotsMatch(
+                existingScreenshots, assets: Array(group.value.prefix(10))
+               )) {
                 onOutput(L10n.format("Keeping %d existing screenshot(s) for %@.\n", existingScreenshots.count, displayType))
                 continue
             }
@@ -1843,17 +1844,23 @@ final class AppStoreConnectService {
         guard let matchingSet else { return (nil, []) }
         let relationships = matchingSet["relationships"] as? [String: Any]
         let appScreenshots = relationships?["appScreenshots"] as? [String: Any]
-        let relatedIDs = Set(
-            (appScreenshots?["data"] as? [[String: Any]] ?? []).compactMap {
-                $0["id"] as? String
-            }
-        )
-        let screenshots = (response["included"] as? [[String: Any]] ?? []).filter {
-            guard $0["type"] as? String == "appScreenshots",
-                  let id = $0["id"] as? String else { return false }
-            return relatedIDs.contains(id)
+        let relatedIDs = (appScreenshots?["data"] as? [[String: Any]] ?? []).compactMap {
+            $0["id"] as? String
+        }
+        let included = response["included"] as? [[String: Any]] ?? []
+        let screenshots = relatedIDs.compactMap { id in
+            included.first { $0["type"] as? String == "appScreenshots" && $0["id"] as? String == id }
         }
         return (matchingSet, screenshots)
+    }
+
+    static func screenshotsMatch(_ existing: [[String: Any]], assets: [AppStoreScreenshotAsset]) throws -> Bool {
+        guard existing.count == assets.count else { return false }
+        return try zip(existing, assets).allSatisfy { resource, asset in
+            guard screenshotAssetDeliveryState(resource) == "COMPLETE",
+                  let checksum = attributes(resource)["sourceFileChecksum"] as? String else { return false }
+            return checksum.lowercased() == md5Hex(try Data(contentsOf: asset.url, options: [.mappedIfSafe]))
+        }
     }
 
     static func screenshotAssetDeliveryState(_ resource: [String: Any]) -> String? {
@@ -1919,6 +1926,11 @@ final class AppStoreConnectService {
                     throw AppStoreConnectError.requestFailed(422, L10n.format("Build processing finished with state %@.", build.processingState))
                 }
                 onOutput(L10n.format("App Store build processing: %@.\n", build.processingState))
+            } else if let upload = try await buildUpload(
+                appID: appID, marketingVersion: marketingVersion, buildNumber: buildNumber
+            ) {
+                try upload.checkForFailure()
+                onOutput(L10n.format("App Store upload processing: %@.\n", upload.state))
             } else {
                 onOutput(L10n.text("Waiting for the uploaded build to appear in App Store Connect…\n"))
             }
@@ -2035,6 +2047,10 @@ final class AppStoreConnectService {
     }
 
     func attachBuild(_ buildID: String, toVersion versionID: String) async throws {
+        let current = try await request(
+            method: "GET", path: "/v1/appStoreVersions/\(versionID)/relationships/build"
+        )
+        if (current["data"] as? [String: Any])?["id"] as? String == buildID { return }
         _ = try await request(
             method: "PATCH",
             path: "/v1/appStoreVersions/\(versionID)/relationships/build",
@@ -2161,8 +2177,7 @@ final class AppStoreConnectService {
                 (Self.attributes($0)["locale"] as? String)?.caseInsensitiveCompare(listing.locale) == .orderedSame
             }), let localizationID = resource["id"] as? String {
                 attributes.removeValue(forKey: "locale")
-                _ = try await request(
-                    method: "PATCH",
+                _ = try await updateResourceIfNeeded(
                     path: "/v1/betaAppLocalizations/\(localizationID)",
                     body: [
                         "data": [
@@ -2170,7 +2185,8 @@ final class AppStoreConnectService {
                             "id": localizationID,
                             "attributes": attributes
                         ]
-                    ]
+                    ],
+                    existing: resource
                 )
             } else {
                 _ = try await request(
@@ -2202,8 +2218,7 @@ final class AppStoreConnectService {
         do {
             let response = try await request(method: "GET", path: "/v1/apps/\(appID)/betaAppReviewDetail")
             let detailID = try Self.identifier(in: response, named: "TestFlight review details")
-            _ = try await request(
-                method: "PATCH",
+            _ = try await updateResourceIfNeeded(
                 path: "/v1/betaAppReviewDetails/\(detailID)",
                 body: [
                     "data": [
@@ -2211,7 +2226,8 @@ final class AppStoreConnectService {
                         "id": detailID,
                         "attributes": betaReviewAttributes
                     ]
-                ]
+                ],
+                existing: response["data"] as? [String: Any]
             )
         } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
             _ = try await request(
@@ -3673,8 +3689,7 @@ final class AppStoreConnectService {
         if includesReleaseNotes {
             attributes["whatsNew"] = metadata.whatsNew
         }
-        _ = try await request(
-            method: "PATCH",
+        _ = try await updateResourceIfNeeded(
             path: "/v1/appStoreVersionLocalizations/\(localizationID)",
             body: [
                 "data": [

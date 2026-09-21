@@ -1350,3 +1350,15 @@
 "Preparing a detached checkout of branch %@…\n" = "Preparing a detached checkout of branch %@…\n";
 "Building branch %@ at %@ from %@; the repository's checked-out branch was left unchanged.\n" = "Building branch %@ at %@ from %@; the repository's checked-out branch was left unchanged.\n";
 "Could not fetch %@ from %@; building the last known revision.\n" = "Could not fetch %@ from %@; building the last known revision.\n";
+
+/* Resumable publishing */
+"Apple has not made the uploaded build ready before the timeout. Try again to resume processing checks without rebuilding or uploading it again." = "Apple has not made the uploaded build ready before the timeout. Try again to resume processing checks without rebuilding or uploading it again.";
+"Apple could not process the uploaded build: %@" = "Apple could not process the uploaded build: %@";
+"App Store upload processing: %@.\n" = "App Store upload processing: %@.\n";
+"Build %@ (%@) was already uploaded; resuming Apple's processing checks without rebuilding or uploading again.\n" = "Build %@ (%@) was already uploaded; resuming Apple's processing checks without rebuilding or uploading again.\n";
+"Reusing saved archive and IPA for %@ (%@); build and export are not needed.\n" = "Reusing saved archive and IPA for %@ (%@); build and export are not needed.\n";
+"Reusing saved archive for %@ (%@); resuming export.\n" = "Reusing saved archive for %@ (%@); resuming export.\n";
+"Archive saved locally for publishing retries.\n" = "Archive saved locally for publishing retries.\n";
+"Exported IPA saved locally for publishing retries.\n" = "Exported IPA saved locally for publishing retries.\n";
+"The saved IPA already passed validation; skipping validation.\n" = "The saved IPA already passed validation; skipping validation.\n";
+"Build %@ (%@) is already submitted to App Review or released; publishing is complete.\n" = "Build %@ (%@) is already submitted to App Review or released; publishing is complete.\n";

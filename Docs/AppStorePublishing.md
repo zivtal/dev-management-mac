@@ -245,6 +245,41 @@ because App Store Connect treats that attribute as immutable. Locales imported
 from App Store Connect are canonicalized before the generated per-app JSON is
 saved, so regional aliases do not persist through a configuration round trip.
 
+## Resuming a release
+
+Run the same release action again after a failure or cancellation. Successful
+archive, export, validation, and upload checkpoints survive app restarts. Failed
+steps are retried; a partial archive or export is never treated as completed.
+
+- If export fails, reuse the completed local archive and retry export.
+- If validation or upload fails, reuse the saved IPA. A previously successful
+  validation is skipped only for the same SHA-256-verified IPA.
+- If Apple already has the exact iOS marketing version and build, skip archive,
+  export, validation, and upload. Build Uploads are checked as well as TestFlight,
+  so an accepted build still processing is not uploaded a second time.
+- After a processing timeout, retry the processing check. Apple's upload errors
+  are reported when available rather than hidden behind a generic timeout.
+- Matching listing fields, TestFlight information, app declarations, build
+  attachments, and complete matching replacement screenshots are not rewritten.
+  Existing products, prices, groups, and review assets continue to be reconciled
+  against Apple, so edited configuration is applied and missing work is completed.
+- Publish detects when the exact build is already in review or released and
+  finishes without restarting that release.
+
+Artifacts are stored privately under
+`~/Library/Application Support/DevManagement/PublishingArtifacts`. Each checkpoint
+is isolated by project path, container, scheme, configuration, signing team,
+App Store Connect issuer/application, bundle identifier, marketing version, and
+build number. API keys remain temporary and are never saved in this directory.
+Successful publication removes the large local artifacts and retains the upload
+receipt. Unfinished releases keep their artifacts for retry.
+
+The saved binary is a snapshot of that version/build, just like an uploaded
+TestFlight build. Retrying the same version/build intentionally uses that snapshot,
+even if source files subsequently changed. A new repository version/build starts
+fresh; publishing never increments either value. Metadata edits do not require
+rebuilding the binary and are reconciled on retry.
+
 ## Shared release pipeline
 
 **Upload to TestFlight** and **Publish** run the same setup pipeline in this
@@ -258,7 +293,7 @@ order:
 4. Prepare or capture App Store screenshots for each supported simulator family.
 5. Look for the exact selected marketing version and build in TestFlight. When
    it is already present, reuse it and skip the archive and upload. Otherwise,
-   archive and export a temporary copy of the selected iOS scheme with repository
+   resume a saved archive/export when available, or archive the selected iOS scheme with repository
    pre/post action scripts removed. The selected App Store Connect `.p8` key is
    passed to Xcode for automatic signing and provisioning, so export does not
    depend on an Apple Account session stored in Xcode.

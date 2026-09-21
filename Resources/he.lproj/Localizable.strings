@@ -1350,3 +1350,15 @@
 "Preparing a detached checkout of branch %@…\n" = "מכין checkout מנותק של הענף %@…\n";
 "Building branch %@ at %@ from %@; the repository's checked-out branch was left unchanged.\n" = "בונה את הענף %@ בקומיט %@ מתוך %@; הענף הפעיל במאגר לא שונה.\n";
 "Could not fetch %@ from %@; building the last known revision.\n" = "לא ניתן למשוך את %@ מ‑%@; בונה את הגרסה האחרונה הידועה.\n";
+
+/* Resumable publishing */
+"Apple has not made the uploaded build ready before the timeout. Try again to resume processing checks without rebuilding or uploading it again." = "הבנייה שהועלתה עדיין לא הייתה מוכנה אצל Apple בתום זמן ההמתנה. נסו שוב כדי להמשיך בבדיקת העיבוד בלי לבנות או להעלות אותה מחדש.";
+"Apple could not process the uploaded build: %@" = "Apple לא הצליחה לעבד את הבנייה שהועלתה: %@";
+"App Store upload processing: %@.\n" = "עיבוד ההעלאה ל-App Store: %@.\n";
+"Build %@ (%@) was already uploaded; resuming Apple's processing checks without rebuilding or uploading again.\n" = "הבנייה %@ (%@) כבר הועלתה; ממשיכים בבדיקת העיבוד אצל Apple בלי לבנות או להעלות מחדש.\n";
+"Reusing saved archive and IPA for %@ (%@); build and export are not needed.\n" = "משתמשים בארכיון ובקובץ ה-IPA השמורים עבור %@ (%@); אין צורך בבנייה או בייצוא.\n";
+"Reusing saved archive for %@ (%@); resuming export.\n" = "משתמשים בארכיון השמור עבור %@ (%@); ממשיכים בייצוא.\n";
+"Archive saved locally for publishing retries.\n" = "הארכיון נשמר במחשב לניסיונות פרסום חוזרים.\n";
+"Exported IPA saved locally for publishing retries.\n" = "קובץ ה-IPA שיוצא נשמר במחשב לניסיונות פרסום חוזרים.\n";
+"The saved IPA already passed validation; skipping validation.\n" = "קובץ ה-IPA השמור כבר עבר אימות; מדלגים על האימות.\n";
+"Build %@ (%@) is already submitted to App Review or released; publishing is complete.\n" = "הבנייה %@ (%@) כבר הוגשה לבדיקת App Review או פורסמה; הפרסום הושלם.\n";
