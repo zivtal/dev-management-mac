@@ -1488,6 +1488,32 @@ final class AppStorePublishingTests: XCTestCase {
         )
     }
 
+    func testScreenshotBuildUsesSchemeDestinationAndDerivedDataForProjectAndWorkspace() {
+        for containerFlag in ["-project", "-workspace"] {
+            let arguments = AppStorePublishingService.screenshotBuildArguments(
+                containerArguments: [containerFlag, "/repo/TripFlow"],
+                schemeName: "DevelopmentManagement-TripFlow-safe",
+                configuration: "Debug",
+                simulatorUDID: "SELECTED-SIMULATOR",
+                buildRoot: URL(fileURLWithPath: "/cache/screenshots")
+            )
+
+            XCTAssertEqual(arguments, [
+                containerFlag, "/repo/TripFlow",
+                "-scheme", "DevelopmentManagement-TripFlow-safe",
+                "-configuration", "Debug",
+                "-destination", "id=SELECTED-SIMULATOR",
+                "-derivedDataPath", "/cache/screenshots"
+            ])
+            // SDK overrides also apply to embedded watchOS dependencies. Target-only
+            // builds omit the scheme's package graph; both caused screenshot failures.
+            XCTAssertFalse(arguments.contains("-sdk"))
+            XCTAssertFalse(arguments.contains("-target"))
+            XCTAssertFalse(arguments.contains { $0.hasPrefix("MARKETING_VERSION=") })
+            XCTAssertFalse(arguments.contains { $0.hasPrefix("CURRENT_PROJECT_VERSION=") })
+        }
+    }
+
     func testScreenshotFixtureUsesDebugConfigurationAndIsDetectedFromSource() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScreenshotFixtureTests-\(UUID().uuidString)", isDirectory: true)

@@ -291,6 +291,9 @@ order:
 3. Validate every configured public support, marketing, privacy, and terms URL
    before spending time on an archive that cannot be submitted.
 4. Prepare or capture App Store screenshots for each supported simulator family.
+   Capture builds use the selected simulator destination and a scheme with repository
+   pre/post actions removed. Xcode resolves package products and each dependency's
+   SDK, including the watchOS SDK for an embedded Watch app.
 5. Look for the exact selected marketing version and build in TestFlight. When
    it is already present, reuse it and skip the archive and upload. Otherwise,
    resume a saved archive/export when available, or archive the selected iOS scheme with repository

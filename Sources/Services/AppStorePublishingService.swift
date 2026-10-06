@@ -1068,6 +1068,7 @@ final class AppStorePublishingService {
                     application = try await buildSimulatorApplication(
                         project: project,
                         plan: plan,
+                        simulatorUDID: simulator.udid,
                         configuration: screenshotConfiguration,
                         buildRoot: cacheRoot.appendingPathComponent("Build-\(plan.buildKey)", isDirectory: true),
                         eventHandler: eventHandler
@@ -1749,21 +1750,51 @@ final class AppStorePublishingService {
         return false
     }
 
+    /// Let Xcode resolve each dependency's platform and Swift package products.
+    /// A global SDK override incorrectly compiles embedded watchOS apps for iOS.
+    static func screenshotBuildArguments(
+        containerArguments: [String],
+        schemeName: String,
+        configuration: String,
+        simulatorUDID: String,
+        buildRoot: URL
+    ) -> [String] {
+        containerArguments + [
+            "-scheme", schemeName,
+            "-configuration", configuration,
+            "-destination", "id=\(simulatorUDID)",
+            "-derivedDataPath", buildRoot.path
+        ]
+    }
+
     private func buildSimulatorApplication(
         project: ManagedProject,
         plan: ScreenshotBuildPlan,
+        simulatorUDID: String,
         configuration: String,
         buildRoot: URL,
         eventHandler: EventHandler?
     ) async throws -> SimulatorApplication {
+        var buildProject = project
+        buildProject.scheme = plan.scheme
+        let preparedScheme = try xcodeSchemePreparationService.prepare(project: buildProject)
+        defer { preparedScheme.removeTemporaryFile(fileManager: fileManager) }
+        if !preparedScheme.removedActionTitles.isEmpty {
+            eventHandler?(.output(L10n.format(
+                "Building without %d Xcode scheme script action(s); Development Management does not run repository workflow scripts.\n",
+                preparedScheme.removedActionTitles.count
+            )))
+        }
+        let arguments = Self.screenshotBuildArguments(
+            containerArguments: xcodeContainerArguments(for: project),
+            schemeName: preparedScheme.name,
+            configuration: configuration,
+            simulatorUDID: simulatorUDID,
+            buildRoot: buildRoot
+        )
         let settingsResult = try await processRunner.runAndRequireSuccess(
             executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
-            arguments: xcodeContainerArguments(for: project) + [
-                "-scheme", plan.scheme,
-                "-configuration", configuration,
-                "-destination", plan.destination,
-                "-showBuildSettings", "-json"
-            ],
+            arguments: arguments + ["-showBuildSettings", "-json"],
             workingDirectory: project.folderURL
         )
         guard let target = Self.applicationBuildTarget(
@@ -1772,14 +1803,7 @@ final class AppStorePublishingService {
         ) else {
             throw AppStorePublishingError.noSimulatorApplication
         }
-        let projectPath = target.projectPath
-            ?? (project.containerKind == .project ? project.containerPath : nil)
-        guard let projectPath else { throw AppStorePublishingError.missingProjectContainer }
-
-        try fileManager.createDirectory(at: buildRoot, withIntermediateDirectories: true)
-        let products = buildRoot.appendingPathComponent("Products", isDirectory: true)
-        let intermediates = buildRoot.appendingPathComponent("Intermediates", isDirectory: true)
-        let precompiled = buildRoot.appendingPathComponent("Precompiled", isDirectory: true)
+        let products = buildRoot.appendingPathComponent("Build/Products", isDirectory: true)
         eventHandler?(.output(L10n.format(
             "Building %@ for %@ screenshot capture…\n",
             target.name,
@@ -1787,16 +1811,7 @@ final class AppStorePublishingService {
         )))
         _ = try await processRunner.runAndRequireSuccess(
             executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
-            arguments: [
-                "-project", projectPath,
-                "-target", target.name,
-                "-configuration", configuration,
-                "-sdk", plan.sdk,
-                "SYMROOT=\(products.path)",
-                "OBJROOT=\(intermediates.path)",
-                "SHARED_PRECOMPS_DIR=\(precompiled.path)",
-                "build"
-            ],
+            arguments: arguments + ["build"],
             workingDirectory: project.folderURL,
             onOutput: { eventHandler?(.output($0)) }
         )
@@ -2018,7 +2033,6 @@ final class AppStorePublishingService {
             }
             return SimulatorBuildTarget(
                 name: name,
-                projectPath: settings["PROJECT_FILE_PATH"] as? String,
                 bundleIdentifier: (settings["PRODUCT_BUNDLE_IDENTIFIER"] as? String)?.nilIfEmpty
             )
         }.first
@@ -2149,22 +2163,10 @@ final class AppStorePublishingService {
         var buildKey: String {
             platform == .iPad ? AppStoreScreenshotPlatform.iPhone.rawValue : platform.rawValue
         }
-
-        var destination: String {
-            switch platform {
-            case .iPhone, .iPad: "generic/platform=iOS Simulator"
-            case .appleWatch: "generic/platform=watchOS Simulator"
-            case .appleTV: "generic/platform=tvOS Simulator"
-            case .appleVisionPro: "generic/platform=visionOS Simulator"
-            }
-        }
-
-        var sdk: String { platform.simulatorPlatformToken }
     }
 
     private struct SimulatorBuildTarget {
         let name: String
-        let projectPath: String?
         let bundleIdentifier: String?
     }
 
