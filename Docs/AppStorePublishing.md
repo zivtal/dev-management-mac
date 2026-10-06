@@ -293,7 +293,9 @@ order:
 4. Prepare or capture App Store screenshots for each supported simulator family.
    Capture builds use the selected simulator destination and a scheme with repository
    pre/post actions removed. Xcode resolves package products and each dependency's
-   SDK, including the watchOS SDK for an embedded Watch app.
+   SDK, including the watchOS SDK for an embedded Watch app. Companion Watch apps
+   are detected from source Info.plists and generated-plist Xcode build settings,
+   so they receive their own simulator screenshot even without a source plist.
 5. Look for the exact selected marketing version and build in TestFlight. When
    it is already present, reuse it and skip the archive and upload. Otherwise,
    resume a saved archive/export when available, or archive the selected iOS scheme with repository

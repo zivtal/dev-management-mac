@@ -1688,11 +1688,12 @@ final class AppStorePublishingService {
             plans[.iPad] = ScreenshotBuildPlan(platform: .iPad, scheme: project.scheme)
         }
 
-        if hasCompanionWatchApp(for: project) {
+        let watchTargets = companionWatchTargets(for: project)
+        if !watchTargets.isEmpty {
             let scheme = associatedScheme(
                 project: project,
                 keywords: ["watch", "watchos"]
-            ) ?? project.scheme
+            ) ?? watchTargets[0]
             plans[.appleWatch] = ScreenshotBuildPlan(platform: .appleWatch, scheme: scheme)
         }
         if let scheme = associatedScheme(project: project, keywords: ["tvos", "appletv"]) {
@@ -1717,20 +1718,31 @@ final class AppStorePublishingService {
         }
     }
 
-    private func hasCompanionWatchApp(for project: ManagedProject) -> Bool {
+    private func companionWatchTargets(for project: ManagedProject) -> [String] {
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty,
               let enumerator = fileManager.enumerator(
                 at: project.folderURL,
                 includingPropertiesForKeys: [.isRegularFileKey],
                 options: [.skipsHiddenFiles, .skipsPackageDescendants]
               ) else {
-            return false
+            return []
         }
+        var targets: Set<String> = []
+        var hasSourcePlist = false
         for case let url as URL in enumerator {
             let lowerPath = url.path.lowercased()
             if lowerPath.contains("/build/") || lowerPath.contains("/deriveddata/") {
                 if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
                     enumerator.skipDescendants()
+                }
+                continue
+            }
+            if url.pathExtension == "xcodeproj" {
+                if let data = try? Data(contentsOf: url.appendingPathComponent("project.pbxproj")) {
+                    targets.formUnion(XcodeCompanionAppDiscovery.watchTargets(
+                        in: data,
+                        companionBundleIdentifier: bundleIdentifier
+                    ))
                 }
                 continue
             }
@@ -1745,9 +1757,9 @@ final class AppStorePublishingService {
             else {
                 continue
             }
-            return true
+            hasSourcePlist = true
         }
-        return false
+        return targets.isEmpty && hasSourcePlist ? [project.scheme] : targets.sorted()
     }
 
     /// Let Xcode resolve each dependency's platform and Swift package products.
