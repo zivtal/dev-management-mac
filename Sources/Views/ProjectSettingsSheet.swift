@@ -179,6 +179,12 @@ struct ProjectSettingsSheet: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .padding(12)
+            } else if project.applicationPlatform == nil && project.bundleIdentifier == nil
+                        && !isRefreshingSchemes && !model.isRefreshingCompatibility(for: project.id) {
+                Text("Xcode has not detected an installable application for this scheme. Choose an app scheme, such as the project's iOS, macOS, or watchOS scheme.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .padding(12)
             }
 
             settingsDivider

@@ -144,7 +144,7 @@ enum InstallationServiceError: LocalizedError {
         case .missingDevelopmentTeam:
             L10n.text("The Xcode project does not specify a development team, and no matching team could be selected automatically. Choose a signing team for this application in Settings.")
         case .noBuiltApplication:
-            L10n.text("The build finished, but no .app product was found to install.")
+            L10n.text("The selected scheme did not produce an installable .app. In application settings, choose an iOS, macOS, or watchOS app scheme instead of a package or library scheme.")
         case .couldNotStopRunningApplication(let name):
             L10n.format("Could not stop the running %@ application.", name)
         case .cannotReplaceDevelopmentManagement:

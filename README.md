@@ -184,7 +184,7 @@ Settings contains six tabs and is the only ordinary app window.
 - Add one source folder at a time.
 - View each app's source path, detected version, last installation, and enabled
   or paused state.
-- Open the **Settings…** button in an application row for its dedicated sheet.
+- Click an application row to open its dedicated settings sheet.
   Build preferences stay on the left; device guidance and selections stay on
   the right, with only the device rows scrolling.
 - Enable, pause, or resume each managed application from its table row or

@@ -75,18 +75,27 @@ struct ProjectsSettingsView: View {
                     }
                 }
                 .padding(.vertical, 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { settingsProject = project }
             }
             .width(min: 235, ideal: 320)
 
             TableColumn("Version") { project in
                 Text(project.versionDisplay)
                     .monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { settingsProject = project }
             }
             .width(min: 90, ideal: 110)
 
             TableColumn("Last installed") { project in
                 Text(lastInstalledText(for: project))
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { settingsProject = project }
             }
             .width(min: 145, ideal: 170)
 
@@ -109,17 +118,13 @@ struct ProjectsSettingsView: View {
             }
             .width(min: 120, ideal: 145)
 
-            TableColumn("Settings") { project in
-                Button {
-                    settingsProject = project
-                } label: {
-                    Label("Settings…", systemImage: "gearshape")
-                }
-                .buttonStyle(.borderless)
-            }
-            .width(100)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .onChange(of: selection) { _, selectedIDs in
+            guard selectedIDs.count == 1, settingsProject == nil,
+                  let id = selectedIDs.first else { return }
+            settingsProject = model.projects.first { $0.id == id }
+        }
         .frame(minHeight: 200, maxHeight: .infinity)
         .overlay {
             RoundedRectangle(cornerRadius: 7)

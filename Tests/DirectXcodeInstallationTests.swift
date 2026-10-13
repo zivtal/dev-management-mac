@@ -2,6 +2,18 @@ import XCTest
 @testable import DevManagement
 
 final class DirectXcodeInstallationTests: XCTestCase {
+    func testNewProjectPrefersIOSApplicationOverSameNamedPackageExecutable() {
+        for iosScheme in ["KeyPassXiOS", "KeyPassX-iOS", "KeyPassX iOS"] {
+            let descriptor = ProjectDescriptor(
+                displayName: "KeyPassX", folderPath: "/tmp/KeyPassX",
+                containerPath: "/tmp/KeyPassX/KeyPassX.xcodeproj", containerKind: .project,
+                schemes: ["KeyPassX", iosScheme, "KeyPassXMac", "KeyPassXWatch", "VaultCore"],
+                configurations: ["Debug"]
+            )
+            XCTAssertEqual(descriptor.makeManagedProject().scheme, iosScheme)
+        }
+    }
+
     func testPersonalSchemeFindsMatchingPersonalConfiguration() {
         let project = makeProject(
             scheme: "ShekelExchange",

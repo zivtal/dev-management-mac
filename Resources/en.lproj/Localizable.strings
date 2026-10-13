@@ -1380,3 +1380,7 @@
 "Pair your Apple Watch with Xcode and enable Developer Mode on both the Watch and its iPhone. Install the iPhone companion first if the Watch app requires it." = "Pair your Apple Watch with Xcode and enable Developer Mode on both the Watch and its iPhone. Install the iPhone companion first if the Watch app requires it.";
 
 "To install on Apple Watch, select the application's watchOS scheme." = "To install on Apple Watch, select the application's watchOS scheme.";
+
+"The selected scheme did not produce an installable .app. In application settings, choose an iOS, macOS, or watchOS app scheme instead of a package or library scheme." = "The selected scheme did not produce an installable .app. In application settings, choose an iOS, macOS, or watchOS app scheme instead of a package or library scheme.";
+
+"Xcode has not detected an installable application for this scheme. Choose an app scheme, such as the project's iOS, macOS, or watchOS scheme." = "Xcode has not detected an installable application for this scheme. Choose an app scheme, such as the project's iOS, macOS, or watchOS scheme.";

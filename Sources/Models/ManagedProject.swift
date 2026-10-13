@@ -303,6 +303,14 @@ struct ProjectDescriptor: Equatable {
     }
 
     private static func preferredScheme(in schemes: [String], projectName: String) -> String {
+        // A package executable often has the bare project name alongside the
+        // actual iOS/macOS app targets. Prefer the explicitly named iOS app.
+        let iosNames = [projectName + "iOS", projectName + "-iOS", projectName + " iOS"]
+        if let ios = schemes.first(where: { scheme in
+            iosNames.contains { $0.caseInsensitiveCompare(scheme) == .orderedSame }
+        }) {
+            return ios
+        }
         if let exact = schemes.first(where: { $0.caseInsensitiveCompare(projectName) == .orderedSame }) {
             return exact
         }

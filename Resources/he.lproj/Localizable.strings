@@ -1380,3 +1380,7 @@
 "Pair your Apple Watch with Xcode and enable Developer Mode on both the Watch and its iPhone. Install the iPhone companion first if the Watch app requires it." = "קשרו את ה־Apple Watch ל־Xcode והפעילו מצב מפתחים בשעון וב־iPhone שלו. התקינו תחילה את היישום הנלווה ב־iPhone אם יישום השעון דורש זאת.";
 
 "To install on Apple Watch, select the application's watchOS scheme." = "להתקנה ב־Apple Watch, בחרו את סכימת ה־watchOS של היישום.";
+
+"The selected scheme did not produce an installable .app. In application settings, choose an iOS, macOS, or watchOS app scheme instead of a package or library scheme." = "הסכימה שנבחרה לא יצרה יישום להתקנה. בהגדרות היישום, בחרו סכימת יישום ל־iOS, ל־macOS או ל־watchOS במקום סכימת חבילה או ספרייה.";
+
+"Xcode has not detected an installable application for this scheme. Choose an app scheme, such as the project's iOS, macOS, or watchOS scheme." = "Xcode לא זיהה יישום שניתן להתקין עבור סכימה זו. בחרו סכימת יישום, למשל סכימת ה־iOS, ה־macOS או ה־watchOS של הפרויקט.";
