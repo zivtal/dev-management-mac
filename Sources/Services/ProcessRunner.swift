@@ -112,6 +112,14 @@ final class ProcessRunner: ProcessRunning {
     typealias OutputHandler = @Sendable (String) -> Void
     typealias OutputTerminationPredicate = @Sendable (String) -> Bool
 
+    static func childEnvironment(inheriting environment: [String: String]) -> [String: String] {
+        var result = environment
+        // Deployment may launch us from an Xcode build environment. This file
+        // overrides even command-line build settings in every managed project.
+        result.removeValue(forKey: "XCODE_XCCONFIG_FILE")
+        return result
+    }
+
     func run(
         executable: URL,
         arguments: [String],
@@ -142,7 +150,7 @@ final class ProcessRunner: ProcessRunning {
                     process.standardInput = inputPipe
                 }
 
-                var environment = ProcessInfo.processInfo.environment
+                var environment = Self.childEnvironment(inheriting: ProcessInfo.processInfo.environment)
                 let commonToolPaths = [
                     "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin",
                     "/bin", "/usr/sbin", "/sbin"

@@ -1384,3 +1384,11 @@
 "The selected scheme did not produce an installable .app. In application settings, choose an iOS, macOS, or watchOS app scheme instead of a package or library scheme." = "הסכימה שנבחרה לא יצרה יישום להתקנה. בהגדרות היישום, בחרו סכימת יישום ל־iOS, ל־macOS או ל־watchOS במקום סכימת חבילה או ספרייה.";
 
 "Xcode has not detected an installable application for this scheme. Choose an app scheme, such as the project's iOS, macOS, or watchOS scheme." = "Xcode לא זיהה יישום שניתן להתקין עבור סכימה זו. בחרו סכימת יישום, למשל סכימת ה־iOS, ה־macOS או ה־watchOS של הפרויקט.";
+
+"Watch scheme" = "סכמת Apple Watch";
+
+"Choose an installable watchOS application scheme for Watch installation." = "יש לבחור סכמת יישום watchOS הניתנת להתקנה ב־Apple Watch.";
+
+"Choose a Watch scheme to install on iPhone and Apple Watch together." = "יש לבחור סכמת Apple Watch כדי להתקין ב־iPhone וב־Apple Watch יחד.";
+
+"Install now builds both selected schemes, installing on iPhone before Apple Watch. Configuration and signing team apply to both." = "התקנה כעת בונה את שתי הסכמות שנבחרו ומתקינה ב־iPhone לפני Apple Watch. תצורת הבנייה וצוות החתימה חלים על שתיהן.";

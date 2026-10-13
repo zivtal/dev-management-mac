@@ -1384,3 +1384,11 @@
 "The selected scheme did not produce an installable .app. In application settings, choose an iOS, macOS, or watchOS app scheme instead of a package or library scheme." = "The selected scheme did not produce an installable .app. In application settings, choose an iOS, macOS, or watchOS app scheme instead of a package or library scheme.";
 
 "Xcode has not detected an installable application for this scheme. Choose an app scheme, such as the project's iOS, macOS, or watchOS scheme." = "Xcode has not detected an installable application for this scheme. Choose an app scheme, such as the project's iOS, macOS, or watchOS scheme.";
+
+"Watch scheme" = "Watch scheme";
+
+"Choose an installable watchOS application scheme for Watch installation." = "Choose an installable watchOS application scheme for Watch installation.";
+
+"Choose a Watch scheme to install on iPhone and Apple Watch together." = "Choose a Watch scheme to install on iPhone and Apple Watch together.";
+
+"Install now builds both selected schemes, installing on iPhone before Apple Watch. Configuration and signing team apply to both." = "Install now builds both selected schemes, installing on iPhone before Apple Watch. Configuration and signing team apply to both.";

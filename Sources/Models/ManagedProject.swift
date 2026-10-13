@@ -58,6 +58,40 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
     /// Git branch whose committed tip is built for installs. `nil` (or blank)
     /// builds the working copy at `folderPath` exactly as checked out.
     var buildBranch: String? = nil
+    /// An optional Watch build alongside the primary iOS scheme. Device choices
+    /// remain keyed by device ID, independently of either scheme selection.
+    var companionWatch: CompanionWatchConfiguration? = nil
+
+    var companionWatchProject: ManagedProject? {
+        guard effectiveApplicationPlatform == .iOS, let companionWatch else { return nil }
+        var copy = self
+        copy.companionWatch = nil
+        copy.scheme = companionWatch.scheme
+        copy.applicationPlatform = .watchOS
+        copy.bundleIdentifier = companionWatch.bundleIdentifier
+        copy.projectSigningTeamID = companionWatch.projectSigningTeamID
+        copy.supportedDeviceFamilies = nil
+        return copy
+    }
+
+    func installationProject(for device: ConnectedDevice) -> ManagedProject {
+        if device.isAppleWatch, let watch = companionWatchProject { return watch }
+        var copy = self
+        copy.companionWatch = nil
+        return copy
+    }
+
+    /// Always install the phone companion before the Watch, regardless of the
+    /// device-list order. Each scheme still builds once for all of its devices.
+    func installationBatches(for devices: [ConnectedDevice]) -> [(project: ManagedProject, devices: [ConnectedDevice])] {
+        var primary = self
+        primary.companionWatch = nil
+        let variants = [primary] + (companionWatch?.isVerified == true ? [companionWatchProject].compactMap { $0 } : [])
+        return variants.compactMap { variant in
+            let targets = devicesInInstallationOrder(devices.filter { variant.installationEnabled(for: $0) })
+            return targets.isEmpty ? nil : (variant, targets)
+        }
+    }
 
     var folderURL: URL { URL(fileURLWithPath: folderPath, isDirectory: true) }
     var containerURL: URL { URL(fileURLWithPath: containerPath) }
@@ -167,6 +201,7 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
     func supports(_ device: ConnectedDevice) -> Bool {
         guard !isMacOSApplication else { return false }
         if isWatchOSApplication { return device.isAppleWatch }
+        if device.isAppleWatch { return companionWatch?.isVerified == true }
         guard let family = device.mobileDeviceFamily else { return false }
         return effectiveSupportedDeviceFamilies.contains(family)
     }
@@ -260,6 +295,13 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
             return !distinctiveName.isEmpty && normalizedScheme.contains(distinctiveName)
         }
     }
+}
+
+struct CompanionWatchConfiguration: Codable, Equatable, Sendable {
+    var scheme: String
+    var bundleIdentifier: String? = nil
+    var projectSigningTeamID: String? = nil
+    var isVerified: Bool = false
 }
 
 struct ProjectDescriptor: Equatable {

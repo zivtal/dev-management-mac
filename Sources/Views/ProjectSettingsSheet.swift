@@ -189,6 +189,31 @@ struct ProjectSettingsSheet: View {
 
             settingsDivider
 
+            if project.effectiveApplicationPlatform == .iOS {
+                settingsPickerRow("Watch scheme") {
+                    Picker("Watch scheme", selection: Binding(
+                        get: { project.companionWatch?.scheme ?? "" },
+                        set: { model.setCompanionWatchScheme($0.isEmpty ? nil : $0, for: project.id) }
+                    )) {
+                        Text("None").tag("")
+                        if let selected = project.companionWatch?.scheme,
+                           !project.availableSchemes.contains(selected) {
+                            Text(selected).tag(selected)
+                        }
+                        ForEach(project.availableSchemes.filter { $0 != project.scheme }, id: \.self) {
+                            Text($0).tag($0)
+                        }
+                    }
+                    .labelsHidden()
+                }
+                if project.companionWatch != nil && project.companionWatch?.isVerified != true
+                    && !model.isRefreshingCompatibility(for: project.id) {
+                    Text("Choose an installable watchOS application scheme for Watch installation.")
+                        .font(.caption).foregroundStyle(.orange).padding(12)
+                }
+                settingsDivider
+            }
+
             settingsPickerRow("Configuration") {
                 Picker(
                     "Configuration",
@@ -320,6 +345,9 @@ struct ProjectSettingsSheet: View {
                     }
                     Text(project.deviceCompatibilityDescription)
                         .foregroundStyle(.secondary)
+                    if project.companionWatch?.isVerified == true {
+                        Text("Apple Watch").foregroundStyle(.secondary)
+                    }
                 }
                 .padding(12)
 
@@ -328,10 +356,13 @@ struct ProjectSettingsSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application.")
                     Text("Drag devices to set their installation order. The order is saved separately for this application.")
-                    if project.isWatchOSApplication {
+                    if project.isWatchOSApplication || project.companionWatch != nil {
                         Text("Pair your Apple Watch with Xcode and enable Developer Mode on both the Watch and its iPhone. Install the iPhone companion first if the Watch app requires it.")
                     } else {
-                        Text("To install on Apple Watch, select the application's watchOS scheme.")
+                        Text("Choose a Watch scheme to install on iPhone and Apple Watch together.")
+                    }
+                    if project.companionWatch != nil {
+                        Text("Install now builds both selected schemes, installing on iPhone before Apple Watch. Configuration and signing team apply to both.")
                     }
                 }
                 .font(.caption)
@@ -341,6 +372,11 @@ struct ProjectSettingsSheet: View {
                 .padding(.vertical, 9)
 
                 settingsDivider
+
+                if project.companionWatch?.isVerified == true && !compatibleDevices.contains(where: \.isAppleWatch) {
+                    Label("No connected Apple Watch is available in Xcode.", systemImage: "applewatch")
+                        .font(.caption).foregroundStyle(.secondary).padding(12)
+                }
 
                 if compatibleDevices.isEmpty {
                     Label(

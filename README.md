@@ -196,12 +196,17 @@ Settings contains six tabs and is the only ordinary app window.
   output path; iOS and watchOS schemes provide the compatible-device selector.
 - The sheet refreshes shared schemes when opened. Select a current scheme if
   the saved scheme was removed or renamed.
-- Choose a watchOS scheme to install directly on a connected Apple Watch. Pair
-  it with Xcode and enable Developer Mode on the Watch and its companion iPhone.
-  For dependent Watch apps, install the iPhone companion using the iOS scheme
-  first. One managed entry uses one scheme at a time; changing the scheme
-  preserves device exclusions. Watch schemes do not expose iOS publishing or
-  iOS Simulator controls.
+- Keep the iOS scheme selected and choose an optional **Watch scheme** to install
+  both from one application entry. Device checkboxes persist independently for
+  each iPhone, iPad, and Watch. Install now, Install All, and scheduled installs
+  build each required scheme once, with iPhone installation before Watch.
+  Configuration, signing team, and build branch apply to both schemes. Each
+  device records its own success and provisioning expiration, so a failed Watch
+  build does not discard a successful phone install. Pair the Watch with Xcode
+  and enable Developer Mode on it and its companion iPhone. A standalone watchOS
+  primary scheme remains supported without iOS publishing or simulator controls.
+- Managed build subprocesses discard an inherited `XCODE_XCCONFIG_FILE` deployment
+  override so the application's own signing configuration remains effective.
 - View whether the selected scheme supports iPhone, iPad, or both. Only
   compatible connected devices are offered as installation targets.
 - Choose installation devices independently for every app. A compatible new

@@ -21,6 +21,84 @@ final class WatchInstallationTests: XCTestCase {
         )
     }
 
+    func testPhoneAndWatchSchemesBuildSeparatelyWithPhoneFirst() throws {
+        var app = project(platform: .iOS)
+        app.scheme = "ExamplePhone"
+        app.bundleIdentifier = "com.example.phone"
+        app.companionWatch = CompanionWatchConfiguration(
+            scheme: "ExampleWatch", bundleIdentifier: "com.example.watch", isVerified: true
+        )
+        app.signingTeamID = "TEAM"
+        app.buildBranch = "release"
+        app.setInstallationDeviceOrder([watch.udid, phone.udid])
+        let batches = app.installationBatches(for: [watch, phone])
+        XCTAssertEqual(batches.map { $0.project.scheme }, ["ExamplePhone", "ExampleWatch"])
+        XCTAssertEqual(batches.map { $0.devices.map(\.udid) }, [["PHONE"], ["WATCH"]])
+        XCTAssertEqual(batches.map { $0.project.bundleIdentifier }, ["com.example.phone", "com.example.watch"])
+        for batch in batches {
+            XCTAssertEqual(batch.project.id, app.id)
+            XCTAssertEqual(batch.project.signingTeamID, "TEAM")
+            XCTAssertEqual(batch.project.buildBranch, "release")
+            XCTAssertNil(batch.project.companionWatch)
+            XCTAssertTrue(batch.devices.allSatisfy(batch.project.supports))
+        }
+        XCTAssertEqual(app.installationProject(for: watch).scheme, "ExampleWatch")
+        XCTAssertEqual(app.installationProject(for: phone).scheme, "ExamplePhone")
+    }
+
+    func testCompanionWatchPersistsWithoutChangingPhoneSelection() throws {
+        var app = project(platform: .iOS)
+        app.setInstallationEnabled(false, for: phone.udid)
+        app.companionWatch = CompanionWatchConfiguration(scheme: "ExampleWatch", isVerified: true)
+        let restored = try JSONDecoder().decode(ManagedProject.self, from: JSONEncoder().encode(app))
+        XCTAssertEqual(restored, app)
+        XCTAssertFalse(restored.installationEnabled(for: phone))
+        XCTAssertTrue(restored.installationEnabled(for: watch))
+        app.companionWatch = nil
+        XCTAssertFalse(app.supports(watch))
+        XCTAssertFalse(app.installationEnabled(for: phone))
+        app.companionWatch = restored.companionWatch
+        app.isEnabled = false
+        XCTAssertTrue(app.installationBatches(for: [watch, phone]).isEmpty)
+        XCTAssertTrue(app.isSelectedInstallationTarget(watch))
+    }
+
+    func testUnverifiedWatchSchemeIsNotScheduledAndLegacyProjectsStillDecode() throws {
+        var app = project(platform: .iOS)
+        app.companionWatch = CompanionWatchConfiguration(scheme: "NotAWatchApp")
+        XCTAssertFalse(app.supports(watch))
+        XCTAssertEqual(app.installationBatches(for: [watch, phone]).count, 1)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(app)) as? [String: Any])
+        json.removeValue(forKey: "companionWatch")
+        let legacy = try JSONDecoder().decode(ManagedProject.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(legacy.companionWatch)
+        XCTAssertTrue(legacy.installationEnabled(for: phone))
+        XCTAssertFalse(legacy.supports(watch))
+    }
+
+    func testExcludingOnePlatformDoesNotExcludeTheOtherAndMacDoesNotBuildCompanion() {
+        var app = project(platform: .iOS)
+        app.companionWatch = CompanionWatchConfiguration(scheme: "ExampleWatch", isVerified: true)
+        app.setInstallationEnabled(false, for: watch.udid)
+        XCTAssertEqual(app.installationBatches(for: [watch, phone]).flatMap { $0.devices.map(\.udid) }, ["PHONE"])
+        app.setInstallationEnabled(true, for: watch.udid)
+        app.setInstallationEnabled(false, for: phone.udid)
+        XCTAssertEqual(app.installationBatches(for: [watch, phone]).flatMap { $0.devices.map(\.udid) }, ["WATCH"])
+        app.applicationPlatform = .macOS
+        XCTAssertTrue(app.installationBatches(for: [watch, phone]).isEmpty)
+    }
+
+    func testManagedBuildsDoNotInheritDeploymentSigningOverride() {
+        let environment = ProcessRunner.childEnvironment(inheriting: [
+            "XCODE_XCCONFIG_FILE": "/tmp/manual-signing.xcconfig",
+            "DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer",
+            "PATH": "/usr/bin"
+        ])
+        XCTAssertNil(environment["XCODE_XCCONFIG_FILE"])
+        XCTAssertEqual(environment["DEVELOPER_DIR"], "/Applications/Xcode.app/Contents/Developer")
+        XCTAssertEqual(environment["PATH"], "/usr/bin")
+    }
+
     func testWatchSelectionIsRestrictedToWatchSchemeAndSurvivesPausing() {
         var app = project(platform: .watchOS)
         XCTAssertTrue(app.supports(watch))

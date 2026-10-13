@@ -599,9 +599,18 @@ final class AppModel: ObservableObject {
         refreshProjectCompatibility(projectID: projectID)
     }
 
+    func setCompanionWatchScheme(_ scheme: String?, for projectID: UUID) {
+        updateProject(id: projectID) {
+            $0.companionWatch = scheme.map { CompanionWatchConfiguration(scheme: $0) }
+        }
+        resetQueuedTargets(for: projectID)
+        refreshProjectCompatibility(projectID: projectID)
+    }
+
     func setProjectConfiguration(_ configuration: String, for projectID: UUID) {
         updateProject(id: projectID) {
             $0.configuration = configuration
+            $0.companionWatch?.isVerified = false
             $0.supportedDeviceFamilies = nil
             $0.bundleIdentifier = nil
             $0.projectSigningTeamID = nil
@@ -1589,7 +1598,9 @@ final class AppModel: ObservableObject {
     }
 
     func installedApplication(for project: ManagedProject, deviceUDID: String) -> InstalledApplication? {
-        guard let bundleIdentifier = project.bundleIdentifier else { return nil }
+        let variant = connectedDevices.first(where: { $0.udid == deviceUDID })
+            .map { project.installationProject(for: $0) } ?? project
+        guard let bundleIdentifier = variant.bundleIdentifier else { return nil }
         return installedApplicationsByDeviceUDID[deviceUDID]?[bundleIdentifier]
     }
 
@@ -1679,7 +1690,7 @@ final class AppModel: ObservableObject {
                 let expirationDiscoveryIsDue = installationRecord != nil
                     && installationRecord?.profileExpirationWasChecked != true
                 let installedVersionIsOlder: Bool
-                if let bundleIdentifier = project.bundleIdentifier,
+                if let bundleIdentifier = project.installationProject(for: device).bundleIdentifier,
                    checkedInstalledApplicationDeviceUDIDs.contains(device.udid) {
                     installedVersionIsOlder = SchedulingPolicy.installedApplicationIsOlder(
                         installedApplicationsByDeviceUDID[device.udid]?[bundleIdentifier],
@@ -1866,50 +1877,54 @@ final class AppModel: ObservableObject {
                     requestedByInstallAll: requestedByInstallAll
                 )
             } else {
-                let devices = targets.compactMap(\.device)
-                let outcome = try await installationService.install(
-                    project: project,
-                    on: devices,
-                    eventHandler: { eventCoalescer.receive($0) }
-                )
-                handleInstallationEvents(
-                    eventCoalescer.finish(),
-                    projectID: project.id,
-                    installationLogID: installationLogID
-                )
-                replaceInstallationLogOutput(
-                    outcome.log,
-                    projectID: project.id,
-                    installationLogID: installationLogID
-                )
-                let failures = outcome.deviceResults.filter { !$0.succeeded }
-                finishInstallationLog(
-                    projectID: project.id,
-                    id: installationLogID,
-                    state: failures.isEmpty ? .succeeded : .failed,
-                    fallbackError: failures.compactMap(\.failureMessage).joined(separator: "\n")
-                )
-                for result in outcome.deviceResults {
-                    guard let target = targets.first(where: { $0.identifier == result.deviceUDID }) else {
-                        continue
-                    }
-                    if result.succeeded {
-                        await recordSuccessfulTarget(
-                            project: project,
-                            target: target,
-                            log: result.log,
-                            profileExpirationDate: outcome.profileExpirationDate,
-                            profileExpirationWasChecked: outcome.profileExpirationWasChecked,
-                            requestedByInstallAll: requestedByInstallAll
+                var combinedLog = ""
+                var failures: [String] = []
+                for batch in project.installationBatches(for: targets.compactMap(\.device)) {
+                    try Task.checkCancellation()
+                    let heading = "\n=== \(batch.project.scheme) ===\n"
+                    eventCoalescer.receive(.output(heading))
+                    combinedLog += heading
+                    do {
+                        let outcome = try await installationService.install(
+                            project: batch.project,
+                            on: batch.devices,
+                            eventHandler: { eventCoalescer.receive($0) }
                         )
-                    } else {
-                        recordFailedTarget(
-                            project: project,
-                            target: target,
-                            errorOutput: result.failureMessage ?? result.log
-                        )
+                        combinedLog += outcome.log
+                        for result in outcome.deviceResults {
+                            guard let target = targets.first(where: { $0.identifier == result.deviceUDID }) else { continue }
+                            if result.succeeded {
+                                await recordSuccessfulTarget(
+                                    project: batch.project, target: target, log: result.log,
+                                    profileExpirationDate: outcome.profileExpirationDate,
+                                    profileExpirationWasChecked: outcome.profileExpirationWasChecked,
+                                    requestedByInstallAll: requestedByInstallAll
+                                )
+                            } else {
+                                let message = result.failureMessage ?? result.log
+                                failures.append(message)
+                                recordFailedTarget(project: batch.project, target: target, errorOutput: message)
+                            }
+                        }
+                    } catch {
+                        if Task.isCancelled || error is CancellationError { throw CancellationError() }
+                        let message = Self.trimmedError(error.localizedDescription)
+                        combinedLog += message + "\n"
+                        failures.append(message)
+                        for device in batch.devices {
+                            if let target = targets.first(where: { $0.identifier == device.udid }) {
+                                recordFailedTarget(project: batch.project, target: target, errorOutput: message)
+                            }
+                        }
                     }
                 }
+                handleInstallationEvents(eventCoalescer.finish(), projectID: project.id, installationLogID: installationLogID)
+                replaceInstallationLogOutput(combinedLog, projectID: project.id, installationLogID: installationLogID)
+                finishInstallationLog(
+                    projectID: project.id, id: installationLogID,
+                    state: failures.isEmpty ? .succeeded : .failed,
+                    fallbackError: failures.joined(separator: "\n")
+                )
             }
         } catch {
             handleInstallationEvents(
@@ -2299,6 +2314,7 @@ final class AppModel: ObservableObject {
                         && $0.supportedDeviceFamilies == nil)
                     || $0.bundleIdentifier == nil
                     || $0.projectSigningTeamID == nil
+                    || ($0.companionWatch != nil && $0.companionWatch?.isVerified != true)
             }
             .map(\.id)
         for projectID in projectIDs {
@@ -2325,7 +2341,14 @@ final class AppModel: ObservableObject {
         guard let project = projects.first(where: { $0.id == projectID }) else { return }
         guard !compatibilityRefreshProjectIDs.contains(projectID) else { return }
         compatibilityRefreshProjectIDs.insert(projectID)
-        defer { compatibilityRefreshProjectIDs.remove(projectID) }
+        defer {
+            compatibilityRefreshProjectIDs.remove(projectID)
+            if let current = projects.first(where: { $0.id == projectID }),
+               current.scheme != project.scheme || current.configuration != project.configuration
+                    || current.companionWatch?.scheme != project.companionWatch?.scheme {
+                refreshProjectCompatibility(projectID: projectID)
+            }
+        }
 
         guard let metadata = try? await discoveryService.applicationMetadata(for: project),
               let index = projects.firstIndex(where: {
@@ -2340,6 +2363,19 @@ final class AppModel: ObservableObject {
         projects[index].bundleIdentifier = metadata.bundleIdentifier
         projects[index].projectSigningTeamID = metadata.projectSigningTeamID
         projects[index].applicationPlatform = metadata.applicationPlatform
+        if let watch = project.companionWatchProject {
+            let watchMetadata = try? await discoveryService.applicationMetadata(for: watch)
+            if let currentIndex = projects.firstIndex(where: {
+                $0.id == projectID && $0.scheme == project.scheme
+                    && $0.configuration == project.configuration
+                    && $0.companionWatch?.scheme == watch.scheme
+            }) {
+                let verified = watchMetadata?.applicationPlatform == .watchOS
+                projects[currentIndex].companionWatch?.isVerified = verified
+                projects[currentIndex].companionWatch?.bundleIdentifier = verified ? watchMetadata?.bundleIdentifier : nil
+                projects[currentIndex].companionWatch?.projectSigningTeamID = verified ? watchMetadata?.projectSigningTeamID : nil
+            }
+        }
         if restartMonitoringAfterUpdate {
             restartMonitoring()
         }
