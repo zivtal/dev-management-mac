@@ -71,7 +71,12 @@ struct ProjectsSettingsView: View {
         Table(model.projects, selection: $selection) {
             TableColumn("Application") { project in
                 HStack(spacing: 9) {
-                    ProjectIconView(project: project, size: 30, showsStatus: true)
+                    ProjectIconView(
+                        project: project,
+                        iconURL: model.projectIconURL(for: project.id),
+                        size: 30,
+                        showsStatus: true
+                    )
                     VStack(alignment: .leading, spacing: 1) {
                         Text(project.displayName)
                             .fontWeight(.medium)

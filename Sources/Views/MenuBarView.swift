@@ -394,7 +394,12 @@ struct MenuBarView: View {
                     ForEach(model.projects) { project in
                         GridRow {
                             HStack(spacing: 6) {
-                                ProjectIconView(project: project, size: 28, showsStatus: true)
+                                ProjectIconView(
+                                    project: project,
+                                    iconURL: model.projectIconURL(for: project.id),
+                                    size: 28,
+                                    showsStatus: true
+                                )
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(project.displayName)
                                         .lineLimit(1)

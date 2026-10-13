@@ -2,15 +2,15 @@ import AppKit
 import SwiftUI
 
 struct ProjectIconView: View {
-    @EnvironmentObject private var model: AppModel
-
     let project: ManagedProject
+    // Table cells can be hosted outside their parent's environment-object scope.
+    let iconURL: URL?
     let size: CGFloat
     var showsStatus = false
 
     var body: some View {
         Group {
-            if let url = model.projectIconURL(for: project.id),
+            if let url = iconURL,
                let image = NSImage(contentsOf: url) {
                 Image(nsImage: image)
                     .resizable()
