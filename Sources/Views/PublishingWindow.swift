@@ -1558,7 +1558,7 @@ private struct PublishingWindowView: View {
     /// checkout for applications with a selected build branch.
     private var eligibleProjects: [ManagedProject] {
         model.projects
-            .filter { !$0.isMacOSApplication }
+            .filter { $0.effectiveApplicationPlatform == .iOS }
             .map(model.publishingSourceProject(for:))
     }
 

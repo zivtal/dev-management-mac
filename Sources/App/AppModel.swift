@@ -52,7 +52,7 @@ final class AppModel: ObservableObject {
     @Published var presentedError: String?
 
     var installableDevices: [ConnectedDevice] {
-        connectedDevices.filter(\.supportsIOSAppInstallation)
+        connectedDevices.filter(\.supportsAppInstallation)
     }
 
     var hasMacOSProjects: Bool {
@@ -418,7 +418,7 @@ final class AppModel: ObservableObject {
             return existing
         }
         guard let project = projects.first(where: { $0.id == projectID }),
-              !project.isMacOSApplication else {
+              project.effectiveApplicationPlatform == .iOS else {
             return nil
         }
         let controller = SimulatorSessionController(
@@ -494,7 +494,7 @@ final class AppModel: ObservableObject {
     func compatibleConnectedDevices(for project: ManagedProject) -> [ConnectedDevice] {
         project.devicesInInstallationOrder(
             connectedDevices.filter {
-                $0.supportsIOSAppInstallation && project.supports($0)
+                project.supports($0)
             }
         )
     }
@@ -569,6 +569,19 @@ final class AppModel: ObservableObject {
 
     func isRefreshingCompatibility(for projectID: UUID) -> Bool {
         compatibilityRefreshProjectIDs.contains(projectID)
+    }
+
+    func refreshProjectSchemes(projectID: UUID) async throws {
+        guard let project = projects.first(where: { $0.id == projectID }) else { return }
+        let descriptor = try await discoveryService.discover(folderURL: project.folderURL)
+        updateProject(id: projectID) {
+            $0.availableSchemes = descriptor.schemes
+            $0.availableConfigurations = descriptor.configurations
+        }
+        if let current = projects.first(where: { $0.id == projectID }),
+           descriptor.schemes.contains(current.scheme) {
+            await detectProjectCompatibility(projectID: projectID, restartMonitoringAfterUpdate: true)
+        }
     }
 
     func setProjectScheme(_ scheme: String, for projectID: UUID) {
@@ -816,7 +829,7 @@ final class AppModel: ObservableObject {
         refreshProjectVersions()
         guard let managedProject = projects.first(where: { $0.id == projectID }) else { return }
         let project = publishingSourceProject(for: managedProject)
-        guard !project.isMacOSApplication else {
+        guard project.effectiveApplicationPlatform == .iOS else {
             presentedError = AppStorePublishingError.unsupportedProject.localizedDescription
             return
         }
@@ -1104,7 +1117,7 @@ final class AppModel: ObservableObject {
         projectID: UUID
     ) async throws -> AppStoreConnectConfigurationSnapshot {
         guard let project = publishingSourceProject(id: projectID),
-              !project.isMacOSApplication else {
+              project.effectiveApplicationPlatform == .iOS else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
@@ -1175,7 +1188,7 @@ final class AppModel: ObservableObject {
     /// macOS project simply leaves the listing generation without change
     /// evidence rather than failing it.
     private func latestApprovedVersion(for project: ManagedProject) async throws -> String? {
-        guard !project.isMacOSApplication,
+        guard project.effectiveApplicationPlatform == .iOS,
               let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty,
               let currentVersion = project.marketingVersion?.nilIfEmpty else {
             return nil
@@ -1198,7 +1211,7 @@ final class AppModel: ObservableObject {
         locales: [String]
     ) async throws -> AppStoreReleaseNotesGeneration {
         guard let project = publishingSourceProject(id: projectID),
-              !project.isMacOSApplication else {
+              project.effectiveApplicationPlatform == .iOS else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
@@ -1288,7 +1301,7 @@ final class AppModel: ObservableObject {
 
         refreshProjectVersions()
         guard let project = publishingSourceProject(id: projectID),
-              !project.isMacOSApplication else {
+              project.effectiveApplicationPlatform == .iOS else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
@@ -1339,7 +1352,7 @@ final class AppModel: ObservableObject {
         offerID: String
     ) async throws -> AppStoreConnectOfferCodeDetailSnapshot {
         guard let project = publishingSourceProject(id: projectID),
-              !project.isMacOSApplication else {
+              project.effectiveApplicationPlatform == .iOS else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {

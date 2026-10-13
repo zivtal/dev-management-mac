@@ -138,9 +138,14 @@ final class ProjectDiscoveryService {
     }
 
     func applicationMetadata(for project: ManagedProject) async throws -> ProjectApplicationMetadata {
-        let destinations: [(ApplicationPlatform, String)] = project.applicationPlatform == .macOS
+        var destinations: [(ApplicationPlatform, String)] = project.applicationPlatform == .macOS
             ? [(.macOS, "generic/platform=macOS"), (.iOS, "generic/platform=iOS")]
             : [(.iOS, "generic/platform=iOS"), (.macOS, "generic/platform=macOS")]
+        if project.isWatchOSApplication {
+            destinations.insert((.watchOS, "generic/platform=watchOS"), at: 0)
+        } else {
+            destinations.append((.watchOS, "generic/platform=watchOS"))
+        }
         var lastError: Error?
 
         for (platform, destination) in destinations {
@@ -181,7 +186,14 @@ final class ProjectDiscoveryService {
     ) -> ProjectApplicationMetadata? {
         guard let entries = buildSettingsEntries(from: output) else { return nil }
 
-        for entry in entries {
+        // An iOS scheme may list its embedded Watch app first. Prefer the host
+        // unless the caller explicitly requests a watchOS scheme.
+        let orderedEntries = entries.sorted {
+            let lhs = ($0["buildSettings"] as? [String: Any]).flatMap(applicationPlatform)
+            let rhs = ($1["buildSettings"] as? [String: Any]).flatMap(applicationPlatform)
+            return lhs != .watchOS && rhs == .watchOS
+        }
+        for entry in orderedEntries {
             guard let settings = entry["buildSettings"] as? [String: Any],
                   let applicationPlatform = applicationPlatform(from: settings),
                   expectedPlatform == nil || applicationPlatform == expectedPlatform
@@ -236,12 +248,12 @@ final class ProjectDiscoveryService {
         return nil
     }
 
-    private static func applicationPlatform(
+    static func applicationPlatform(
         from settings: [String: Any]
     ) -> ApplicationPlatform? {
         let productType = settings["PRODUCT_TYPE"] as? String
-        guard productType == "com.apple.product-type.application",
-              (settings["SKIP_INSTALL"] as? String) != "YES"
+        guard productType == "com.apple.product-type.application"
+                || productType == "com.apple.product-type.application.watchapp2"
         else {
             return nil
         }
@@ -249,6 +261,11 @@ final class ProjectDiscoveryService {
         let supportedPlatforms = (settings["SUPPORTED_PLATFORMS"] as? String)?.lowercased() ?? ""
         let sdkRoot = (settings["SDKROOT"] as? String)?.lowercased() ?? ""
         let platformName = (settings["PLATFORM_NAME"] as? String)?.lowercased() ?? ""
+        if platformName == "watchos" || sdkRoot.hasPrefix("watchos")
+            || supportedPlatforms.split(separator: " ").contains("watchos") {
+            return .watchOS
+        }
+        guard (settings["SKIP_INSTALL"] as? String) != "YES" else { return nil }
         if platformName == "macosx" || sdkRoot.hasPrefix("macosx") {
             return .macOS
         }

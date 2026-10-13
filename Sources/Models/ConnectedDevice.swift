@@ -21,7 +21,7 @@ struct ConnectedDevice: Identifiable, Codable, Equatable {
         case "wired", "usb": L10n.text("USB")
         default: L10n.text("Connected")
         }
-        guard supportsIOSAppInstallation, !isInstallReady else { return transportDescription }
+        guard supportsAppInstallation, !isInstallReady else { return transportDescription }
         return L10n.format("%@ · %@", transportDescription, L10n.text("Connecting…"))
     }
 
@@ -29,8 +29,12 @@ struct ConnectedDevice: Identifiable, Codable, Equatable {
         mobileDeviceFamily != nil
     }
 
+    var isAppleWatch: Bool { platform.lowercased() == "watchos" }
+
+    var supportsAppInstallation: Bool { supportsIOSAppInstallation || isAppleWatch }
+
     var isAvailableInstallationTarget: Bool {
-        supportsIOSAppInstallation && isInstallReady
+        supportsAppInstallation && isInstallReady
     }
 
     var mobileDeviceFamily: MobileDeviceFamily? {

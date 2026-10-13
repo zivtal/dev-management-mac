@@ -212,7 +212,7 @@ private struct DevicesSettingsView: View {
                     .width(min: 90, ideal: 110)
 
                     TableColumn("Installation") { device in
-                        if device.supportsIOSAppInstallation {
+                        if device.supportsAppInstallation {
                             Text("Choose per application")
                                 .foregroundStyle(.secondary)
                         } else {

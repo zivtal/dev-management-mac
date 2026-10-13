@@ -17,6 +17,7 @@ enum ProjectContainerKind: String, Codable, CaseIterable, Identifiable, Sendable
 enum ApplicationPlatform: String, Codable, CaseIterable, Identifiable, Sendable {
     case iOS
     case macOS
+    case watchOS
 
     var id: String { rawValue }
 
@@ -24,6 +25,7 @@ enum ApplicationPlatform: String, Codable, CaseIterable, Identifiable, Sendable 
         switch self {
         case .iOS: "iOS / iPadOS"
         case .macOS: "macOS"
+        case .watchOS: "watchOS"
         }
     }
 }
@@ -112,6 +114,10 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
         effectiveApplicationPlatform == .macOS
     }
 
+    var isWatchOSApplication: Bool {
+        effectiveApplicationPlatform == .watchOS
+    }
+
     var macOSDMGURL: URL {
         let invalidCharacters = CharacterSet(charactersIn: "/:")
         let safeName = displayName
@@ -144,6 +150,7 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
     }
 
     var deviceCompatibilityDescription: String {
+        if isWatchOSApplication { return L10n.text("Apple Watch only") }
         guard let supportedDeviceFamilies, !supportedDeviceFamilies.isEmpty else {
             return L10n.text("iPhone and iPad (not detected by Xcode)")
         }
@@ -159,6 +166,7 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
 
     func supports(_ device: ConnectedDevice) -> Bool {
         guard !isMacOSApplication else { return false }
+        if isWatchOSApplication { return device.isAppleWatch }
         guard let family = device.mobileDeviceFamily else { return false }
         return effectiveSupportedDeviceFamilies.contains(family)
     }
@@ -169,7 +177,7 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
 
     func selectedDeviceCount(in connectedDevices: [ConnectedDevice]) -> Int {
         connectedDevices.lazy.filter {
-            $0.supportsIOSAppInstallation && isSelectedInstallationTarget($0)
+            isSelectedInstallationTarget($0)
         }.count
     }
 

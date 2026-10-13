@@ -68,7 +68,7 @@ final class DeviceListDecodingTests: XCTestCase {
         )
         XCTAssertEqual(
             envelope.availableAppleDevices.filter(\.isAvailableInstallationTarget).map(\.udid),
-            ["PHONE-1"]
+            ["PHONE-1", "WATCH-1"]
         )
         XCTAssertEqual(
             envelope.availableAppleDevices.first { $0.udid == "PHONE-2" }?.connectionDescription,

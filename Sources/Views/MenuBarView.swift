@@ -491,7 +491,7 @@ struct MenuBarView: View {
                                     Color.clear.frame(width: 14, height: 14)
                                 }
 
-                                if !project.isMacOSApplication {
+                                if project.effectiveApplicationPlatform == .iOS {
                                     Button {
                                         openSimulatorRun(projectID: project.id)
                                     } label: {
@@ -598,7 +598,7 @@ struct MenuBarView: View {
             .disabled(
                 isOpeningPublishingWindow
                     || !model.projects.contains {
-                        !$0.isMacOSApplication
+                        $0.effectiveApplicationPlatform == .iOS
                     }
             )
 
@@ -640,7 +640,7 @@ struct MenuBarView: View {
     }
 
     private func canPublish(_ project: ManagedProject) -> Bool {
-        !project.isMacOSApplication
+        project.effectiveApplicationPlatform == .iOS
     }
 
     private var showsGitBranchColumn: Bool {

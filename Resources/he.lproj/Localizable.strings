@@ -1362,3 +1362,21 @@
 "Exported IPA saved locally for publishing retries.\n" = "קובץ ה-IPA שיוצא נשמר במחשב לניסיונות פרסום חוזרים.\n";
 "The saved IPA already passed validation; skipping validation.\n" = "קובץ ה-IPA השמור כבר עבר אימות; מדלגים על האימות.\n";
 "Build %@ (%@) is already submitted to App Review or released; publishing is complete.\n" = "הבנייה %@ (%@) כבר הוגשה לבדיקת App Review או פורסמה; הפרסום הושלם.\n";
+
+"Add an application, then open its settings to choose a scheme and installation devices." = "הוסיפו יישום, ואז פתחו את ההגדרות שלו לבחירת סכימה ומכשירים להתקנה.";
+
+"Application settings" = "הגדרות היישום";
+
+"Settings" = "הגדרות";
+
+"Refresh schemes" = "רענון סכימות";
+
+"This scheme is no longer available. Choose a current Xcode scheme above." = "סכימה זו אינה זמינה עוד. בחרו למעלה סכימה עדכנית של Xcode.";
+
+"Apple Watch only" = "Apple Watch בלבד";
+
+"No connected Apple Watch is available in Xcode." = "אין Apple Watch מחובר שזמין ב־Xcode.";
+
+"Pair your Apple Watch with Xcode and enable Developer Mode on both the Watch and its iPhone. Install the iPhone companion first if the Watch app requires it." = "קשרו את ה־Apple Watch ל־Xcode והפעילו מצב מפתחים בשעון וב־iPhone שלו. התקינו תחילה את היישום הנלווה ב־iPhone אם יישום השעון דורש זאת.";
+
+"To install on Apple Watch, select the application's watchOS scheme." = "להתקנה ב־Apple Watch, בחרו את סכימת ה־watchOS של היישום.";

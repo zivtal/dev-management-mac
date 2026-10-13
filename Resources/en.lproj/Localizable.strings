@@ -1362,3 +1362,21 @@
 "Exported IPA saved locally for publishing retries.\n" = "Exported IPA saved locally for publishing retries.\n";
 "The saved IPA already passed validation; skipping validation.\n" = "The saved IPA already passed validation; skipping validation.\n";
 "Build %@ (%@) is already submitted to App Review or released; publishing is complete.\n" = "Build %@ (%@) is already submitted to App Review or released; publishing is complete.\n";
+
+"Add an application, then open its settings to choose a scheme and installation devices." = "Add an application, then open its settings to choose a scheme and installation devices.";
+
+"Application settings" = "Application settings";
+
+"Settings" = "Settings";
+
+"Refresh schemes" = "Refresh schemes";
+
+"This scheme is no longer available. Choose a current Xcode scheme above." = "This scheme is no longer available. Choose a current Xcode scheme above.";
+
+"Apple Watch only" = "Apple Watch only";
+
+"No connected Apple Watch is available in Xcode." = "No connected Apple Watch is available in Xcode.";
+
+"Pair your Apple Watch with Xcode and enable Developer Mode on both the Watch and its iPhone. Install the iPhone companion first if the Watch app requires it." = "Pair your Apple Watch with Xcode and enable Developer Mode on both the Watch and its iPhone. Install the iPhone companion first if the Watch app requires it.";
+
+"To install on Apple Watch, select the application's watchOS scheme." = "To install on Apple Watch, select the application's watchOS scheme.";

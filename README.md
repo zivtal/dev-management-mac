@@ -37,8 +37,8 @@ configurable number of days.
 - Direct `xcodebuild` build, signing, provisioning, and CoreDevice installation.
 - Direct macOS build, verified DMG creation, running-process shutdown, atomic
   replacement in `/Applications`, and relaunch.
-- iPhone, iPad, and Apple Watch discovery; iOS and iPadOS devices are install
-  targets, while Apple Watch is displayed as a companion device.
+- iPhone, iPad, and Apple Watch discovery and installation, filtered by the
+  selected iOS or watchOS scheme.
 - Per-application device selection in Settings, persisted by application and
   device UDID.
 - Per-application pause and resume. Paused apps are excluded from automatic,
@@ -184,13 +184,24 @@ Settings contains six tabs and is the only ordinary app window.
 - Add one source folder at a time.
 - View each app's source path, detected version, last installation, and enabled
   or paused state.
+- Open the **Settings…** button in an application row for its dedicated sheet.
+  Build preferences stay on the left; device guidance and selections stay on
+  the right, with only the device rows scrolling.
 - Enable, pause, or resume each managed application from its table row or
-  detail view. Pausing prevents new automatic, manual, and Install All work;
+  settings sheet. Pausing prevents new automatic, manual, and Install All work;
   an installation already in progress is allowed to finish.
 - Use the selected shared scheme and configuration for a direct Xcode build.
 - Choose the shared scheme and build configuration for direct builds.
 - View the detected platform. macOS schemes target this Mac and show their DMG
-  output path; iOS schemes provide the compatible-device selector.
+  output path; iOS and watchOS schemes provide the compatible-device selector.
+- The sheet refreshes shared schemes when opened. Select a current scheme if
+  the saved scheme was removed or renamed.
+- Choose a watchOS scheme to install directly on a connected Apple Watch. Pair
+  it with Xcode and enable Developer Mode on the Watch and its companion iPhone.
+  For dependent Watch apps, install the iPhone companion using the iOS scheme
+  first. One managed entry uses one scheme at a time; changing the scheme
+  preserves device exclusions. Watch schemes do not expose iOS publishing or
+  iOS Simulator controls.
 - View whether the selected scheme supports iPhone, iPad, or both. Only
   compatible connected devices are offered as installation targets.
 - Choose installation devices independently for every app. A compatible new
@@ -248,9 +259,9 @@ Settings contains six tabs and is the only ordinary app window.
 
 - Lists every paired available iOS and watchOS device returned by Xcode.
 - Shows name, model, operating-system family, and connection type.
-- Directs device selection to each app's detail view in **Applications**.
-- Treats iPhone and iPad as supported installation targets.
-- Shows Apple Watch as a companion device, not an installation target.
+- Directs device selection to each app's settings sheet in **Applications**.
+- Offers iPhone and iPad for compatible iOS schemes, and Apple Watch for watchOS
+  schemes.
 - Supports manual refresh.
 
 ## App Store publishing
@@ -757,7 +768,7 @@ xcodebuild test \
 Current unit coverage verifies:
 
 - CoreDevice JSON decoding, paired-device filtering, transport independence,
-  device ordering, and Watch exclusion from installation targets.
+  device ordering, and separation of iOS and Watch installation targets.
 - Default, excluded, restored, and legacy-decoded device installation choices.
 - Reinstall threshold behavior and the one-day scheduling minimum.
 - Success-notification content.
@@ -864,8 +875,9 @@ launch around this script.
   provisioning profile's measured expiration.
 - Project/workspace discovery is limited to the selected folder's top level.
 - Only shared schemes returned by `xcodebuild -list -json` are usable.
-- Direct installation targets iOS-platform devices; discovered Apple Watch
-  devices are informational.
+- Watch installation requires a shared watchOS scheme and a physical Watch
+  available through CoreDevice. Watch Simulator and Watch App Store publishing
+  are not supported.
 - Independent applications can build, install, and publish concurrently. For one
   iOS application selected on multiple devices, the app builds once and installs
   that same signed product on the devices concurrently; individual device

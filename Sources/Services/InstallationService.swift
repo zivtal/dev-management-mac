@@ -232,7 +232,9 @@ final class InstallationService {
         on devices: [ConnectedDevice],
         eventHandler: @escaping EventHandler
     ) async throws -> InstallationBatchOutcome {
-        guard !devices.isEmpty else { throw InstallationServiceError.noInstallationDevices }
+        guard !devices.isEmpty, devices.allSatisfy(project.supports) else {
+            throw InstallationServiceError.noInstallationDevices
+        }
         eventHandler(.phase(.preparing))
         let buildSource = try await checkoutService.prepare(
             project: project,
@@ -701,13 +703,16 @@ final class InstallationService {
                 project.containerKind.xcodebuildFlag, project.containerPath,
                 "-scheme", project.scheme,
                 "-configuration", project.configuration,
-                "-destination", "generic/platform=iOS",
+                "-destination", "generic/platform=\(project.isWatchOSApplication ? "watchOS" : "iOS")",
                 "-showBuildSettings", "-json"
             ],
             workingDirectory: project.folderURL
         )
         return result.flatMap {
-            ProjectDiscoveryService.applicationMetadata(fromBuildSettingsJSON: $0.output)
+            ProjectDiscoveryService.applicationMetadata(
+                fromBuildSettingsJSON: $0.output,
+                expectedPlatform: project.effectiveApplicationPlatform
+            )
         }
     }
 
@@ -721,7 +726,7 @@ final class InstallationService {
             project.containerKind.xcodebuildFlag, project.containerPath,
             "-scheme", scheme ?? project.scheme,
             "-configuration", project.configuration,
-            "-destination", "platform=iOS,id=\(device.udid)",
+            "-destination", "platform=\(project.isWatchOSApplication ? "watchOS" : "iOS"),id=\(device.udid)",
             "-destination-timeout", "45",
             "-derivedDataPath", derivedDataURL.path
         ]
@@ -869,7 +874,10 @@ final class InstallationService {
         )
 
         if let output = settingsResult?.output,
-           let appURL = Self.applicationURL(fromBuildSettingsJSON: output),
+           let appURL = Self.applicationURL(
+               fromBuildSettingsJSON: output,
+               expectedPlatform: project.effectiveApplicationPlatform
+           ),
            fileManager.fileExists(atPath: appURL.path) {
             return appURL
         }
@@ -908,7 +916,9 @@ final class InstallationService {
             let parentExtensions = url.deletingLastPathComponent().pathComponents
                 .map { URL(fileURLWithPath: $0).pathExtension }
             guard !parentExtensions.contains("app"), !parentExtensions.contains("appex") else { continue }
-            candidates.append(url)
+            if project.isWatchOSApplication == Self.isWatchApplication(at: url) {
+                candidates.append(url)
+            }
             enumerator.skipDescendants()
         }
 
@@ -960,7 +970,10 @@ final class InstallationService {
     /// simulator that resolves to several architectures, for instance — arrive
     /// wrapped around the JSON. Parsing tolerantly keeps a warning from silently
     /// pushing the caller onto the products-directory fallback.
-    static func applicationURL(fromBuildSettingsJSON output: String) -> URL? {
+    static func applicationURL(
+        fromBuildSettingsJSON output: String,
+        expectedPlatform: ApplicationPlatform? = nil
+    ) -> URL? {
         guard let entries = ProjectDiscoveryService.buildSettingsEntries(from: output) else {
             return nil
         }
@@ -968,16 +981,28 @@ final class InstallationService {
         for entry in entries {
             guard let settings = entry["buildSettings"] as? [String: Any],
                   (settings["WRAPPER_EXTENSION"] as? String) == "app",
-                  (settings["SKIP_INSTALL"] as? String) != "YES",
+                  (settings["SKIP_INSTALL"] as? String) != "YES" || expectedPlatform == .watchOS,
                   let targetBuildDirectory = settings["TARGET_BUILD_DIR"] as? String,
                   let wrapperName = settings["WRAPPER_NAME"] as? String
             else {
                 continue
             }
+            if let expectedPlatform,
+               let platform = ProjectDiscoveryService.applicationPlatform(from: settings),
+               platform != expectedPlatform { continue }
+            if expectedPlatform == .watchOS,
+               ProjectDiscoveryService.applicationPlatform(from: settings) != .watchOS { continue }
             return URL(fileURLWithPath: targetBuildDirectory, isDirectory: true)
                 .appendingPathComponent(wrapperName, isDirectory: true)
         }
         return nil
+    }
+
+    private static func isWatchApplication(at url: URL) -> Bool {
+        guard let data = try? Data(contentsOf: url.appendingPathComponent("Info.plist")),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        else { return false }
+        return (plist["CFBundleSupportedPlatforms"] as? [String])?.contains("WatchOS") == true
     }
 
     private func validateVersionPreservation(
