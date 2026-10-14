@@ -648,6 +648,105 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(supported.evidenceBackedPrivacy, unsupported.privacy)
     }
 
+    func testCopyrightRejectsLinksAndAcceptsOwnerNames() {
+        for value in ["2026 https://example.com/app", "https://example.com", "2026 www.example.com", "2026 example.com", "2026 owner@example.com"] {
+            XCTAssertNotNil(AppStoreCopyrightNormalizer.validationError(for: value), value)
+        }
+        for value in ["Ziv Tal", "2026 Ziv Tal", "2024 Example, Inc.", "2026 זיו טל"] {
+            XCTAssertNil(AppStoreCopyrightNormalizer.validationError(for: value), value)
+        }
+        XCTAssertNotNil(AppStoreCopyrightNormalizer.validationError(for: " \n"))
+    }
+
+    func testReviewDetailsCreatesAbsentRecordsAndUpdatesExistingRecords() async throws {
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        for beta in [false, true] {
+            for scenario in ["null", "notFound", "existing"] {
+                let collection = beta ? "betaAppReviewDetails" : "appStoreReviewDetails"
+                let readPath = beta ? "/v1/apps/app-id/betaAppReviewDetail"
+                    : "/v1/appStoreVersions/version-id/appStoreReviewDetail"
+                let method = scenario == "existing" ? "PATCH" : "POST"
+                let writePath = "/v1/\(collection)" + (scenario == "existing" ? "/review-id" : "")
+                let service = try appStoreConnectTestService { request in
+                    let path = request.url?.path ?? ""
+                    if path.hasSuffix("/betaAppLocalizations") {
+                        return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": []])
+                    }
+                    if request.httpMethod == "GET", path == readPath {
+                        let data: Any = scenario == "existing" ? ["id": "review-id", "type": collection] : NSNull()
+                        return try Self.appStoreConnectResponse(
+                            for: request, status: scenario == "notFound" ? 404 : 200,
+                            json: scenario == "notFound" ? ["errors": [["detail": "Not found"]]] : ["data": data]
+                        )
+                    }
+                    XCTAssertEqual(request.httpMethod, method)
+                    XCTAssertEqual(path, writePath)
+                    let body = try XCTUnwrap(JSONSerialization.jsonObject(with: Self.requestBodyData(request)) as? [String: Any])
+                    let data = try XCTUnwrap(body["data"] as? [String: Any])
+                    XCTAssertEqual(data["type"] as? String, collection)
+                    let attributes = try XCTUnwrap(data["attributes"] as? [String: Any])
+                    XCTAssertEqual(attributes["contactEmail"] as? String, "review@example.com")
+                    XCTAssertEqual(attributes["demoAccountRequired"] as? Bool, false)
+                    if method == "POST" {
+                        let relationships = try XCTUnwrap(data["relationships"] as? [String: Any])
+                        let parent = try XCTUnwrap(relationships[beta ? "app" : "appStoreVersion"] as? [String: Any])
+                        let linked = try XCTUnwrap(parent["data"] as? [String: Any])
+                        XCTAssertEqual(linked["id"] as? String, beta ? "app-id" : "version-id")
+                    }
+                    return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": ["id": "review-id"]])
+                }
+                try await configureTestReview(service: service, beta: beta)
+                XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.filter { $0.httpMethod != "GET" }.count, 1)
+            }
+        }
+    }
+
+    func testReviewDetailsDoesNotCreateRecordsForMalformedOrUnauthorizedResponsesOrFailedUpdates() async throws {
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        for beta in [false, true] {
+            for scenario in ["malformed", "unauthorized", "updateNotFound"] {
+                let service = try appStoreConnectTestService { request in
+                    if request.url?.path.hasSuffix("/betaAppLocalizations") == true {
+                        return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": []])
+                    }
+                    XCTAssertNotEqual(request.httpMethod, "POST")
+                    if request.httpMethod == "PATCH" {
+                        return try Self.appStoreConnectResponse(for: request, status: 404, json: ["errors": [["detail": "Update failed"]]])
+                    }
+                    return try Self.appStoreConnectResponse(
+                        for: request, status: scenario == "unauthorized" ? 403 : 200,
+                        json: scenario == "updateNotFound" ? ["data": ["id": "review-id"]] : ["data": [:]]
+                    )
+                }
+                do {
+                    try await configureTestReview(service: service, beta: beta)
+                    XCTFail("Expected \(scenario) to fail")
+                } catch AppStoreConnectError.missingIdentifier {
+                    XCTAssertEqual(scenario, "malformed")
+                } catch AppStoreConnectError.requestFailed(let status, _) {
+                    XCTAssertEqual(status, scenario == "unauthorized" ? 403 : 404)
+                }
+                XCTAssertFalse(AppStoreConnectURLProtocolStub.requests.contains { $0.httpMethod == "POST" })
+            }
+        }
+    }
+
+    private func configureTestReview(service: AppStoreConnectService, beta: Bool) async throws {
+        let review = AppStoreReviewConfiguration(
+            contactFirstName: "Ada", contactLastName: "Lovelace", contactPhone: "+1 555 0100",
+            contactEmail: "review@example.com", notes: "No login required.", demoAccountRequired: false,
+            demoAccountName: nil, demoAccountPassword: nil
+        )
+        if beta {
+            try await service.configureTestFlightInformation(
+                appID: "app-id", listings: [], configuration: nil, marketingURL: nil,
+                privacyPolicyURL: nil, review: review, onOutput: { _ in }
+            )
+        } else {
+            try await service.configureReviewDetails(versionID: "version-id", review: review)
+        }
+    }
+
     func testCopyrightAutomaticallyIncludesYearExactlyOnce() {
         let date = Date(timeIntervalSince1970: 1_767_225_600) // 2026-01-01 UTC
         XCTAssertEqual(AppStoreCopyrightNormalizer.normalized("Ziv Tal", referenceDate: date), "2026 Ziv Tal")

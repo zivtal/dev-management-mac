@@ -2339,7 +2339,7 @@ private struct PublishingWindowView: View {
             supportURL != nil,
             publication?.privacyPolicyURL?.nilIfEmpty != nil,
             !requiresTermsURL || publication?.termsURL?.nilIfEmpty != nil,
-            copyright != nil
+            AppStoreCopyrightNormalizer.validationError(for: copyright ?? "") == nil
         )
     }
 
@@ -3303,10 +3303,11 @@ private struct PerAppPublishingConfigurationEditor: View {
             requiredTextField(
                 "Copyright",
                 text: $copyright,
-                validation: copyright.nilIfEmpty == nil
-                    ? L10n.text("Copyright owner is required.")
-                    : nil
+                validation: AppStoreCopyrightNormalizer.validationError(for: copyright)?.localizedDescription
             )
+            Text("Enter the person or company that owns the app. The current year is added if omitted; an existing year is kept. Do not enter a website URL.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -4477,9 +4478,9 @@ private struct PerAppPublishingConfigurationEditor: View {
                 L10n.text("Terms of Use URL is required for apps with subscriptions.")
             )
         }
-        guard manifest.publication?.copyright?.nilIfEmpty != nil else {
+        if let error = AppStoreCopyrightNormalizer.validationError(for: manifest.publication?.copyright ?? "") {
             selectedTab = .listing
-            throw ConfigurationEditorError.invalid(L10n.text("Copyright owner is required."))
+            throw ConfigurationEditorError.invalid(error.localizedDescription)
         }
         if let privacyDraft = manifest.compliance?.privacyDraft,
            privacyDraft.collectsData,

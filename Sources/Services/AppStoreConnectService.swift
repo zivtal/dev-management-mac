@@ -1130,6 +1130,9 @@ final class AppStoreConnectService {
         reusableVersionID: String? = nil,
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws -> AppStoreConnectPublication {
+        if let error = AppStoreCopyrightNormalizer.validationError(for: copyright) {
+            throw error
+        }
         let appID = try await findApplication(bundleIdentifier: bundleIdentifier)
         let isVersionOnlyUpdate = try await hasPublishedVersion(appID: appID, otherThan: version)
         let versionID: String
@@ -2226,8 +2229,7 @@ final class AppStoreConnectService {
             "demoAccountPassword": review.demoAccountRequired ? (review.demoAccountPassword ?? "") : "",
             "notes": configuration?.reviewNotes?.nilIfEmpty ?? review.notes
         ]
-        do {
-            let response = try await request(method: "GET", path: "/v1/apps/\(appID)/betaAppReviewDetail")
+        if let response = try await optionalReviewDetails(path: "/v1/apps/\(appID)/betaAppReviewDetail") {
             let detailID = try Self.identifier(in: response, named: "TestFlight review details")
             _ = try await updateResourceIfNeeded(
                 path: "/v1/betaAppReviewDetails/\(detailID)",
@@ -2240,7 +2242,7 @@ final class AppStoreConnectService {
                 ],
                 existing: response["data"] as? [String: Any]
             )
-        } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
+        } else {
             _ = try await request(
                 method: "POST",
                 path: "/v1/betaAppReviewDetails",
@@ -2638,7 +2640,18 @@ final class AppStoreConnectService {
         }
     }
 
-    private func configureReviewDetails(
+    /// A to-one relationship can be absent as either HTTP 404 or `data: null`.
+    /// Only the read can indicate absence; failed updates must not trigger creation.
+    private func optionalReviewDetails(path: String) async throws -> [String: Any]? {
+        do {
+            let response = try await request(method: "GET", path: path)
+            return response["data"] is NSNull ? nil : response
+        } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
+            return nil
+        }
+    }
+
+    func configureReviewDetails(
         versionID: String,
         review: AppStoreReviewConfiguration
     ) async throws {
@@ -2658,11 +2671,9 @@ final class AppStoreConnectService {
             "demoAccountName": review.demoAccountRequired ? (review.demoAccountName ?? "") : "",
             "demoAccountPassword": review.demoAccountRequired ? (review.demoAccountPassword ?? "") : ""
         ]
-        do {
-            let existing = try await request(
-                method: "GET",
-                path: "/v1/appStoreVersions/\(versionID)/appStoreReviewDetail"
-            )
+        if let existing = try await optionalReviewDetails(
+            path: "/v1/appStoreVersions/\(versionID)/appStoreReviewDetail"
+        ) {
             let reviewID = try Self.identifier(in: existing, named: "App Review details")
             _ = try await request(
                 method: "PATCH",
@@ -2675,7 +2686,7 @@ final class AppStoreConnectService {
                     ]
                 ]
             )
-        } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
+        } else {
             _ = try await request(
                 method: "POST",
                 path: "/v1/appStoreReviewDetails",

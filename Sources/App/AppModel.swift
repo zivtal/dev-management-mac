@@ -878,8 +878,8 @@ final class AppModel: ObservableObject {
             ?? preferences.appStoreCopyright?.nilIfEmpty
             ?? existing?.copyright
             ?? ""
-        guard !copyrightOwner.isEmpty else {
-            presentedError = L10n.text("Enter the copyright owner in Publishing settings.")
+        if let error = AppStoreCopyrightNormalizer.validationError(for: copyrightOwner) {
+            presentedError = error.localizedDescription
             return
         }
         let copyright = AppStoreCopyrightNormalizer.normalized(copyrightOwner)

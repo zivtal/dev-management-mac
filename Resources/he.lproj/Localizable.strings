@@ -1444,3 +1444,7 @@
 "Signing keychain repair did not finish. The original keychain backup is at %@. %@" = "תיקון צרור המפתחות לחתימה לא הושלם. גיבוי צרור המפתחות המקורי נמצא בנתיב %@. %@";
 "Backup verification failed. The original keychain was not replaced." = "אימות הגיבוי נכשל. צרור המפתחות המקורי לא הוחלף.";
 "Wait for the current work or signing keychain repair to finish, then try again." = "יש להמתין לסיום העבודה הנוכחית או תיקון צרור המפתחות לחתימה, ואז לנסות שוב.";
+
+/* Copyright validation */
+"Copyright must contain the owner's name, not a website URL or email address." = "יש להזין בשדה זכויות היוצרים את שם הבעלים, ולא כתובת אתר או כתובת דוא״ל.";
+"Enter the person or company that owns the app. The current year is added if omitted; an existing year is kept. Do not enter a website URL." = "יש להזין את שם האדם או החברה שבבעלותם האפליקציה. השנה הנוכחית תתווסף אם לא צוינה שנה; שנה קיימת תישמר. אין להזין כתובת אתר.";

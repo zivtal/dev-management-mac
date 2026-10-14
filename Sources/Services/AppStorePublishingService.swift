@@ -125,6 +125,9 @@ final class AppStorePublishingService {
         configuration: PublishingConfiguration,
         eventHandler: @escaping EventHandler
     ) async throws -> PublishingResult {
+        if let error = AppStoreCopyrightNormalizer.validationError(for: configuration.copyright) {
+            throw error
+        }
         let intent = configuration.intent
         guard project.supportsAppStorePublishing else {
             throw AppStorePublishingError.unsupportedProject

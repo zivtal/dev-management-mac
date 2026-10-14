@@ -1444,3 +1444,7 @@
 "Signing keychain repair did not finish. The original keychain backup is at %@. %@" = "Signing keychain repair did not finish. The original keychain backup is at %@. %@";
 "Backup verification failed. The original keychain was not replaced." = "Backup verification failed. The original keychain was not replaced.";
 "Wait for the current work or signing keychain repair to finish, then try again." = "Wait for the current work or signing keychain repair to finish, then try again.";
+
+/* Copyright validation */
+"Copyright must contain the owner's name, not a website URL or email address." = "Copyright must contain the owner's name, not a website URL or email address.";
+"Enter the person or company that owns the app. The current year is added if omitted; an existing year is kept. Do not enter a website URL." = "Enter the person or company that owns the app. The current year is added if omitted; an existing year is kept. Do not enter a website URL.";

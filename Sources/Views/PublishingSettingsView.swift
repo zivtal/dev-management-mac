@@ -244,6 +244,13 @@ struct PublishingSettingsView: View {
                         .labelsHidden()
                         .frame(width: 340)
                 }
+                Text("Enter the person or company that owns the app. The current year is added if omitted; an existing year is kept. Do not enter a website URL.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let copyright = model.preferences.appStoreCopyright?.nilIfEmpty,
+                   let error = AppStoreCopyrightNormalizer.validationError(for: copyright) {
+                    Text(error.localizedDescription)
+                        .font(.caption).foregroundStyle(.red)
+                }
                 LabeledContent("Support URL") {
                     TextField("https://example.com/support", text: optionalTextBinding(\.appStoreSupportURL))
                         .labelsHidden()
