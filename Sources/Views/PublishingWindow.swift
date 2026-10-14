@@ -3710,6 +3710,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                             showsRequiredFieldErrors && validation != nil ? Color.red : Color.clear,
                             lineWidth: 1.5
                         )
+                        .allowsHitTesting(false)
                 }
             if showsRequiredFieldErrors, let validation {
                 Label(validation, systemImage: "exclamationmark.circle.fill")
