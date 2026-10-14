@@ -1458,3 +1458,6 @@
 "Yes — uses non-exempt encryption" = "Yes — uses non-exempt encryption";
 "Confirm the app's export-compliance answer. An unspecified answer is never treated as No. Non-exempt encryption may require documentation in App Store Connect." = "Confirm the app's export-compliance answer. An unspecified answer is never treated as No. Non-exempt encryption may require documentation in App Store Connect.";
 "No available %@ Simulator was found. Install its runtime and create a Simulator, or provide a screenshot in Publishing Configuration.\n" = "No available %@ Simulator was found. Install its runtime and create a Simulator, or provide a screenshot in Publishing Configuration.\n";
+
+"Generate Settings with OpenAI can fill an unset encryption answer from source evidence. Existing answers are preserved. Review the answer and evidence before saving." = "Generate Settings with OpenAI can fill an unset encryption answer from source evidence. Existing answers are preserved. Review the answer and evidence before saving.";
+"AI encryption evidence" = "AI encryption evidence";

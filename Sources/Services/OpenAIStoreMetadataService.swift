@@ -47,6 +47,7 @@ final class OpenAIStoreMetadataService {
     Base positive compliance answers on repository evidence and cite short excerpts with their file paths. Treat optional third-party services, maps, imported documents, media, and provider content as third-party content. App Privacy output is an advisory checklist because Apple requires the publisher to attest to its accuracy in App Store Connect. Distinguish data used only on-device from data transmitted off-device and inspect SDKs, network clients, analytics, advertising, diagnostics, authentication, purchases, location, contacts, and user-content flows before deciding whether data is collected.
     For every age-rating field, default an unknown or unsupported Boolean to false and an unknown or unsupported frequency to NONE. Set a positive value only when repository evidence supports it. Always return the complete age-rating checklist; unknown age-rating values are intentionally treated as No/NONE under the publisher's requested policy.
     For App Privacy, set privacyEvidenceSufficient true only when the supplied repository evidence establishes the answer. A complete repository scan with no collection or transmission path may support Data Not Collected. If the snapshot says it was truncated or the behavior remains ambiguous, do not turn an unknown App Privacy answer into No.
+    Draft usesNonExemptEncryption as true, false, or null. This asks about NON-EXEMPT encryption, not whether any cryptography is used. Inspect networking, authentication, credential storage, cryptographic implementations, dependencies, entitlements, and explicit ITSAppUsesNonExemptEncryption declarations. Apple-provided HTTPS through URLSession, Keychain storage, and authentication-only hashing can support false when the complete relevant implementation and dependencies are understood. Distinguish controlling a VPN on external router hardware from implementing a VPN tunnel in the app. Do not infer an answer from pricing, a VPN label, an algorithm name, or an existing declaration alone. Identify bundled/custom encryption and its actual purpose before deciding whether it is exempt; unresolved classification must remain null. Set encryptionEvidenceSufficient true only for an evidence-backed answer and include short literal source excerpts with file paths in encryptionEvidence. Missing or truncated relevant code, unexamined dependencies, conflicting evidence, or uncertainty must produce null and encryptionEvidenceSufficient false. Never default unknown encryption to false. The result is an editable recommendation for the publisher to review, not a legal certification.
     """
 
     static let releaseNotesPolicy = """
@@ -542,6 +543,9 @@ final class OpenAIStoreMetadataService {
             ],
             "appIsFree": ["type": "boolean"],
             "demoAccountRequired": ["type": "boolean"],
+            "usesNonExemptEncryption": ["type": ["boolean", "null"]],
+            "encryptionEvidenceSufficient": ["type": "boolean"],
+            "encryptionEvidence": ["type": "array", "items": ["type": "string"]],
             "copyright": ["type": "string"],
             "ageRating": ageRatingSchema,
             "ageRatingEvidenceSufficient": ["type": "boolean"],
@@ -572,6 +576,7 @@ final class OpenAIStoreMetadataService {
         ],
         "required": [
             "contentRightsDeclaration", "appIsFree", "demoAccountRequired",
+            "usesNonExemptEncryption", "encryptionEvidenceSufficient", "encryptionEvidence",
             "copyright", "ageRating", "ageRatingEvidenceSufficient", "privacy",
             "privacyEvidenceSufficient", "evidence", "confidence"
         ],

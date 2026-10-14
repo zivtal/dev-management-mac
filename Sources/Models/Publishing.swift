@@ -234,6 +234,17 @@ struct AppStoreComplianceDraft: Codable, Equatable, Sendable {
     var privacyEvidenceSufficient: Bool
     var evidence: [String]
     var confidence: Double
+    var usesNonExemptEncryption: Bool? = nil
+    var encryptionEvidenceSufficient: Bool? = nil
+    var encryptionEvidence: [String]? = nil
+
+    func encryptionDeclaration(preserving current: Bool?) -> Bool? {
+        if let current { return current }
+        guard encryptionEvidenceSufficient == true,
+              encryptionEvidence?.contains(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) == true
+        else { return nil }
+        return usesNonExemptEncryption
+    }
 
     var ageRatingDefaultingUnknownToNo: [String: AppStoreManifestValue] {
         AppStoreAgeRatingAnswerPolicy.answersDefaultingUnknownToNo(ageRating)
@@ -460,6 +471,7 @@ struct AppStorePublicationConfiguration: Codable, Equatable, Sendable {
     var review: AppStoreReviewManifestConfiguration?
     var testFlight: AppStoreTestFlightConfiguration? = nil
     var usesNonExemptEncryption: Bool? = nil
+    var encryptionEvidence: [String]? = nil
 }
 
 struct AppStorePublishingManifest: Codable, Equatable, Sendable {

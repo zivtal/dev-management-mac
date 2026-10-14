@@ -1458,3 +1458,6 @@
 "Yes — uses non-exempt encryption" = "כן — יש שימוש בהצפנה שאינה פטורה";
 "Confirm the app's export-compliance answer. An unspecified answer is never treated as No. Non-exempt encryption may require documentation in App Store Connect." = "יש לאשר את תשובת האפליקציה לגבי תאימות ייצוא. תשובה שלא הוגדרה אינה נחשבת ללא. הצפנה שאינה פטורה עשויה לדרוש מסמכים ב-App Store Connect.";
 "No available %@ Simulator was found. Install its runtime and create a Simulator, or provide a screenshot in Publishing Configuration.\n" = "לא נמצא סימולטור זמין של %@. יש להתקין סביבת הרצה וליצור סימולטור, או לספק צילום מסך בהגדרות הפרסום.\n";
+
+"Generate Settings with OpenAI can fill an unset encryption answer from source evidence. Existing answers are preserved. Review the answer and evidence before saving." = "יצירת הגדרות עם OpenAI יכולה למלא תשובה חסרה בנושא הצפנה על סמך ראיות מקוד המקור. תשובות קיימות נשמרות. יש לבדוק את התשובה ואת הראיות לפני השמירה.";
+"AI encryption evidence" = "ראיות AI בנושא הצפנה";

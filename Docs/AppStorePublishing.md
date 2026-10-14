@@ -196,6 +196,17 @@ credentials, provider capabilities, legal agreements, release behavior, or
 offer-code terms. Copyright input such as `Company Name` is normalized to
 `<current year> Company Name`; an existing leading year is preserved.
 
+Generation also fills an unset **Uses non-exempt encryption** answer when the
+repository supports a Yes or No recommendation. It examines network transports,
+authentication, credential storage, dependencies, entitlements, and encryption
+implementations, distinguishing router-side VPN controls from an in-app tunnel.
+The generated answer needs an affirmative evidence-sufficiency flag and nonempty
+source evidence; uncertain answers stay unset. Existing Yes/No selections are
+preserved. Supporting excerpts are saved with the declaration and appear under
+**AI encryption evidence** in **Review → Submission**, where the answer remains
+editable before saving. Generating
+only age ratings, App Privacy, or What’s New does not change this selection.
+
 The Store Description section has a dedicated **Generate What’s New with
 OpenAI** button. It looks up the latest earlier Apple-approved version, uses its
 matching ancestor release tag or exact version declaration as the Git baseline,

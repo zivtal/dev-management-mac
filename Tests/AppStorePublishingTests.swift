@@ -648,6 +648,64 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(supported.evidenceBackedPrivacy, unsupported.privacy)
     }
 
+    func testGeneratedEncryptionRequiresEvidenceAndPreservesExplicitAnswers() throws {
+        let legacyJSON = Data(#"{"contentRightsDeclaration":"DOES_NOT_USE_THIRD_PARTY_CONTENT","appIsFree":true,"demoAccountRequired":false,"copyright":"","ageRating":{},"ageRatingEvidenceSufficient":false,"privacy":{"collectsData":false,"dataTypes":[],"notes":[]},"privacyEvidenceSufficient":false,"evidence":[],"confidence":0.9}"#.utf8)
+        var draft = try JSONDecoder().decode(AppStoreComplianceDraft.self, from: legacyJSON)
+        XCTAssertNil(draft.encryptionDeclaration(preserving: nil))
+        for answer in [false, true] {
+            draft.usesNonExemptEncryption = answer
+            draft.encryptionEvidenceSufficient = false
+            draft.encryptionEvidence = ["Transport.swift: URLSession(configuration: config)"]
+            XCTAssertNil(draft.encryptionDeclaration(preserving: nil))
+            draft.encryptionEvidenceSufficient = true
+            draft.encryptionEvidence = [" \n"]
+            XCTAssertNil(draft.encryptionDeclaration(preserving: nil))
+            draft.encryptionEvidence = ["Transport.swift: URLSession(configuration: config)"]
+            XCTAssertEqual(draft.encryptionDeclaration(preserving: nil), answer)
+            XCTAssertEqual(draft.encryptionDeclaration(preserving: false), false)
+            XCTAssertEqual(draft.encryptionDeclaration(preserving: true), true)
+            let decoded = try JSONDecoder().decode(AppStoreComplianceDraft.self, from: JSONEncoder().encode(draft))
+            XCTAssertEqual(decoded.encryptionDeclaration(preserving: nil), answer)
+        }
+        draft.usesNonExemptEncryption = nil
+        XCTAssertNil(draft.encryptionDeclaration(preserving: nil))
+    }
+
+    func testBothAIGenerationSchemasRequireNullableEncryptionAndEvidence() throws {
+        let bodies = [
+            OpenAIStoreMetadataService.complianceRequestBody(model: "model", prompt: "prompt"),
+            OpenAIStoreMetadataService.localizedRequestBody(model: "model", prompt: "prompt", locales: ["en-US"])
+        ]
+        for body in bodies {
+            let text = try XCTUnwrap(body["text"] as? [String: Any])
+            let format = try XCTUnwrap(text["format"] as? [String: Any])
+            var schema = try XCTUnwrap(format["schema"] as? [String: Any])
+            if let nested = (schema["properties"] as? [String: Any])?["compliance"] as? [String: Any] {
+                schema = nested
+            }
+            let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+            let encryption = try XCTUnwrap(properties["usesNonExemptEncryption"] as? [String: Any])
+            XCTAssertEqual(encryption["type"] as? [String], ["boolean", "null"])
+            let required = try XCTUnwrap(schema["required"] as? [String])
+            for key in ["usesNonExemptEncryption", "encryptionEvidenceSufficient", "encryptionEvidence"] {
+                XCTAssertTrue(required.contains(key))
+                XCTAssertNotNil(properties[key])
+            }
+        }
+    }
+
+    func testGeneratedEncryptionDeclarationAndEvidenceSurviveManifestSaveWithoutPrivacyDraft() throws {
+        let json = Data(#"{"publication":{"usesNonExemptEncryption":false,"encryptionEvidence":["HTTPTransport.swift: URLSession(configuration: config)"]}}"#.utf8)
+        let manifest = try JSONDecoder().decode(AppStorePublishingManifest.self, from: json)
+        let saved = try JSONDecoder().decode(AppStorePublishingManifest.self, from: JSONEncoder().encode(manifest))
+        XCTAssertEqual(saved.publication?.usesNonExemptEncryption, false)
+        XCTAssertEqual(saved.publication?.encryptionEvidence, ["HTTPTransport.swift: URLSession(configuration: config)"])
+        XCTAssertNil(saved.compliance)
+        let legacy = try JSONDecoder().decode(AppStorePublishingManifest.self, from: Data(#"{"publication":{}}"#.utf8))
+        XCTAssertNil(legacy.publication?.usesNonExemptEncryption)
+        XCTAssertNil(legacy.publication?.encryptionEvidence)
+    }
+
     func testInitialAvailabilityAndFreePriceUseMatchingInlineCreationIDs() async throws {
         let service = try appStoreConnectTestService { request in
             let path = request.url?.path ?? ""

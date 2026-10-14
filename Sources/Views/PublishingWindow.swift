@@ -2847,6 +2847,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var demoAccountRequired = false
     @State private var releaseAutomatically = true
     @State private var usesNonExemptEncryption: Bool?
+    @State private var encryptionEvidence: [String] = []
     @State private var testFlightGroupName = "Internal Testing"
     @State private var testFlightFeedbackEmail = ""
     @State private var testFlightReviewNotes = ""
@@ -3652,6 +3653,19 @@ private struct PerAppPublishingConfigurationEditor: View {
             }
             Text("Confirm the app's export-compliance answer. An unspecified answer is never treated as No. Non-exempt encryption may require documentation in App Store Connect.")
                 .font(.caption).foregroundStyle(.secondary)
+            Text("Generate Settings with OpenAI can fill an unset encryption answer from source evidence. Existing answers are preserved. Review the answer and evidence before saving.")
+                .font(.caption).foregroundStyle(.secondary)
+            if !encryptionEvidence.isEmpty {
+                DisclosureGroup("AI encryption evidence") {
+                    ScrollView {
+                        Text(encryptionEvidence.joined(separator: "\n\n"))
+                            .font(.caption)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 140)
+                }
+            }
             Toggle("Release automatically after Apple approves it", isOn: $releaseAutomatically)
             Text("Both release actions synchronize this configuration. Publish submits the app and subscriptions for App Review; Upload to TestFlight stops immediately before submission.")
                 .font(.caption)
@@ -4048,6 +4062,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         replaceScreenshots = publication.replaceScreenshots ?? false
         releaseAutomatically = publication.releaseAutomatically ?? true
         usesNonExemptEncryption = publication.usesNonExemptEncryption
+        encryptionEvidence = publication.encryptionEvidence ?? []
         reviewFirstName = publication.review?.contactFirstName ?? ""
         reviewLastName = publication.review?.contactLastName ?? ""
         reviewPhone = publication.review?.contactPhone ?? ""
@@ -4166,7 +4181,8 @@ private struct PerAppPublishingConfigurationEditor: View {
                     .map(String.init)
                     .filter { $0.nilIfEmpty != nil }
             ),
-            usesNonExemptEncryption: usesNonExemptEncryption
+            usesNonExemptEncryption: usesNonExemptEncryption,
+            encryptionEvidence: encryptionEvidence.isEmpty ? nil : encryptionEvidence
         )
         var application = manifest.application ?? AppStoreApplicationConfiguration(
             primaryCategory: nil,
@@ -4300,6 +4316,10 @@ private struct PerAppPublishingConfigurationEditor: View {
             if primaryCategory.isEmpty { primaryCategory = generated.primaryCategory }
             if secondaryCategory.isEmpty { secondaryCategory = generated.secondaryCategory }
             let compliance = generated.compliance
+            if usesNonExemptEncryption == nil {
+                encryptionEvidence = compliance.encryptionEvidence ?? []
+            }
+            usesNonExemptEncryption = compliance.encryptionDeclaration(preserving: usesNonExemptEncryption)
             if contentRights.isEmpty {
                 contentRights = compliance.contentRightsDeclaration
             }
