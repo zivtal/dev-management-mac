@@ -648,6 +648,74 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(supported.evidenceBackedPrivacy, unsupported.privacy)
     }
 
+    func testInitialAvailabilityAndFreePriceUseMatchingInlineCreationIDs() async throws {
+        let service = try appStoreConnectTestService { request in
+            let path = request.url?.path ?? ""
+            switch (request.httpMethod ?? "", path) {
+            case ("GET", "/v1/apps/app-id/appAvailabilityV2"), ("GET", "/v1/apps/app-id/appPriceSchedule"):
+                return try Self.appStoreConnectResponse(for: request, status: 404, json: ["errors": [["detail": "Not found"]]])
+            case ("GET", "/v1/territories"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": [["id": "AFG"], ["id": "ISR"], ["id": "USA"]]])
+            case ("GET", "/v1/apps/app-id/appPricePoints"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": [["id": "free-point", "attributes": ["customerPrice": "0.00"]]]])
+            case ("POST", "/v2/appAvailabilities"), ("POST", "/v1/appPriceSchedules"):
+                let isAvailability = path == "/v2/appAvailabilities"
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: Self.requestBodyData(request)) as? [String: Any])
+                let data = try XCTUnwrap(body["data"] as? [String: Any])
+                let relationships = try XCTUnwrap(data["relationships"] as? [String: Any])
+                let included = try XCTUnwrap(body["included"] as? [[String: Any]])
+                let relationship = try XCTUnwrap(relationships[isAvailability ? "territoryAvailabilities" : "manualPrices"] as? [String: Any])
+                let linkages = try XCTUnwrap(relationship["data"] as? [[String: String]])
+                let ids = try included.map { try XCTUnwrap($0["id"] as? String) }
+                XCTAssertEqual(ids.count, isAvailability ? 3 : 1)
+                XCTAssertEqual(Set(linkages.compactMap { $0["id"] }), Set(ids))
+                XCTAssertEqual(Set(ids).count, ids.count)
+                let app = try XCTUnwrap(relationships["app"] as? [String: Any])
+                XCTAssertEqual(app["data"] as? [String: String], ["type": "apps", "id": "app-id"])
+                for resource in included {
+                    let id = try XCTUnwrap(resource["id"] as? String)
+                    guard id.range(of: #"^\$\{[^{}]+\}$"#, options: .regularExpression) != nil else {
+                        XCTFail("Apple requires inline creation IDs in ${local-id} format: \(id)")
+                        return try Self.appStoreConnectResponse(for: request, status: 409, json: ["errors": [["detail": "Invalid inline ID"]]])
+                    }
+                    let related = try XCTUnwrap(resource["relationships"] as? [String: Any])
+                    let foreign = try XCTUnwrap(related[isAvailability ? "territory" : "appPricePoint"] as? [String: Any])
+                    let foreignID = try XCTUnwrap((foreign["data"] as? [String: String])?["id"])
+                    XCTAssertTrue(isAvailability ? ["AFG", "ISR", "USA"].contains(foreignID) : foreignID == "free-point")
+                    if isAvailability {
+                        XCTAssertEqual((resource["attributes"] as? [String: Bool])?["available"], true)
+                    }
+                }
+                return try Self.appStoreConnectResponse(for: request, status: 201, json: ["data": ["id": "created"]])
+            default:
+                XCTFail("Unexpected request: \(request.httpMethod ?? "") \(path)")
+                return try Self.appStoreConnectResponse(for: request, status: 400, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        try await service.configureFirstPublication(
+            appID: "app-id",
+            configuration: AppStoreApplicationConfiguration(isFree: true, baseTerritory: "USA", availableInAllTerritories: true),
+            onOutput: { _ in }
+        )
+        XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.filter { $0.httpMethod == "POST" }.map { $0.url?.path }, ["/v2/appAvailabilities", "/v1/appPriceSchedules"])
+    }
+
+    func testInitialCommercialSetupPreservesExistingAvailabilityAndPricing() async throws {
+        let service = try appStoreConnectTestService { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertTrue(["/v1/apps/app-id/appAvailabilityV2", "/v1/apps/app-id/appPriceSchedule"].contains(request.url?.path ?? ""))
+            return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": ["id": "existing"]])
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        try await service.configureFirstPublication(
+            appID: "app-id",
+            configuration: AppStoreApplicationConfiguration(isFree: true, baseTerritory: "USA", availableInAllTerritories: true),
+            onOutput: { _ in }
+        )
+        XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.count, 2)
+    }
+
     func testCopyrightRejectsLinksAndAcceptsOwnerNames() {
         for value in ["2026 https://example.com/app", "https://example.com", "2026 www.example.com", "2026 example.com", "2026 owner@example.com"] {
             XCTAssertNotNil(AppStoreCopyrightNormalizer.validationError(for: value), value)

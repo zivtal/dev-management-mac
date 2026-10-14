@@ -2873,12 +2873,12 @@ final class AppStoreConnectService {
         let territories = try await pagedData(path: "/v1/territories", query: ["limit": "200"])
         let territoryIDs = territories.compactMap { $0["id"] as? String }
         let linkages = territoryIDs.map {
-            ["type": "territoryAvailabilities", "id": "availability-\($0)"]
+            ["type": "territoryAvailabilities", "id": "${availability-\($0)}"]
         }
         let included: [[String: Any]] = territoryIDs.map {
             [
                 "type": "territoryAvailabilities",
-                "id": "availability-\($0)",
+                "id": "${availability-\($0)}",
                 "attributes": ["available": true],
                 "relationships": [
                     "territory": ["data": ["type": "territories", "id": $0]]
@@ -2928,7 +2928,7 @@ final class AppStoreConnectService {
                 L10n.format("No free app price point was returned for %@.", baseTerritory)
             )
         }
-        let inlinePriceID = "initial-free-price"
+        let inlinePriceID = "${initial-free-price}"
         _ = try await request(
             method: "POST",
             path: "/v1/appPriceSchedules",

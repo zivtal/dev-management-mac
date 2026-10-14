@@ -522,7 +522,8 @@ final class AppStorePublishingService {
                 : "App Store metadata updated.\n")))
         }
 
-        eventHandler(.phase(.configuringTestFlight))
+        // Beta listing details and commercial settings are still App Store setup.
+        // The TestFlight phase starts later when the processed build is assigned.
         try await appStoreConnect.configureTestFlightInformation(
             appID: publication.appID,
             listings: localizedMetadata,
