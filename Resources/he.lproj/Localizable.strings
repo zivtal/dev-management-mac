@@ -1427,3 +1427,20 @@
 "Create your first app, complete account agreements, and manage App Privacy on Apple’s page inside Development Management. Your Apple password is handled by Apple and is never stored by this app." = "ניתן ליצור את היישום הראשון, להשלים הסכמים ולנהל הצהרות פרטיות באתר של Apple מתוך Development Management. סיסמת Apple מטופלת בידי Apple ואינה נשמרת ביישום זה.";
 "After you review and authorize a no-data declaration, Development Management publishes it through your Apple web session. Open Apple Account to sign in or complete other privacy answers on Apple’s page." = "לאחר בדיקה ואישור של הצהרה שאין איסוף נתונים, Development Management מפרסם אותה באמצעות ההתחברות לאתר של Apple. יש לפתוח את חשבון Apple כדי להתחבר או להשלים הצהרות פרטיות אחרות באתר.";
 "Reusing saved archive and package for %@ (%@); build and export are not needed.\n" = "נעשה שימוש חוזר בארכיון ובחבילה השמורים עבור %@ (%@); אין צורך בבנייה ובייצוא.\n";
+
+/* Signing keychain recovery */
+"App Signing" = "חתימת אפליקציות";
+"The signing keychain password is generated and managed by Development Management. You do not need to enter it." = "הסיסמה לצרור המפתחות לחתימה נוצרת ומנוהלת על ידי Development Management. אין צורך להזין אותה.";
+"Repair Signing Keychain…" = "תיקון צרור המפתחות לחתימה…";
+"Repairing signing keychain…" = "מתקן את צרור המפתחות לחתימה…";
+"Show Keychain Backup" = "הצגת גיבוי צרור המפתחות";
+"Repair Signing Keychain?" = "לתקן את צרור המפתחות לחתימה?";
+"Repair Signing Keychain" = "תיקון צרור המפתחות לחתימה";
+"Signing keychain repaired. Original backup: %@. Retry publishing to prepare a signing certificate. No Apple certificates were revoked." = "צרור המפתחות לחתימה תוקן. גיבוי המקור: %@. יש לנסות לפרסם שוב כדי להכין תעודת חתימה. לא בוטלו תעודות של Apple.";
+"The signing keychain is ready. Retry publishing." = "צרור המפתחות לחתימה מוכן. יש לנסות לפרסם שוב.";
+"If the signing keychain cannot be opened, a verified backup will be preserved before a replacement is created. The backup remains locked with its original password. No Apple certificates are revoked. The next publishing attempt may need a new certificate and an available certificate slot." = "אם לא ניתן לפתוח את צרור המפתחות לחתימה, יישמר גיבוי מאומת לפני יצירת צרור חלופי. הגיבוי יישאר נעול עם הסיסמה המקורית שלו. לא יבוטלו תעודות של Apple. ניסיון הפרסום הבא עשוי לדרוש תעודה חדשה ומקום פנוי במכסת התעודות.";
+"The Development Management signing keychain at %@ cannot be opened because its saved password is missing. Open Settings → Publishing → Repair Signing Keychain to preserve a backup and prepare signing again. No archive was uploaded." = "לא ניתן לפתוח את צרור המפתחות לחתימה של Development Management בנתיב %@ כי הסיסמה השמורה חסרה. יש לפתוח הגדרות ← פרסום ← תיקון צרור המפתחות לחתימה כדי לשמור גיבוי ולהכין מחדש את החתימה. לא הועלה ארכיון.";
+"The saved password no longer opens the Development Management signing keychain at %@. Open Settings → Publishing → Repair Signing Keychain to preserve a backup and prepare signing again. No archive was uploaded." = "הסיסמה השמורה אינה פותחת עוד את צרור המפתחות לחתימה של Development Management בנתיב %@. יש לפתוח הגדרות ← פרסום ← תיקון צרור המפתחות לחתימה כדי לשמור גיבוי ולהכין מחדש את החתימה. לא הועלה ארכיון.";
+"Signing keychain repair did not finish. The original keychain backup is at %@. %@" = "תיקון צרור המפתחות לחתימה לא הושלם. גיבוי צרור המפתחות המקורי נמצא בנתיב %@. %@";
+"Backup verification failed. The original keychain was not replaced." = "אימות הגיבוי נכשל. צרור המפתחות המקורי לא הוחלף.";
+"Wait for the current work or signing keychain repair to finish, then try again." = "יש להמתין לסיום העבודה הנוכחית או תיקון צרור המפתחות לחתימה, ואז לנסות שוב.";

@@ -50,6 +50,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var simulatorSessions: [UUID: SimulatorSessionController] = [:]
     @Published var selectedSettingsSection = SettingsSection.general
     @Published var presentedError: String?
+    @Published private(set) var isRepairingSigningKeychain = false
 
     var installableDevices: [ConnectedDevice] {
         connectedDevices.filter(\.supportsAppInstallation)
@@ -65,6 +66,14 @@ final class AppModel: ObservableObject {
 
     var hasActiveWork: Bool {
         !installationProgresses.isEmpty || !publishingProgresses.isEmpty || isGeneratingOfferCodes
+            || isRepairingSigningKeychain
+    }
+
+    func repairSigningKeychain() async throws -> URL? {
+        guard !hasActiveWork else { throw SigningKeychainError.repairBusy }
+        isRepairingSigningKeychain = true
+        defer { isRepairingSigningKeychain = false }
+        return try await SigningKeychainService.shared.repairKeychain()
     }
 
     var progress: InstallationProgress? {
@@ -1008,6 +1017,10 @@ final class AppModel: ObservableObject {
         project: ManagedProject,
         configuration: PublishingConfiguration
     ) {
+        guard !isRepairingSigningKeychain else {
+            presentedError = SigningKeychainError.repairBusy.localizedDescription
+            return
+        }
         let intent = configuration.intent
         var log = PublishingLogSession(projectID: project.id, projectName: project.displayName)
         let logID = log.id
@@ -1781,6 +1794,7 @@ final class AppModel: ObservableObject {
         targets requestedTargets: [ProjectInstallationTarget],
         requestedByInstallAll: Bool
     ) -> Bool {
+        guard !isRepairingSigningKeychain else { return false }
         guard let project = projects.first(where: { $0.id == requestedProject.id && $0.isEnabled }),
               !isInstalling(projectID: requestedProject.id),
               !isPublishing(projectID: requestedProject.id)

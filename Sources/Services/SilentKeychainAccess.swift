@@ -25,4 +25,19 @@ enum SilentKeychainAccess {
             return status & SecKeychainStatus(kSecUnlockStateStatus) != 0
         }
     }
+
+    /// Used only by explicit recovery, after a verified backup of the database.
+    static func removeBackedUpKeychain(_ url: URL) throws {
+        try perform {
+            var keychain: SecKeychain?
+            let opened = SecKeychainOpen(url.path, &keychain)
+            guard opened == errSecSuccess, let keychain else {
+                throw NSError(domain: NSOSStatusErrorDomain, code: Int(opened))
+            }
+            let status = SecKeychainDelete(keychain)
+            guard status == errSecSuccess else {
+                throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+            }
+        }
+    }
 }

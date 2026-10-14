@@ -306,7 +306,10 @@ repairs access for Apple's signing tools, and exports without Xcode cloud signin
 Native Mac export also provisions a Mac Installer Distribution identity and
 produces a `.pkg`. Signing status checks disable authentication UI; an unavailable
 stored password produces an actionable error instead of asking for the Mac login
-password. Existing keys are never deleted to recover access. Mac screenshots can
+password. **Settings → Publishing → Repair Signing Keychain** preserves a verified
+backup before replacing an unusable keychain, without revoking Apple certificates.
+The backup retains its original password; the next publishing attempt may need a
+new signing certificate and an available certificate slot. Mac screenshots can
 be supplied locally or captured from the selected app's window with Screen
 Recording permission; menu-bar apps may also require Accessibility permission.
 The publishing configuration editor provides a dedicated **Generate What’s New

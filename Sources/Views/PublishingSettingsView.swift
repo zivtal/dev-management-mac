@@ -9,6 +9,10 @@ struct PublishingSettingsView: View {
     @State private var demoAccountName = ""
     @State private var demoAccountPassword = ""
     @State private var appStorePrivacyFastlaneSession = ""
+    @State private var confirmsSigningRepair = false
+    @State private var isRepairingSigning = false
+    @State private var signingRepairMessage: String?
+    @State private var signingBackupURL: URL?
 
     var body: some View {
         Form {
@@ -146,6 +150,26 @@ struct PublishingSettingsView: View {
                     model.addAppStoreConnectCredentialProfile()
                 } label: {
                     Label("Add App Store Connect API", systemImage: "plus")
+                }
+            }
+
+            Section("App Signing") {
+                Text("The signing keychain password is generated and managed by Development Management. You do not need to enter it.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Repair Signing Keychain…") { confirmsSigningRepair = true }
+                    .disabled(model.hasActiveWork || isRepairingSigning)
+                if isRepairingSigning {
+                    ProgressView("Repairing signing keychain…")
+                }
+                if let signingRepairMessage {
+                    Text(signingRepairMessage)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                }
+                if let signingBackupURL {
+                    Button("Show Keychain Backup") {
+                        NSWorkspace.shared.activateFileViewerSelecting([signingBackupURL])
+                    }
                 }
             }
 
@@ -350,6 +374,28 @@ struct PublishingSettingsView: View {
         }
         .formStyle(.grouped)
         .sheet(isPresented: $showsAppleAccount) { AppleAccountSetupView() }
+        .confirmationDialog("Repair Signing Keychain?", isPresented: $confirmsSigningRepair) {
+            Button("Repair Signing Keychain") {
+                guard !model.hasActiveWork, !isRepairingSigning else { return }
+                isRepairingSigning = true
+                signingRepairMessage = nil
+                signingBackupURL = nil
+                Task {
+                    defer { isRepairingSigning = false }
+                    do {
+                        signingBackupURL = try await model.repairSigningKeychain()
+                        signingRepairMessage = signingBackupURL.map {
+                            L10n.format("Signing keychain repaired. Original backup: %@. Retry publishing to prepare a signing certificate. No Apple certificates were revoked.", $0.path)
+                        } ?? L10n.text("The signing keychain is ready. Retry publishing.")
+                    } catch {
+                        signingRepairMessage = error.localizedDescription
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("If the signing keychain cannot be opened, a verified backup will be preserved before a replacement is created. The backup remains locked with its original password. No Apple certificates are revoked. The next publishing attempt may need a new certificate and an available certificate slot.")
+        }
         .padding(.top, 8)
     }
 

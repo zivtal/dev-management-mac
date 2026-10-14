@@ -26,6 +26,14 @@ Status checks suppress authentication UI, and existing imported keys have their
 Apple signing-tool access repaired. Missing or inaccessible stored credentials
 stop publishing with an error; no keys are deleted or passwords guessed.
 
+If the generated password is missing or rejected, choose **Settings → Publishing
+→ Repair Signing Keychain**. After confirmation, the app preserves and verifies a
+backup before replacing an unusable keychain. A working keychain is kept. The
+backup remains locked with its original password, and its location is shown even
+if replacement fails. Repair never revokes Apple certificates or starts an upload.
+Retry publishing afterward; preparing a new signing identity may require an
+available certificate slot. Repair is unavailable while managed work is active.
+
 The optional `app-store-publishing.json` file belongs in the managed app's root
 folder. It supplies production settings that aren't represented by StoreKit.
 Saved manifest values are authoritative. For a new app, the publishing editor

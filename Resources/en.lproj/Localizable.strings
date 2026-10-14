@@ -1427,3 +1427,20 @@
 "Create your first app, complete account agreements, and manage App Privacy on Apple’s page inside Development Management. Your Apple password is handled by Apple and is never stored by this app." = "Create your first app, complete account agreements, and manage App Privacy on Apple’s page inside Development Management. Your Apple password is handled by Apple and is never stored by this app.";
 "After you review and authorize a no-data declaration, Development Management publishes it through your Apple web session. Open Apple Account to sign in or complete other privacy answers on Apple’s page." = "After you review and authorize a no-data declaration, Development Management publishes it through your Apple web session. Open Apple Account to sign in or complete other privacy answers on Apple’s page.";
 "Reusing saved archive and package for %@ (%@); build and export are not needed.\n" = "Reusing saved archive and package for %@ (%@); build and export are not needed.\n";
+
+/* Signing keychain recovery */
+"App Signing" = "App Signing";
+"The signing keychain password is generated and managed by Development Management. You do not need to enter it." = "The signing keychain password is generated and managed by Development Management. You do not need to enter it.";
+"Repair Signing Keychain…" = "Repair Signing Keychain…";
+"Repairing signing keychain…" = "Repairing signing keychain…";
+"Show Keychain Backup" = "Show Keychain Backup";
+"Repair Signing Keychain?" = "Repair Signing Keychain?";
+"Repair Signing Keychain" = "Repair Signing Keychain";
+"Signing keychain repaired. Original backup: %@. Retry publishing to prepare a signing certificate. No Apple certificates were revoked." = "Signing keychain repaired. Original backup: %@. Retry publishing to prepare a signing certificate. No Apple certificates were revoked.";
+"The signing keychain is ready. Retry publishing." = "The signing keychain is ready. Retry publishing.";
+"If the signing keychain cannot be opened, a verified backup will be preserved before a replacement is created. The backup remains locked with its original password. No Apple certificates are revoked. The next publishing attempt may need a new certificate and an available certificate slot." = "If the signing keychain cannot be opened, a verified backup will be preserved before a replacement is created. The backup remains locked with its original password. No Apple certificates are revoked. The next publishing attempt may need a new certificate and an available certificate slot.";
+"The Development Management signing keychain at %@ cannot be opened because its saved password is missing. Open Settings → Publishing → Repair Signing Keychain to preserve a backup and prepare signing again. No archive was uploaded." = "The Development Management signing keychain at %@ cannot be opened because its saved password is missing. Open Settings → Publishing → Repair Signing Keychain to preserve a backup and prepare signing again. No archive was uploaded.";
+"The saved password no longer opens the Development Management signing keychain at %@. Open Settings → Publishing → Repair Signing Keychain to preserve a backup and prepare signing again. No archive was uploaded." = "The saved password no longer opens the Development Management signing keychain at %@. Open Settings → Publishing → Repair Signing Keychain to preserve a backup and prepare signing again. No archive was uploaded.";
+"Signing keychain repair did not finish. The original keychain backup is at %@. %@" = "Signing keychain repair did not finish. The original keychain backup is at %@. %@";
+"Backup verification failed. The original keychain was not replaced." = "Backup verification failed. The original keychain was not replaced.";
+"Wait for the current work or signing keychain repair to finish, then try again." = "Wait for the current work or signing keychain repair to finish, then try again.";

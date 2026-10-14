@@ -350,6 +350,127 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
         }
     }
 
+    func testRepairPreservesVerifiedBackupBeforeReplacingUnusableKeychain() async throws {
+        let url = try scratchKeychainURL()
+        let original = Data("original signing keys".utf8)
+        try original.write(to: url)
+        let runner = RecordingProcessRunner()
+        runner.respond { invocation in
+            if invocation.standardInput?.hasPrefix("create-keychain") == true {
+                try? Data("replacement".utf8).write(to: url)
+            }
+            return nil
+        }
+        let service = SigningKeychainService(
+            processRunner: runner,
+            passwordStore: InMemoryPasswordStore(),
+            keychainURLOverride: url,
+            updatesSearchList: false,
+            lockState: { _ in true },
+            removeBackedUpKeychain: { path in
+                let backups = try FileManager.default.contentsOfDirectory(
+                    at: path.deletingLastPathComponent(), includingPropertiesForKeys: nil
+                ).filter { $0.lastPathComponent.contains("-backup-") }
+                XCTAssertEqual(backups.count, 1)
+                XCTAssertEqual(try Data(contentsOf: XCTUnwrap(backups.first)), original)
+                try FileManager.default.removeItem(at: path)
+            }
+        )
+        let result = try await service.repairKeychain()
+        let backup = try XCTUnwrap(result)
+        XCTAssertEqual(try Data(contentsOf: backup), original)
+        XCTAssertEqual(try Data(contentsOf: url), Data("replacement".utf8))
+        let attributes = try FileManager.default.attributesOfItem(atPath: backup.path)
+        XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+    }
+
+    func testRepairKeepsBackupIfReplacementCreationFails() async throws {
+        let url = try scratchKeychainURL()
+        let original = Data("original signing keys".utf8)
+        try original.write(to: url)
+        let runner = RecordingProcessRunner()
+        runner.respond { invocation in
+            guard invocation.standardInput?.hasPrefix("create-keychain") == true else { return nil }
+            return CommandResult(terminationStatus: 1, output: "creation failed")
+        }
+        let service = SigningKeychainService(
+            processRunner: runner, passwordStore: InMemoryPasswordStore(),
+            keychainURLOverride: url, updatesSearchList: false, lockState: { _ in true },
+            removeBackedUpKeychain: { try FileManager.default.removeItem(at: $0) }
+        )
+        do {
+            _ = try await service.repairKeychain()
+            XCTFail("expected recovery failure")
+        } catch SigningKeychainError.recoveryFailed(let path, _) {
+            XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: path)), original)
+        }
+    }
+
+    func testRepairDoesNotReplaceAWorkingKeychain() async throws {
+        let url = try scratchKeychainURL()
+        try Data("working".utf8).write(to: url)
+        let service = SigningKeychainService(
+            processRunner: RecordingProcessRunner(), passwordStore: InMemoryPasswordStore(password: "pw"),
+            keychainURLOverride: url, updatesSearchList: false, lockState: { _ in true },
+            removeBackedUpKeychain: { _ in XCTFail("working keychain must be preserved") }
+        )
+        let backup = try await service.repairKeychain()
+        XCTAssertNil(backup)
+        XCTAssertEqual(try Data(contentsOf: url), Data("working".utf8))
+    }
+
+    func testRepairOfRealDisposableKeychainPreservesUnlockableBackup() async throws {
+        let url = try scratchKeychainURL()
+        let store = InMemoryPasswordStore(password: UUID().uuidString)
+        let originalPassword = try XCTUnwrap(store.current)
+        let service = SigningKeychainService(
+            passwordStore: store, keychainURLOverride: url, updatesSearchList: false
+        )
+        _ = try await service.prepareKeychain(onOutput: { _ in })
+        defer { try? SilentKeychainAccess.removeBackedUpKeychain(url) }
+        _ = try await ProcessRunner().runAndRequireSuccess(
+            executable: URL(fileURLWithPath: "/usr/bin/security"),
+            arguments: ["lock-keychain", url.path]
+        )
+        let original = try Data(contentsOf: url)
+        try store.setSigningKeychainPassword(UUID().uuidString)
+
+        let result = try await service.repairKeychain()
+        let backup = try XCTUnwrap(result)
+        XCTAssertEqual(try Data(contentsOf: backup), original)
+        XCTAssertTrue(SilentKeychainAccess.isUnlocked(url))
+
+        let backupService = SigningKeychainService(
+            passwordStore: InMemoryPasswordStore(password: originalPassword),
+            keychainURLOverride: backup, updatesSearchList: false
+        )
+        _ = try await backupService.prepareKeychain(onOutput: { _ in })
+        defer { try? SilentKeychainAccess.removeBackedUpKeychain(backup) }
+        XCTAssertTrue(SilentKeychainAccess.isUnlocked(backup))
+    }
+
+    func testRepairDoesNotTreatOtherUnlockFailuresAsPasswordMismatch() async throws {
+        let url = try scratchKeychainURL()
+        try Data("original".utf8).write(to: url)
+        let runner = RecordingProcessRunner()
+        runner.respond { invocation in
+            guard invocation.standardInput?.hasPrefix("unlock-keychain") == true else { return nil }
+            return CommandResult(terminationStatus: 1, output: "permission denied")
+        }
+        let service = SigningKeychainService(
+            processRunner: runner, passwordStore: InMemoryPasswordStore(password: "pw"),
+            keychainURLOverride: url, updatesSearchList: false, lockState: { _ in true },
+            removeBackedUpKeychain: { _ in XCTFail("unrelated errors must not replace the keychain") }
+        )
+        do {
+            _ = try await service.repairKeychain()
+            XCTFail("expected command failure")
+        } catch SigningKeychainError.commandFailed(_, _, let output) {
+            XCTAssertEqual(output, "permission denied")
+        }
+        XCTAssertEqual(try Data(contentsOf: url), Data("original".utf8))
+    }
+
     func testFailingSecurityCommandNeverLeaksTheSecretIntoTheError() async throws {
         let url = try scratchKeychainURL()
         let runner = RecordingProcessRunner()

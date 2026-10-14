@@ -6,20 +6,21 @@ enum SigningKeychainError: LocalizedError {
     case secretNotRepresentable
     case commandFailed(command: String, status: Int32, output: String)
     case importVerificationFailed(fingerprint: String, keychainPath: String)
+    case recoveryFailed(backupPath: String, reason: String)
+    case repairBusy
 
     var errorDescription: String? {
         switch self {
-        // Deliberately never offers to delete the keychain: it may hold the only
-        // private key for a still-valid Apple Distribution certificate, and deleting
-        // it would destroy a certificate slot that only Apple can hand back.
+        // Normal publishing never replaces a keychain. Explicit recovery in Settings
+        // preserves a verified copy before replacing the active database.
         case .passwordUnavailable(let path):
             return L10n.format(
-                "The Development Management signing keychain at %@ exists, but its password is no longer in your login keychain, so it cannot be opened. Nothing was deleted: that keychain may hold the only private key for a valid Apple Distribution certificate. Export the identity from Keychain Access as a .p12, then remove the keychain file and publish again. No archive was uploaded.",
+                "The Development Management signing keychain at %@ cannot be opened because its saved password is missing. Open Settings → Publishing → Repair Signing Keychain to preserve a backup and prepare signing again. No archive was uploaded.",
                 path
             )
         case .passwordRejected(let path):
             return L10n.format(
-                "The stored password no longer opens the Development Management signing keychain at %@. Nothing was deleted: that keychain may hold the only private key for a valid Apple Distribution certificate. Export the identity from Keychain Access as a .p12, then remove the keychain file and publish again. No archive was uploaded.",
+                "The saved password no longer opens the Development Management signing keychain at %@. Open Settings → Publishing → Repair Signing Keychain to preserve a backup and prepare signing again. No archive was uploaded.",
                 path
             )
         case .secretNotRepresentable:
@@ -34,6 +35,10 @@ enum SigningKeychainError: LocalizedError {
                 fingerprint,
                 keychainPath
             )
+        case .recoveryFailed(let backupPath, let reason):
+            return L10n.format("Signing keychain repair did not finish. The original keychain backup is at %@. %@", backupPath, reason)
+        case .repairBusy:
+            return L10n.text("Wait for the current work or signing keychain repair to finish, then try again.")
         }
     }
 }
@@ -152,6 +157,7 @@ actor SigningKeychainService {
     private let keychainURLOverride: URL?
     private let updatesSearchList: Bool
     private let lockState: @Sendable (URL) -> Bool
+    private let removeBackedUpKeychain: @Sendable (URL) throws -> Void
 
     init(
         processRunner: any ProcessRunning = ProcessRunner(),
@@ -159,7 +165,8 @@ actor SigningKeychainService {
         passwordStore: any SigningKeychainPasswordStore = LoginKeychainPasswordStore(),
         keychainURLOverride: URL? = nil,
         updatesSearchList: Bool = true,
-        lockState: @escaping @Sendable (URL) -> Bool = SilentKeychainAccess.isUnlocked
+        lockState: @escaping @Sendable (URL) -> Bool = SilentKeychainAccess.isUnlocked,
+        removeBackedUpKeychain: @escaping @Sendable (URL) throws -> Void = SilentKeychainAccess.removeBackedUpKeychain
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
@@ -167,6 +174,7 @@ actor SigningKeychainService {
         self.keychainURLOverride = keychainURLOverride
         self.updatesSearchList = updatesSearchList
         self.lockState = lockState
+        self.removeBackedUpKeychain = removeBackedUpKeychain
     }
 
     private static let security = URL(fileURLWithPath: "/usr/bin/security")
@@ -175,6 +183,42 @@ actor SigningKeychainService {
         keychainURLOverride ?? fileManager.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Keychains", isDirectory: true)
             .appendingPathComponent(Self.keychainFilename)
+    }
+
+    /// Only called by the explicit Settings action while no managed work is active.
+    /// A working keychain is kept. An unusable one is copied and byte-verified before
+    /// Security unregisters the active database, so stale handles/search entries are
+    /// not reused. The backup is never deleted, even if creating the replacement fails.
+    /// This does not contact Apple, revoke certificates, or export private keys.
+    func repairKeychain() async throws -> URL? {
+        do {
+            try await prepareKeychain(onOutput: { _ in })
+            return nil
+        } catch SigningKeychainError.passwordUnavailable {
+            // Missing machine-generated password: preserve the old database.
+        } catch SigningKeychainError.passwordRejected {
+            // Confirmed unusable keychain: preserve the old database.
+        }
+
+        let url = keychainURL
+        let backup = url.deletingLastPathComponent().appendingPathComponent(
+            "DevManagement-Signing-backup-\(UUID().uuidString).keychain-db"
+        )
+        try fileManager.copyItem(at: url, to: backup)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+        guard try Data(contentsOf: url) == Data(contentsOf: backup) else {
+            throw SigningKeychainError.recoveryFailed(
+                backupPath: backup.path,
+                reason: L10n.text("Backup verification failed. The original keychain was not replaced.")
+            )
+        }
+        do {
+            try removeBackedUpKeychain(url)
+            try await prepareKeychain(onOutput: { _ in })
+            return backup
+        } catch {
+            throw SigningKeychainError.recoveryFailed(backupPath: backup.path, reason: error.localizedDescription)
+        }
     }
 
     /// Creates the keychain when missing, unlocks it, disables auto-locking, and
@@ -238,10 +282,13 @@ actor SigningKeychainService {
                 .plain("-p"), .secret(password),
                 .plain(url.path)
             ]))
-        } catch {
-            throw wasExisting
-                ? SigningKeychainError.passwordRejected(url.path)
-                : error
+        } catch let error as SigningKeychainError {
+            if wasExisting,
+               case .commandFailed(_, let status, let output) = error,
+               status == 51 || (output.contains("SecKeychainUnlock") && output.contains("not correct")) {
+                throw SigningKeychainError.passwordRejected(url.path)
+            }
+            throw error
         }
         // `unlock-keychain` succeeds silently when a keychain is already unlocked, so
         // the lock state is probed separately before anything is imported.
