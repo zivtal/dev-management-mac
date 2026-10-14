@@ -80,6 +80,7 @@ struct DeviceListEnvelope: Decodable {
             let marketingName: String?
             let deviceType: String?
             let productType: String?
+            let reality: String?
         }
 
         struct DeviceProperties: Decodable {
@@ -103,6 +104,12 @@ struct DeviceListEnvelope: Decodable {
         result.devices.compactMap { payload in
             guard let platform = payload.hardwareProperties?.platform,
                   ["ios", "ipados", "watchos"].contains(platform.lowercased()),
+                  // Recent CoreDevice versions also report paired simulators.
+                  // Older versions omit reality, so retain their physical devices
+                  // unless the transport explicitly identifies a local simulator.
+                  payload.hardwareProperties?.reality == nil
+                    || payload.hardwareProperties?.reality?.lowercased() == "physical",
+                  payload.connectionProperties?.transportType?.lowercased() != "samemachine",
                   payload.connectionProperties?.pairingState?.lowercased() == "paired",
                   let udid = payload.hardwareProperties?.udid,
                   !udid.isEmpty

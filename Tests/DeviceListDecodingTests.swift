@@ -2,6 +2,49 @@ import XCTest
 @testable import DevManagement
 
 final class DeviceListDecodingTests: XCTestCase {
+    func testPairedSimulatorsAreExcludedEvenWhenConnectedOrRenamed() throws {
+        for platform in ["iOS", "iPadOS", "watchOS"] {
+            for (reality, transport) in [
+                ("simulated", "sameMachine"),
+                ("simulated", "localNetwork"),
+                (nil, "sameMachine"),
+                ("SIMULATED", "wired"),
+                ("physical", "SameMachine"),
+                ("unknown", "localNetwork")
+            ] as [(String?, String)] {
+                var hardware: [String: Any] = ["platform": platform, "udid": "SIMULATOR"]
+                hardware["reality"] = reality
+                let data = try JSONSerialization.data(withJSONObject: ["result": ["devices": [[
+                    "hardwareProperties": hardware,
+                    "deviceProperties": ["name": "My personal device"],
+                    "connectionProperties": ["pairingState": "paired", "tunnelState": "connected", "transportType": transport]
+                ]]]])
+                let envelope = try JSONDecoder().decode(DeviceListEnvelope.self, from: data)
+                XCTAssertTrue(envelope.availableAppleDevices.isEmpty, "\(platform), \(reality ?? "legacy"), \(transport)")
+            }
+        }
+    }
+
+    func testPhysicalDevicesKeepAllCoreDeviceTransportsAndDoNotUseNamesToDetectSimulators() throws {
+        for platform in ["iOS", "iPadOS", "watchOS"] {
+            for reality in [nil, "physical", "PHYSICAL"] as [String?] {
+                for transport in [nil, "wired", "usb", "localNetwork", "futureTransport"] as [String?] {
+                    var hardware: [String: Any] = ["platform": platform, "udid": "REAL-DEVICE"]
+                    hardware["reality"] = reality
+                    var connection = ["pairingState": "paired", "tunnelState": "connected"]
+                    connection["transportType"] = transport
+                    let data = try JSONSerialization.data(withJSONObject: ["result": ["devices": [[
+                        "hardwareProperties": hardware,
+                        "deviceProperties": ["name": "iPhone 17 Simulator"],
+                        "connectionProperties": connection
+                    ]]]])
+                    let envelope = try JSONDecoder().decode(DeviceListEnvelope.self, from: data)
+                    XCTAssertEqual(envelope.availableAppleDevices.map(\.udid), ["REAL-DEVICE"])
+                }
+            }
+        }
+    }
+
     func testReturnsPairedAvailableIOSDevicesForAnyTransport() throws {
         let json = #"""
         {

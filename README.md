@@ -212,6 +212,8 @@ Settings contains six tabs and is the only ordinary app window.
 - Choose installation devices independently for every app. A compatible new
   device starts unselected; explicit selections are persisted by app and UDID.
   Newly discovered devices never become installation targets automatically.
+  CoreDevice simulator entries are excluded using their hardware reality and
+  same-machine transport; simulators remain available through Run in Simulator.
   Older settings stored only exclusions, so after upgrading to 2.4.1 select
   the intended devices once in each app's settings. Installation history is
   preserved and is never used as permission to install on a device.
