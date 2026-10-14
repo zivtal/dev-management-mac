@@ -22,6 +22,7 @@ enum AppStorePublishingError: LocalizedError {
     case missingEditablePublishingDraft
     case privacyManifestUnavailable
     case distributionSigningUnavailable
+    case unsupportedInterfaceOrientations(AppStoreArchiveOrientationCheck.Failure)
 
     var errorDescription: String? {
         switch self {
@@ -41,6 +42,16 @@ enum AppStorePublishingError: LocalizedError {
             return L10n.text("Xcode created an archive, but its application metadata could not be read.")
         case .archiveBundleIdentifierMismatch(let expected, let actual):
             return L10n.format("The archived app uses bundle identifier %@ instead of %@.", actual, expected)
+        case .unsupportedInterfaceOrientations(.noOrientations(let bundleIdentifier)):
+            return L10n.format(
+                "The archived app %@ declares no interface orientations, so App Store Connect would reject the upload. Set UISupportedInterfaceOrientations in its Info.plist (the INFOPLIST_KEY_UISupportedInterfaceOrientations build setting) and publish again.",
+                bundleIdentifier
+            )
+        case .unsupportedInterfaceOrientations(.incompleteIPadOrientations(let bundleIdentifier, let missing)):
+            return L10n.format(
+                "The archived app %@ supports iPad but is missing %@. iPad multitasking requires all four orientations in UISupportedInterfaceOrientations~ipad, or UIRequiresFullScreen set to YES.",
+                bundleIdentifier, missing.joined(separator: ", ")
+            )
         case .archiveVersionMismatch(let expected, let actual):
             return L10n.format(
                 "The archive changed the marketing version from %@ to %@. Publication stopped without uploading it.",
@@ -446,6 +457,21 @@ final class AppStorePublishingService {
                     expected: localBuildNumber,
                     actual: archived.buildNumber
                 )
+            }
+        }
+
+        // Apple only reports missing orientations after altool contacts its servers,
+        // long after App Store metadata was written. Check the archive first.
+        if let artifact {
+            if let failure = AppStoreArchiveOrientationCheck.failure(
+                at: artifact.archiveURL, platform: project.appStorePlatform
+            ) {
+                throw AppStorePublishingError.unsupportedInterfaceOrientations(failure)
+            }
+            if project.appStorePlatform == .iOS {
+                eventHandler(.output(L10n.format(
+                    "Interface orientations in %@ satisfy App Store Connect.\n", artifact.bundleIdentifier
+                )))
             }
         }
 

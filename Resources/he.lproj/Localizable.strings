@@ -1496,3 +1496,6 @@
 "The password does not match this settings file." = "הסיסמה אינה תואמת לקובץ ההגדרות.";
 "The settings file is damaged and could not be read." = "קובץ ההגדרות פגום ולא ניתן לקרוא אותו.";
 "Wait for the current installation or publication to finish before importing settings." = "יש להמתין לסיום ההתקנה או הפרסום הנוכחיים לפני ייבוא ההגדרות.";
+"The archived app %@ declares no interface orientations, so App Store Connect would reject the upload. Set UISupportedInterfaceOrientations in its Info.plist (the INFOPLIST_KEY_UISupportedInterfaceOrientations build setting) and publish again." = "האפליקציה בארכיון %@ אינה מצהירה על כיווני ממשק, ולכן App Store Connect ידחה את ההעלאה. יש להגדיר UISupportedInterfaceOrientations ב־Info.plist שלה (הגדרת הבנייה INFOPLIST_KEY_UISupportedInterfaceOrientations) ולפרסם שוב.";
+"The archived app %@ supports iPad but is missing %@. iPad multitasking requires all four orientations in UISupportedInterfaceOrientations~ipad, or UIRequiresFullScreen set to YES." = "האפליקציה בארכיון %@ תומכת ב־iPad אך חסרים בה %@. ריבוי משימות ב־iPad דורש את כל ארבעת הכיוונים ב־UISupportedInterfaceOrientations~ipad, או UIRequiresFullScreen בערך YES.";
+"Interface orientations in %@ satisfy App Store Connect.\n" = "כיווני הממשק ב־%@ עומדים בדרישות App Store Connect.\n";

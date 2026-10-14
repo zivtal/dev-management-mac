@@ -363,7 +363,12 @@ order:
    depend on an Apple Account session stored in Xcode.
 6. When an archive is required, read its bundle identifier, marketing version,
    and build number. They must exactly match the selected source version and
-   build; publication stops without uploading if either changed. A reused
+   build; publication stops without uploading if either changed. The archived
+   iOS app's interface orientations are checked next, before any App Store
+   metadata is written: a bundle with no `UISupportedInterfaceOrientations`, or
+   an iPad-capable bundle missing one of the four orientations without
+   `UIRequiresFullScreen`, stops publication with the Info.plist key to fix
+   instead of waiting for Apple's ITMS-90474 rejection during upload. A reused
    TestFlight build is confirmed as fully processed before the App Store version
    is changed.
 7. Create or update the App Store version and reconcile localized listing text,
