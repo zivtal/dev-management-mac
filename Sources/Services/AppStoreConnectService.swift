@@ -2909,9 +2909,18 @@ final class AppStoreConnectService {
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws {
         do {
-            _ = try await request(method: "GET", path: "/v1/apps/\(appID)/appPriceSchedule")
-            onOutput(L10n.text("Keeping the existing app price schedule.\n"))
-            return
+            let schedule = try await request(method: "GET", path: "/v1/apps/\(appID)/appPriceSchedule")
+            if !(schedule["data"] is NSNull) {
+                let scheduleID = try Self.identifier(in: schedule, named: "app price schedule")
+                let prices = try await pagedResources(
+                    path: "/v1/appPriceSchedules/\(scheduleID)/manualPrices",
+                    query: ["include": "appPricePoint", "filter[territory]": baseTerritory, "limit": "200"]
+                )
+                if Self.hasCurrentFreePrice(prices.data, included: prices.included) {
+                    onOutput(L10n.text("The existing app price schedule has an active Free price.\n"))
+                    return
+                }
+            }
         } catch AppStoreConnectError.requestFailed(let status, _) where status == 404 {
             // Create the initial free price schedule below.
         }
@@ -2948,6 +2957,7 @@ final class AppStoreConnectService {
                 "included": [[
                     "type": "appPrices",
                     "id": inlinePriceID,
+                    "attributes": ["startDate": NSNull(), "endDate": NSNull()],
                     "relationships": [
                         "appPricePoint": [
                             "data": ["type": "appPricePoints", "id": pointID]
@@ -2957,6 +2967,43 @@ final class AppStoreConnectService {
             ]
         )
         onOutput(L10n.format("Configured the app as Free with base territory %@.\n", baseTerritory))
+    }
+
+    static func hasCurrentFreePrice(
+        _ prices: [[String: Any]], included: [[String: Any]], at date: Date = Date()
+    ) -> Bool {
+        let today = String(ISO8601DateFormatter().string(from: date).prefix(10))
+        let current = prices.filter { price in
+            let attributes = attributes(price)
+            let start = attributes["startDate"] as? String
+            let end = attributes["endDate"] as? String
+            return (start.map { $0 <= today } ?? true) && (end.map { $0 > today } ?? true)
+        }
+        return !current.isEmpty && current.allSatisfy { price in
+            let relationships = price["relationships"] as? [String: Any]
+            let point = relationships?["appPricePoint"] as? [String: Any]
+            guard let pointID = (point?["data"] as? [String: Any])?["id"] as? String,
+                  let resource = included.first(where: {
+                      $0["type"] as? String == "appPricePoints" && $0["id"] as? String == pointID
+                  }) else { return false }
+            return pricesEqual(attributes(resource)["customerPrice"], "0")
+        }
+    }
+
+    func configureBuildEncryption(buildID: String, declaration: Bool?, required: Bool) async throws {
+        let response = try await request(method: "GET", path: "/v1/builds/\(buildID)")
+        guard let build = response["data"] as? [String: Any] else { throw AppStoreConnectError.invalidResponse }
+        let current = Self.attributes(build)["usesNonExemptEncryption"] as? Bool
+        guard let declaration else {
+            if required && current == nil {
+                throw AppStoreConnectError.requestFailed(422, L10n.text("Confirm Uses non-exempt encryption in this app's Publishing Configuration → Review, or complete export compliance for this build in App Store Connect. No encryption answer was assumed."))
+            }
+            return
+        }
+        guard current != declaration else { return }
+        _ = try await request(method: "PATCH", path: "/v1/builds/\(buildID)", body: [
+            "data": ["type": "builds", "id": buildID, "attributes": ["usesNonExemptEncryption": declaration]]
+        ])
     }
 
     static func subscriptionCreateBody(

@@ -459,6 +459,7 @@ struct AppStorePublicationConfiguration: Codable, Equatable, Sendable {
     var replaceScreenshots: Bool? = nil
     var review: AppStoreReviewManifestConfiguration?
     var testFlight: AppStoreTestFlightConfiguration? = nil
+    var usesNonExemptEncryption: Bool? = nil
 }
 
 struct AppStorePublishingManifest: Codable, Equatable, Sendable {
@@ -988,6 +989,7 @@ struct PublishingConfiguration: Sendable {
     let releaseAutomatically: Bool
     let replaceActiveReviewVersion: Bool
     let testFlight: AppStoreTestFlightConfiguration?
+    var usesNonExemptEncryption: Bool? = nil
 }
 
 struct PublishingResult: Equatable, Sendable {

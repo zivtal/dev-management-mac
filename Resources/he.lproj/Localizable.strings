@@ -1448,3 +1448,13 @@
 /* Copyright validation */
 "Copyright must contain the owner's name, not a website URL or email address." = "יש להזין בשדה זכויות היוצרים את שם הבעלים, ולא כתובת אתר או כתובת דוא״ל.";
 "Enter the person or company that owns the app. The current year is added if omitted; an existing year is kept. Do not enter a website URL." = "יש להזין את שם האדם או החברה שבבעלותם האפליקציה. השנה הנוכחית תתווסף אם לא צוינה שנה; שנה קיימת תישמר. אין להזין כתובת אתר.";
+
+/* Submission readiness */
+"The existing app price schedule has an active Free price.\n" = "לוח מחירי האפליקציה הקיים כולל מחיר חינם פעיל.\n";
+"Confirm Uses non-exempt encryption in this app's Publishing Configuration → Review, or complete export compliance for this build in App Store Connect. No encryption answer was assumed." = "יש לאשר את השימוש בהצפנה שאינה פטורה בהגדרות הפרסום של האפליקציה ← בדיקה, או להשלים את תאימות הייצוא של גרסה זו ב-App Store Connect. לא נקבעה תשובה לגבי הצפנה באופן אוטומטי.";
+"Uses non-exempt encryption" = "שימוש בהצפנה שאינה פטורה";
+"Use the uploaded build's declaration" = "שימוש בהצהרה של הגרסה שהועלתה";
+"No — no non-exempt encryption" = "לא — אין שימוש בהצפנה שאינה פטורה";
+"Yes — uses non-exempt encryption" = "כן — יש שימוש בהצפנה שאינה פטורה";
+"Confirm the app's export-compliance answer. An unspecified answer is never treated as No. Non-exempt encryption may require documentation in App Store Connect." = "יש לאשר את תשובת האפליקציה לגבי תאימות ייצוא. תשובה שלא הוגדרה אינה נחשבת ללא. הצפנה שאינה פטורה עשויה לדרוש מסמכים ב-App Store Connect.";
+"No available %@ Simulator was found. Install its runtime and create a Simulator, or provide a screenshot in Publishing Configuration.\n" = "לא נמצא סימולטור זמין של %@. יש להתקין סביבת הרצה וליצור סימולטור, או לספק צילום מסך בהגדרות הפרסום.\n";

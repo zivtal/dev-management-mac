@@ -704,6 +704,12 @@ final class AppStorePublishingTests: XCTestCase {
     func testInitialCommercialSetupPreservesExistingAvailabilityAndPricing() async throws {
         let service = try appStoreConnectTestService { request in
             XCTAssertEqual(request.httpMethod, "GET")
+            if request.url?.path == "/v1/appPriceSchedules/existing/manualPrices" {
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: [
+                    "data": [["attributes": [:], "relationships": ["appPricePoint": ["data": ["id": "free"]]]]],
+                    "included": [["type": "appPricePoints", "id": "free", "attributes": ["customerPrice": "0.00"]]]
+                ])
+            }
             XCTAssertTrue(["/v1/apps/app-id/appAvailabilityV2", "/v1/apps/app-id/appPriceSchedule"].contains(request.url?.path ?? ""))
             return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": ["id": "existing"]])
         }
@@ -713,7 +719,99 @@ final class AppStorePublishingTests: XCTestCase {
             configuration: AppStoreApplicationConfiguration(isFree: true, baseTerritory: "USA", availableInAllTerritories: true),
             onOutput: { _ in }
         )
-        XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.count, 2)
+        XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.count, 3)
+    }
+
+    func testFreePriceNeedsAnActiveZeroPriceNotJustASchedule() {
+        let now = ISO8601DateFormatter().date(from: "2026-10-14T12:00:00Z")!
+        let free: [[String: Any]] = [["type": "appPricePoints", "id": "point", "attributes": ["customerPrice": "0.00"]]]
+        let paid: [[String: Any]] = [["type": "appPricePoints", "id": "point", "attributes": ["customerPrice": "1.99"]]]
+        let active: [String: Any] = ["attributes": [:], "relationships": ["appPricePoint": ["data": ["id": "point"]]]]
+        XCTAssertTrue(AppStoreConnectService.hasCurrentFreePrice([active], included: free, at: now))
+        XCTAssertFalse(AppStoreConnectService.hasCurrentFreePrice([], included: free, at: now))
+        XCTAssertFalse(AppStoreConnectService.hasCurrentFreePrice([active], included: paid, at: now))
+        XCTAssertFalse(AppStoreConnectService.hasCurrentFreePrice([active], included: [], at: now))
+        for attributes in [["startDate": "2026-10-15"], ["endDate": "2026-10-14"]] {
+            var inactive = active
+            inactive["attributes"] = attributes
+            XCTAssertFalse(AppStoreConnectService.hasCurrentFreePrice([inactive], included: free, at: now))
+        }
+    }
+
+    func testEmptyExistingPriceScheduleIsRepairedWithImmediateFreePrice() async throws {
+        let service = try appStoreConnectTestService { request in
+            switch (request.httpMethod ?? "", request.url?.path ?? "") {
+            case ("GET", "/v1/apps/app-id/appPriceSchedule"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": ["id": "schedule"]])
+            case ("GET", "/v1/appPriceSchedules/schedule/manualPrices"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": [], "included": []])
+            case ("GET", "/v1/apps/app-id/appPricePoints"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": [["id": "free-point", "attributes": ["customerPrice": "0.00"]]]])
+            case ("POST", "/v1/appPriceSchedules"):
+                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: Self.requestBodyData(request)) as? [String: Any])
+                let price = try XCTUnwrap((body["included"] as? [[String: Any]])?.first)
+                let attributes = try XCTUnwrap(price["attributes"] as? [String: Any])
+                XCTAssertTrue(attributes["startDate"] is NSNull)
+                XCTAssertTrue(attributes["endDate"] is NSNull)
+                let point = try XCTUnwrap((price["relationships"] as? [String: Any])?["appPricePoint"] as? [String: Any])
+                XCTAssertEqual((point["data"] as? [String: String])?["id"], "free-point")
+                return try Self.appStoreConnectResponse(for: request, status: 201, json: ["data": ["id": "schedule"]])
+            default:
+                XCTFail("Unexpected price request")
+                return try Self.appStoreConnectResponse(for: request, status: 400, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        try await service.configureFirstPublication(appID: "app-id", configuration: AppStoreApplicationConfiguration(isFree: true), onOutput: { _ in })
+        XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.filter { $0.httpMethod == "POST" }.count, 1)
+    }
+
+    func testBuildEncryptionNeverAssumesAnUnspecifiedAnswer() async throws {
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        for current: Bool? in [nil, false, true] {
+            let service = try appStoreConnectTestService { request in
+                XCTAssertEqual(request.httpMethod, "GET")
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": ["id": "build", "attributes": ["usesNonExemptEncryption": current.map { $0 as Any } ?? NSNull()]]])
+            }
+            do {
+                try await service.configureBuildEncryption(buildID: "build", declaration: nil, required: true)
+                XCTAssertNotNil(current)
+            } catch AppStoreConnectError.requestFailed(let status, _) {
+                XCTAssertNil(current)
+                XCTAssertEqual(status, 422)
+            }
+            XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.count, 1)
+        }
+    }
+
+    func testExplicitEncryptionAnswerUpdatesExistingUploadedBuild() async throws {
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        for answer in [false, true] {
+            let service = try appStoreConnectTestService { request in
+                XCTAssertEqual(request.url?.path, "/v1/builds/build")
+                if request.httpMethod == "PATCH" {
+                    let body = try XCTUnwrap(JSONSerialization.jsonObject(with: Self.requestBodyData(request)) as? [String: Any])
+                    let data = try XCTUnwrap(body["data"] as? [String: Any])
+                    XCTAssertEqual((data["attributes"] as? [String: Bool])?["usesNonExemptEncryption"], answer)
+                    return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": ["id": "build"]])
+                }
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": ["id": "build", "attributes": ["usesNonExemptEncryption": NSNull()]]])
+            }
+            try await service.configureBuildEncryption(buildID: "build", declaration: answer, required: true)
+            XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.map(\.httpMethod), ["GET", "PATCH"])
+        }
+    }
+
+    func testMatchingEncryptionAnswerDoesNotPatchAndOptionalMissingAnswerDoesNotBlockTestFlight() async throws {
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        for answer: Bool? in [nil, false, true] {
+            let service = try appStoreConnectTestService { request in
+                XCTAssertEqual(request.httpMethod, "GET")
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": ["id": "build", "attributes": ["usesNonExemptEncryption": answer.map { $0 as Any } ?? NSNull()]]])
+            }
+            try await service.configureBuildEncryption(buildID: "build", declaration: answer, required: false)
+            XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.count, 1)
+        }
     }
 
     func testCopyrightRejectsLinksAndAcceptsOwnerNames() {

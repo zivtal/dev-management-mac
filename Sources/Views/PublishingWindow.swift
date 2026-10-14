@@ -2846,6 +2846,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var reviewNotes = ""
     @State private var demoAccountRequired = false
     @State private var releaseAutomatically = true
+    @State private var usesNonExemptEncryption: Bool?
     @State private var testFlightGroupName = "Internal Testing"
     @State private var testFlightFeedbackEmail = ""
     @State private var testFlightReviewNotes = ""
@@ -3644,6 +3645,13 @@ private struct PerAppPublishingConfigurationEditor: View {
 
     private var submissionSection: some View {
         Section("Submission") {
+            Picker("Uses non-exempt encryption", selection: $usesNonExemptEncryption) {
+                Text("Use the uploaded build's declaration").tag(nil as Bool?)
+                Text("No — no non-exempt encryption").tag(false as Bool?)
+                Text("Yes — uses non-exempt encryption").tag(true as Bool?)
+            }
+            Text("Confirm the app's export-compliance answer. An unspecified answer is never treated as No. Non-exempt encryption may require documentation in App Store Connect.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Release automatically after Apple approves it", isOn: $releaseAutomatically)
             Text("Both release actions synchronize this configuration. Publish submits the app and subscriptions for App Review; Upload to TestFlight stops immediately before submission.")
                 .font(.caption)
@@ -4039,6 +4047,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         reviewAttachmentPaths = (publication.reviewAttachmentPaths ?? []).joined(separator: "\n")
         replaceScreenshots = publication.replaceScreenshots ?? false
         releaseAutomatically = publication.releaseAutomatically ?? true
+        usesNonExemptEncryption = publication.usesNonExemptEncryption
         reviewFirstName = publication.review?.contactFirstName ?? ""
         reviewLastName = publication.review?.contactLastName ?? ""
         reviewPhone = publication.review?.contactPhone ?? ""
@@ -4156,7 +4165,8 @@ private struct PerAppPublishingConfigurationEditor: View {
                     .split(whereSeparator: \.isNewline)
                     .map(String.init)
                     .filter { $0.nilIfEmpty != nil }
-            )
+            ),
+            usesNonExemptEncryption: usesNonExemptEncryption
         )
         var application = manifest.application ?? AppStoreApplicationConfiguration(
             primaryCategory: nil,

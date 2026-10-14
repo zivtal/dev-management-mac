@@ -1448,3 +1448,13 @@
 /* Copyright validation */
 "Copyright must contain the owner's name, not a website URL or email address." = "Copyright must contain the owner's name, not a website URL or email address.";
 "Enter the person or company that owns the app. The current year is added if omitted; an existing year is kept. Do not enter a website URL." = "Enter the person or company that owns the app. The current year is added if omitted; an existing year is kept. Do not enter a website URL.";
+
+/* Submission readiness */
+"The existing app price schedule has an active Free price.\n" = "The existing app price schedule has an active Free price.\n";
+"Confirm Uses non-exempt encryption in this app's Publishing Configuration → Review, or complete export compliance for this build in App Store Connect. No encryption answer was assumed." = "Confirm Uses non-exempt encryption in this app's Publishing Configuration → Review, or complete export compliance for this build in App Store Connect. No encryption answer was assumed.";
+"Uses non-exempt encryption" = "Uses non-exempt encryption";
+"Use the uploaded build's declaration" = "Use the uploaded build's declaration";
+"No — no non-exempt encryption" = "No — no non-exempt encryption";
+"Yes — uses non-exempt encryption" = "Yes — uses non-exempt encryption";
+"Confirm the app's export-compliance answer. An unspecified answer is never treated as No. Non-exempt encryption may require documentation in App Store Connect." = "Confirm the app's export-compliance answer. An unspecified answer is never treated as No. Non-exempt encryption may require documentation in App Store Connect.";
+"No available %@ Simulator was found. Install its runtime and create a Simulator, or provide a screenshot in Publishing Configuration.\n" = "No available %@ Simulator was found. Install its runtime and create a Simulator, or provide a screenshot in Publishing Configuration.\n";

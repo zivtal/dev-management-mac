@@ -36,6 +36,22 @@ available certificate slot. Repair is unavailable while managed work is active.
 
 The optional `app-store-publishing.json` file belongs in the managed app's root
 folder. It supplies production settings that aren't represented by StoreKit.
+For a free app, publishing verifies an active zero-price entry rather than merely
+checking that a price schedule exists. An empty or non-free base price is replaced
+with the configured Free price.
+
+In **Publishing Configuration → Review → Submission**, set **Uses non-exempt
+encryption** only after confirming the app's export-compliance answer. The default
+preserves the uploaded build's declaration, including one supplied by its
+`ITSAppUsesNonExemptEncryption` Info.plist key. An unspecified answer is never
+assumed to be false. An explicit choice updates the existing build through App
+Store Connect without rebuilding or changing its version. Non-exempt encryption
+may also require documentation in App Store Connect.
+
+Watch screenshots require an installed watchOS Simulator runtime and an available
+Watch simulator, or a supplied screenshot. Missing simulator families are reported
+in the publishing log; cached screenshots are reused on the next attempt.
+
 Saved manifest values are authoritative. For a new app, the publishing editor
 can ask OpenAI to prepare a conservative, evidence-backed draft from bounded
 `README.md` and project-manifest excerpts. Every generated value is placed in a

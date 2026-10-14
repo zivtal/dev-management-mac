@@ -610,6 +610,11 @@ final class AppStorePublishingService {
                 onOutput: { eventHandler(.output($0)) }
             )
         }
+        try await appStoreConnect.configureBuildEncryption(
+            buildID: buildID,
+            declaration: configuration.usesNonExemptEncryption,
+            required: intent.submitsForReview
+        )
         if let versionID = publication.versionID {
             try await appStoreConnect.attachBuild(buildID, toVersion: versionID)
             eventHandler(.output(L10n.text("The processed build is attached to the App Store version.\n")))
@@ -1039,6 +1044,10 @@ final class AppStorePublishingService {
                     runtime: nil,
                     state: .unavailable
                 )
+                eventHandler?(.output(L10n.format(
+                    "No available %@ Simulator was found. Install its runtime and create a Simulator, or provide a screenshot in Publishing Configuration.\n",
+                    platform.title
+                )))
             }
         }
 

@@ -1008,7 +1008,8 @@ final class AppModel: ObservableObject {
             replaceScreenshots: perAppConfiguration?.replaceScreenshots ?? false,
             releaseAutomatically: releaseAutomatically,
             replaceActiveReviewVersion: intent == .publish && replaceActiveReviewVersion,
-            testFlight: testFlightConfiguration
+            testFlight: testFlightConfiguration,
+            usesNonExemptEncryption: perAppConfiguration?.usesNonExemptEncryption
         )
         beginPublishing(project: managedProject, configuration: publishingConfiguration)
     }
