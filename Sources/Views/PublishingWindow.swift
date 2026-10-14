@@ -763,7 +763,7 @@ private struct PublishingWindowView: View {
                 }
             }
             Label(
-                "Apple still requires the initial app record, contracts, tax/banking, trader status, collected-data App Privacy details, and the first-ever subscription submission in App Store Connect. No-data privacy declarations and later releases are automated here after authorization.",
+                "Apple still requires the initial app record, contracts, tax/banking, trader status, and the first-ever subscription submission in App Store Connect. App Privacy declarations, including collected data with purposes, linking, and tracking, and later releases are automated here after authorization.",
                 systemImage: "person.crop.circle.badge.exclamationmark"
             )
             .font(.caption)
@@ -2244,7 +2244,7 @@ private struct PublishingWindowView: View {
             return PublishingReadinessItem(
                 id: "compliance",
                 title: L10n.text("App Privacy needs attention"),
-                detail: L10n.text("Collected-data answers need purposes, linking, and tracking details. Publish them in App Store Connect, then record the manual confirmation."),
+                detail: L10n.text("Collected-data answers need purposes, linking, and tracking details. Complete them in App Setup for automatic publishing, or publish them in App Store Connect and record the manual confirmation."),
                 state: .blocked
             )
         }
@@ -2261,7 +2261,7 @@ private struct PublishingWindowView: View {
         return PublishingReadinessItem(
             id: "compliance",
             title: L10n.text("App declarations are ready"),
-            detail: L10n.text("The reviewed no-data App Privacy answer will be published automatically before the release upload."),
+            detail: L10n.text("The reviewed App Privacy answers will be published automatically before the release upload."),
             state: .ready
         )
     }
@@ -2826,6 +2826,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var privacyDraftIsSpecified = false
     @State private var privacyCollectsData = false
     @State private var privacyDataTypes: [String] = []
+    @State private var privacyDataUses: [AppStorePrivacyDataUse] = []
     @State private var privacyNotes: [String] = []
     @State private var privacyConfirmedInAppStoreConnect = false
     @State private var privacyConfirmedManually = false
@@ -3565,13 +3566,17 @@ private struct PerAppPublishingConfigurationEditor: View {
                     }
                 ),
                 dataTypes: $privacyDataTypes,
+                dataUses: $privacyDataUses,
                 notes: $privacyNotes
             )
-            Text("After you review and authorize a no-data declaration, Development Management publishes it through your Apple web session. Open Apple Account to sign in or complete other privacy answers on Apple’s page.")
+            Text("After you review and authorize the declaration, Development Management publishes it through your Apple web session, including collected data types with their purposes, linking, and tracking answers. Open Apple Account to sign in.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if privacyDraftIsSpecified {
-                if privacyCollectsData {
+                if privacyCollectsData && !currentPrivacyDraftIsComplete {
+                    Text("Every collected data type needs at least one purpose before automatic publishing. Until then, publish the answers in App Store Connect and record the manual confirmation.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                     Toggle(
                         "I published these App Privacy answers in App Store Connect",
                         isOn: $privacyConfirmedManually
@@ -4089,6 +4094,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         privacyDraftIsSpecified = manifest.compliance?.privacyDraft != nil
         privacyCollectsData = manifest.compliance?.privacyDraft?.collectsData ?? false
         privacyDataTypes = manifest.compliance?.privacyDraft?.dataTypes ?? []
+        privacyDataUses = manifest.compliance?.privacyDraft?.dataUses ?? []
         privacyNotes = manifest.compliance?.privacyDraft?.notes ?? []
         privacyConfirmedInAppStoreConnect = manifest.compliance?.privacyAttestation?
             .automaticPublishingAuthorizedAt?.nilIfEmpty != nil
@@ -4203,11 +4209,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         manifest.application = application
         if privacyDraftIsSpecified {
             let previousDraft = manifest.compliance?.privacyDraft
-            let currentDraft = AppStorePrivacyDraft(
-                collectsData: privacyCollectsData,
-                dataTypes: privacyDataTypes,
-                notes: privacyNotes
-            )
+            let currentDraft = currentPrivacyDraft
             let previousAttestation = manifest.compliance?.privacyAttestation
             let now = ISO8601DateFormatter().string(from: Date())
             let privacyAttestation: AppStorePrivacyAttestation? = if privacyConfirmedInAppStoreConnect {
@@ -4427,11 +4429,25 @@ private struct PerAppPublishingConfigurationEditor: View {
         }
     }
 
+    private var currentPrivacyDraft: AppStorePrivacyDraft {
+        AppStorePrivacyDraft(
+            collectsData: privacyCollectsData,
+            dataTypes: privacyDataTypes,
+            notes: privacyNotes,
+            dataUses: privacyCollectsData && !privacyDataUses.isEmpty ? privacyDataUses : nil
+        )
+    }
+
+    private var currentPrivacyDraftIsComplete: Bool {
+        AppStorePrivacyUsagePlan.isComplete(currentPrivacyDraft)
+    }
+
     private func applyGeneratedPrivacyDraft(from compliance: AppStoreComplianceDraft) {
         guard let generatedPrivacy = compliance.evidenceBackedPrivacy else {
             privacyDraftIsSpecified = false
             privacyCollectsData = false
             privacyDataTypes = []
+            privacyDataUses = []
             privacyNotes = []
             privacyConfirmedInAppStoreConnect = false
             privacyConfirmedManually = false
@@ -4444,7 +4460,10 @@ private struct PerAppPublishingConfigurationEditor: View {
         }
         privacyDraftIsSpecified = true
         privacyCollectsData = generatedPrivacy.collectsData
-        privacyDataTypes = generatedPrivacy.dataTypes
+        privacyDataUses = generatedPrivacy.dataUses ?? []
+        privacyDataTypes = privacyDataUses.isEmpty
+            ? generatedPrivacy.dataTypes
+            : AppStorePrivacyCatalog.groups(for: privacyDataUses)
         privacyNotes = generatedPrivacy.notes
         privacyConfirmedInAppStoreConnect = false
         privacyConfirmedManually = false
@@ -4517,7 +4536,7 @@ private struct PerAppPublishingConfigurationEditor: View {
            privacyDraft.dataTypes.isEmpty {
             revealAppPrivacySection()
             throw ConfigurationEditorError.invalid(
-                L10n.text("Select at least one collected data type, or leave the App Privacy answer Unspecified.")
+                L10n.text("Select at least one collected data type with its purposes, or leave the App Privacy answer Unspecified.")
             )
         }
         switch AppStorePrivacyConfigurationPolicy.state(for: manifest.compliance) {
@@ -4534,7 +4553,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         case .needsManualConfirmation:
             revealAppPrivacySection()
             throw ConfigurationEditorError.invalid(
-                L10n.text("Confirm that the collected-data App Privacy details were published in App Store Connect and enter who confirmed them.")
+                L10n.text("Give every collected data type at least one purpose and authorize automatic publishing, or confirm that the answers were published in App Store Connect and enter who confirmed them.")
             )
         case .automaticallyAuthorized, .confirmed:
             break

@@ -217,10 +217,21 @@ struct AppStoreGeneratedReleaseNotes: Codable, Equatable, Sendable {
     }
 }
 
+/// Apple's per-category App Privacy answer: purposes, whether the data is linked to
+/// the user's identity, and whether it is used for tracking.
+struct AppStorePrivacyDataUse: Codable, Equatable, Sendable {
+    var category: String
+    var purposes: [String]
+    var linkedToUser: Bool
+    var usedForTracking: Bool
+}
+
 struct AppStorePrivacyDraft: Codable, Equatable, Sendable {
     var collectsData: Bool
     var dataTypes: [String]
     var notes: [String]
+    /// Absent in manifests written before collected-data automation.
+    var dataUses: [AppStorePrivacyDataUse]? = nil
 }
 
 struct AppStoreComplianceDraft: Codable, Equatable, Sendable {

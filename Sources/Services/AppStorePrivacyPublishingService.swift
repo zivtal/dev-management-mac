@@ -16,7 +16,7 @@ enum AppStorePrivacyPublishingError: LocalizedError {
         case .missingSession:
             L10n.text("Save a Fastlane App Store Connect session in Publishing settings before publishing App Privacy answers.")
         case .collectedDataNeedsDetails:
-            L10n.text("Apps that collect data require Apple purpose, linking, and tracking answers. Complete App Privacy in App Store Connect for this app.")
+            L10n.text("The collected-data App Privacy draft is incomplete. Select every collected data type with at least one purpose in App Setup, or publish the answers in App Store Connect and record the manual confirmation.")
         case .sessionExpired:
             L10n.text("The saved Fastlane App Store Connect session has expired, so the App Privacy answers were not published. Sign in with Apple Account… in this window and try again, or run fastlane spaceauth and save the new session in Publishing settings.")
         }
@@ -67,10 +67,7 @@ final class AppStorePrivacyPublishingService {
     }
 
     static func payload(for draft: AppStorePrivacyDraft) throws -> [FastlaneAppPrivacyUsage] {
-        guard !draft.collectsData else {
-            throw AppStorePrivacyPublishingError.collectedDataNeedsDetails
-        }
-        return [FastlaneAppPrivacyUsage(dataProtections: ["DATA_NOT_COLLECTED"])]
+        try AppStorePrivacyUsagePlan.fastlaneUsages(for: draft)
     }
 
     /// Spaceship reports a rejected `FASTLANE_SESSION` as a login fallback and then

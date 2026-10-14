@@ -152,17 +152,20 @@ enum AppStorePrivacyConfigurationPolicy {
         for compliance: AppStoreComplianceConfiguration?
     ) -> AppStorePrivacyConfigurationState {
         guard let draft = compliance?.privacyDraft else { return .missingDraft }
+        // A collected-data draft publishes automatically only once every category
+        // has its purposes; anything less keeps the manual App Store Connect path.
+        let automatable = AppStorePrivacyUsagePlan.isComplete(draft)
         guard let attestation = compliance?.privacyAttestation else {
-            return draft.collectsData
-                ? .needsManualConfirmation
-                : .needsAutomaticAuthorization
+            return automatable
+                ? .needsAutomaticAuthorization
+                : .needsManualConfirmation
         }
         if attestation.publishedAt?.nilIfEmpty != nil {
             return .confirmed
         }
         let hasConfirmation = attestation.confirmedBy?.nilIfEmpty != nil
             && attestation.confirmedAt?.nilIfEmpty != nil
-        if draft.collectsData {
+        if !automatable {
             return hasConfirmation && attestation.automaticPublishingAuthorizedAt?.nilIfEmpty == nil
                 ? .confirmed
                 : .needsManualConfirmation

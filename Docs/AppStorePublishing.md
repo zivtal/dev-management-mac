@@ -226,9 +226,16 @@ of Use links to every localized description while preserving Apple's 4,000
 character limit; OpenAI does not create or replace those links.
 
 Apple does not expose the App Privacy questionnaire through the public App Store
-Connect API. For an explicitly reviewed **Data Not Collected** declaration,
-Development Management can publish the answer through the built-in Apple web
-session; the following Fastlane configuration is an optional legacy alternative.
+Connect API. For an explicitly reviewed declaration, whether **Data Not
+Collected** or collected data types with their purposes, linking, and tracking
+answers, Development Management publishes the answers through the built-in
+Apple web session; the following Fastlane configuration is an optional legacy
+alternative. Collected data is editable per Apple category in App Setup, and a
+category without a purpose keeps the declaration on the manual path. Publishing
+sends one record per category, purpose, and protection, the same shape as
+Fastlane's `upload_app_privacy_details_to_app_store`; answers already present in
+App Store Connect are kept when they match, replaced when a reviewed
+collected-data draft differs, and never replaced by a no-data declaration.
 It uses Fastlane's authenticated
 App Store Connect web session. Publishing Settings stores the Apple ID in app
 preferences and the `FASTLANE_SESSION` value in Keychain; the Apple ID password
@@ -238,8 +245,8 @@ records `publishedAt` in the manifest and does not repeat the operation unless
 the privacy draft changes. When Apple rejects the saved Fastlane session, the
 run stops with a single instruction to sign in with Apple Account in the
 publishing window or refresh the session with `fastlane spaceauth`, instead of
-Fastlane's login fallback output. Collected-data declarations still require manual
-purpose, linking, and tracking answers in App Store Connect, followed by the
+Fastlane's login fallback output. A collected-data draft that still lacks a
+purpose can instead be published by hand in App Store Connect, followed by the
 manual confirmation in the editor.
 
 If an app doesn't use a local StoreKit configuration, the manifest can contain
@@ -348,8 +355,8 @@ rebuilding the binary and are reconciled on retry.
 order:
 
 1. Discover StoreKit products and deterministic per-app configuration.
-2. Publish an authorized no-data App Privacy declaration when it has not already
-   been published.
+2. Publish the authorized App Privacy declaration, no-data or collected data,
+   when it has not already been published.
 3. Validate every configured public support, marketing, privacy, and terms URL
    before spending time on an archive that cannot be submitted.
 4. Prepare or capture App Store screenshots for each supported simulator family.

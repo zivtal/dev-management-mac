@@ -243,11 +243,21 @@ final class AppStorePublishingService {
             guard let privacyDraft = subscriptionCatalog.compliance?.privacyDraft else {
                 throw AppStorePublishingError.missingEditablePublishingDraft
             }
+            // Nothing is assumed for a category without purposes; stop before Apple.
+            let plannedRecords = try AppStorePrivacyUsagePlan.records(for: privacyDraft)
             eventHandler(.phase(.publishingPrivacy))
+            if privacyDraft.collectsData {
+                eventHandler(.output(L10n.format(
+                    "Publishing the reviewed collected-data App Privacy answers: %d data type(s), %d record(s).\n",
+                    privacyDraft.dataUses?.count ?? 0, plannedRecords.count
+                )))
+            }
             if await AppleWebSession.shared.canUseSession {
-                try await AppleWebSession.shared.publishPrivacy(
+                let created = try await AppleWebSession.shared.publishPrivacy(
                     draft: privacyDraft, appID: appID, bundleIdentifier: bundleIdentifier)
-                eventHandler(.output(L10n.text("App Privacy answers were published in App Store Connect.\n")))
+                eventHandler(.output(created == 0
+                    ? L10n.text("App Store Connect already held the reviewed App Privacy answers; they are published.\n")
+                    : L10n.text("App Privacy answers were published in App Store Connect.\n")))
             } else {
                 try await privacyPublishingService.publish(
                 draft: privacyDraft,

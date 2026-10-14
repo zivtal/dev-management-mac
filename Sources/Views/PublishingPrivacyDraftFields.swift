@@ -4,6 +4,7 @@ struct PublishingPrivacyDraftFields: View {
     @Binding var isSpecified: Bool
     @Binding var collectsData: Bool
     @Binding var dataTypes: [String]
+    @Binding var dataUses: [AppStorePrivacyDataUse]
     @Binding var notes: [String]
 
     var body: some View {
@@ -12,12 +13,22 @@ struct PublishingPrivacyDraftFields: View {
             Text("No").tag("NO")
             Text("Yes").tag("YES")
         }
-        DisclosureGroup("Potential data types") {
-            ForEach(Self.dataTypeNames, id: \.self) { dataType in
-                Toggle(L10n.text(dataType), isOn: dataTypeBinding(dataType))
+        DisclosureGroup("Collected data types") {
+            Text("Select each data type Apple should list, then its purposes, whether it is linked to the user's identity, and whether it is used for tracking. A type without a purpose keeps publishing manual.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(AppStorePrivacyCatalog.groups) { group in
+                PublishingPrivacyGroupFields(group: group, dataUses: $dataUses, legacySelected: dataTypes.contains(group.name))
             }
         }
         .disabled(!isSpecified || !collectsData)
+        .onChange(of: dataUses) { _, uses in
+            // The group checklist mirrors the detailed answers; it never adds to them.
+            if !uses.isEmpty || !dataTypes.isEmpty {
+                let derived = AppStorePrivacyCatalog.groups(for: uses)
+                if derived != dataTypes, !uses.isEmpty { dataTypes = derived }
+            }
+        }
         VStack(alignment: .leading, spacing: 5) {
             Text("Privacy review notes")
                 .font(.caption)
@@ -45,21 +56,9 @@ struct PublishingPrivacyDraftFields: View {
                     isSpecified = true
                     collectsData = false
                     dataTypes = []
+                    dataUses = []
                 default:
                     isSpecified = false
-                }
-            }
-        )
-    }
-
-    private func dataTypeBinding(_ dataType: String) -> Binding<Bool> {
-        Binding(
-            get: { dataTypes.contains(dataType) },
-            set: { selected in
-                if selected, !dataTypes.contains(dataType) {
-                    dataTypes.append(dataType)
-                } else if !selected {
-                    dataTypes.removeAll { $0 == dataType }
                 }
             }
         )
@@ -76,10 +75,101 @@ struct PublishingPrivacyDraftFields: View {
         )
     }
 
-    private static let dataTypeNames = [
-        "Contact Info", "Health & Fitness", "Financial Info", "Location",
-        "Sensitive Info", "Contacts", "User Content", "Browsing History",
-        "Search History", "Identifiers", "Purchases", "Usage Data",
-        "Diagnostics", "Other Data"
-    ]
+    static let dataTypeNames = AppStorePrivacyCatalog.groupNames
+}
+
+/// One Apple data-type group: a toggle per category, and the purposes, linking,
+/// and tracking answers for each selected category.
+private struct PublishingPrivacyGroupFields: View {
+    let group: AppStorePrivacyCatalog.Group
+    @Binding var dataUses: [AppStorePrivacyDataUse]
+    /// A legacy draft named the group without categories; keep it visible.
+    let legacySelected: Bool
+
+    var body: some View {
+        DisclosureGroup(isExpanded: expansion) {
+            ForEach(group.categories) { category in
+                Toggle(L10n.text(category.title), isOn: categoryBinding(category.id))
+                if let index = dataUses.firstIndex(where: { $0.category == category.id }) {
+                    PublishingPrivacyUseFields(use: $dataUses[index])
+                        .padding(.leading, 20)
+                }
+            }
+        } label: {
+            HStack {
+                Text(L10n.text(group.name))
+                if legacySelected && selectedCount == 0 {
+                    Text("Needs purposes")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else if selectedCount > 0 {
+                    Text(verbatim: "\(selectedCount)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @State private var isExpanded = false
+
+    private var expansion: Binding<Bool> {
+        Binding(
+            get: { isExpanded || (legacySelected && selectedCount == 0) },
+            set: { isExpanded = $0 }
+        )
+    }
+
+    private var selectedCount: Int {
+        dataUses.filter { use in group.categories.contains { $0.id == use.category } }.count
+    }
+
+    private func categoryBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { dataUses.contains { $0.category == id } },
+            set: { selected in
+                if selected, !dataUses.contains(where: { $0.category == id }) {
+                    dataUses.append(AppStorePrivacyDataUse(
+                        category: id, purposes: [], linkedToUser: false, usedForTracking: false
+                    ))
+                } else if !selected {
+                    dataUses.removeAll { $0.category == id }
+                }
+            }
+        )
+    }
+}
+
+private struct PublishingPrivacyUseFields: View {
+    @Binding var use: AppStorePrivacyDataUse
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Purposes")
+                .font(.caption)
+                .foregroundStyle(use.purposes.isEmpty ? .orange : .secondary)
+            ForEach(AppStorePrivacyCatalog.purposes) { purpose in
+                Toggle(L10n.text(purpose.title), isOn: purposeBinding(purpose.id))
+                    .font(.callout)
+            }
+            Toggle("Linked to the user's identity", isOn: $use.linkedToUser)
+                .font(.callout)
+            Toggle("Used for tracking", isOn: $use.usedForTracking)
+                .font(.callout)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func purposeBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { use.purposes.contains(id) },
+            set: { selected in
+                if selected, !use.purposes.contains(id) {
+                    use.purposes.append(id)
+                } else if !selected {
+                    use.purposes.removeAll { $0 == id }
+                }
+            }
+        )
+    }
 }
