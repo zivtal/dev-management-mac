@@ -104,7 +104,7 @@ extension AppStoreConnectService {
     ) async throws -> [AppStoreReviewSubmissionSnapshot] {
         let resources = try await pagedData(
             path: "/v1/apps/\(appID)/reviewSubmissions",
-            query: ["filter[platform]": "IOS", "limit": "200"]
+            query: ["filter[platform]": platform.rawValue, "limit": "200"]
         )
         let activeStates: Set<String> = ["READY_FOR_REVIEW", "UNRESOLVED_ISSUES"]
         var snapshots: [AppStoreReviewSubmissionSnapshot] = []
@@ -161,7 +161,7 @@ extension AppStoreConnectService {
             body: [
                 "data": [
                     "type": "reviewSubmissions",
-                    "attributes": ["platform": "IOS"],
+                    "attributes": ["platform": platform.rawValue],
                     "relationships": [
                         "app": ["data": ["type": "apps", "id": appID]]
                     ]

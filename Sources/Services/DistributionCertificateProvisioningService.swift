@@ -127,6 +127,7 @@ actor DistributionCertificateProvisioningService {
     private let pendingStore: PendingSigningCertificateStore
     private let provenanceStore: IssuedSigningCertificateProvenanceStore
     private let urlSession: URLSession
+    private let purpose: DistributionCertificatePurpose
 
     init(
         processRunner: any ProcessRunning = ProcessRunner(),
@@ -136,7 +137,8 @@ actor DistributionCertificateProvisioningService {
         pendingStore: PendingSigningCertificateStore = PendingSigningCertificateStore(),
         provenanceStore: IssuedSigningCertificateProvenanceStore =
             IssuedSigningCertificateProvenanceStore(),
-        urlSession: URLSession = .shared
+        urlSession: URLSession = .shared,
+        purpose: DistributionCertificatePurpose = .application
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
@@ -145,6 +147,7 @@ actor DistributionCertificateProvisioningService {
         self.pendingStore = pendingStore
         self.provenanceStore = provenanceStore
         self.urlSession = urlSession
+        self.purpose = purpose
     }
 
     /// Produces a local Apple Distribution identity for `teamID`, reusing an existing
@@ -211,11 +214,11 @@ actor DistributionCertificateProvisioningService {
         // A local identity is only worth reusing while Apple still recognises it.
         // Reusing a revoked one would burn a whole archive before the export failed,
         // and would never let the create path run again.
-        let localIdentities = developerTeamService.distributionSigningIdentities(teamID: teamID)
+        let localIdentities = developerTeamService.distributionSigningIdentities(teamID: teamID, purpose: purpose)
         if let existing = localIdentities.first(where: { identity in
             Self.accountCertificate(
                 in: certificates,
-                sha1Fingerprint: identity.sha1Fingerprint
+                sha1Fingerprint: identity.sha1Fingerprint, purpose: purpose
             ) != nil
         }) {
             if let keychainFailure {
@@ -235,6 +238,9 @@ actor DistributionCertificateProvisioningService {
                     throw keychainFailure
                 }
             }
+            if keychainFailure == nil {
+                try await signingKeychainService.authorizeSigningTools(for: existing.sha1Fingerprint)
+            }
             onOutput(L10n.format(
                 "Using the local Apple Distribution identity %@.\n",
                 existing.commonName
@@ -249,7 +255,7 @@ actor DistributionCertificateProvisioningService {
         }
 
         if let recovered = try await recoverPendingCertificate(
-            certificates: Self.activeDistributionCertificates(certificates),
+            certificates: Self.activeDistributionCertificates(certificates, purpose: purpose),
             normalizedTeamID: normalizedTeamID,
             appStoreConnect: appStoreConnect,
             onOutput: onOutput
@@ -262,7 +268,7 @@ actor DistributionCertificateProvisioningService {
         ))
         return try await createIdentity(
             appStoreConnect: appStoreConnect,
-            existingDistributionCertificates: Self.activeDistributionCertificates(certificates),
+            existingDistributionCertificates: Self.activeDistributionCertificates(certificates, purpose: purpose),
             normalizedTeamID: normalizedTeamID,
             onOutput: onOutput
         )
@@ -415,7 +421,7 @@ actor DistributionCertificateProvisioningService {
         let issuedCertificate: AppStoreConnectCertificate
         do {
             issuedCertificate = try await appStoreConnect.createDistributionCertificate(
-                csrContent: csrContent
+                csrContent: csrContent, purpose: purpose
             )
         } catch AppStoreConnectError.requestFailed(let status, _) where status == 401 || status == 403 {
             pendingStore.remove(id: request.id)
@@ -873,10 +879,11 @@ actor DistributionCertificateProvisioningService {
     static func accountCertificate(
         in certificates: [AppStoreConnectCertificate],
         sha1Fingerprint fingerprint: String,
-        now: Date = Date()
+        now: Date = Date(),
+        purpose: DistributionCertificatePurpose = .application
     ) -> AppStoreConnectCertificate? {
         certificates.first {
-            iOSDistributionCertificateTypes.contains($0.certificateType.uppercased())
+            purpose.acceptedTypes.contains($0.certificateType.uppercased())
                 && $0.isActive(at: now)
                 && Self.sha1Fingerprint(of: $0) == fingerprint
         }
@@ -892,10 +899,11 @@ actor DistributionCertificateProvisioningService {
 
     static func activeDistributionCertificates(
         _ certificates: [AppStoreConnectCertificate],
-        now: Date = Date()
+        now: Date = Date(),
+        purpose: DistributionCertificatePurpose = .application
     ) -> [AppStoreConnectCertificate] {
         certificates.filter {
-            iOSDistributionCertificateTypes.contains($0.certificateType.uppercased())
+            purpose.acceptedTypes.contains($0.certificateType.uppercased())
                 && $0.isActive(at: now)
         }
     }

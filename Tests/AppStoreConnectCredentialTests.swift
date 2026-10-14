@@ -24,6 +24,7 @@ final class AppStoreConnectCredentialTests: XCTestCase {
         )
 
         XCTAssertNil(query[kSecReturnData as String])
+        XCTAssertEqual(query[kSecUseAuthenticationUI as String] as? String, kSecUseAuthenticationUIFail as String)
         XCTAssertEqual(query[kSecReturnAttributes as String] as? Bool, true)
         XCTAssertEqual(query[kSecMatchLimit as String] as? String, kSecMatchLimitOne as String)
     }

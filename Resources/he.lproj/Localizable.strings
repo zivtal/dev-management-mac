@@ -1392,3 +1392,38 @@
 "Choose a Watch scheme to install on iPhone and Apple Watch together." = "יש לבחור סכמת Apple Watch כדי להתקין ב־iPhone וב־Apple Watch יחד.";
 
 "Install now builds both selected schemes, installing on iPhone before Apple Watch. Configuration and signing team apply to both." = "התקנה כעת בונה את שתי הסכמות שנבחרו ומתקינה ב־iPhone לפני Apple Watch. תצורת הבנייה וצוות החתימה חלים על שתיהן.";
+
+/* Standalone Apple publishing */
+"Apple Account" = "חשבון Apple";
+"Apple Account…" = "חשבון Apple…";
+"Sign In to Apple…" = "התחברות ל־Apple…";
+"Create App…" = "יצירת יישום…";
+"Create App" = "יצירת יישום";
+"Create App in App Store Connect" = "יצירת יישום ב־App Store Connect";
+"Unique SKU" = "מזהה SKU ייחודי";
+"Mac" = "Mac";
+"iPhone / iPad / Watch" = "iPhone / iPad / Watch";
+"Reload Apple Sign-In" = "טעינת ההתחברות ל־Apple מחדש";
+"I Created It on Apple’s Page" = "יצרתי אותו באתר של Apple";
+"Sign in to Apple and select the correct team first." = "יש להתחבר ל־Apple ולבחור תחילה את הצוות המתאים.";
+"Choose both platforms only when their store schemes use this same bundle ID. The Watch app and widget are uploaded with the iOS app." = "יש לבחור בשתי הפלטפורמות רק כאשר תצורות הבנייה שלהן לחנות משתמשות באותו מזהה חבילה. יישום השעון והווידג׳ט מועלים יחד עם יישום iOS.";
+"Sign in on Apple’s page and select the team used by this project. Apple handles your password and verification code. Complete any account agreements there before creating the app." = "יש להתחבר באתר של Apple ולבחור בצוות של הפרויקט. הסיסמה וקוד האימות מטופלים בידי Apple. יש להשלים שם את ההסכמים הנדרשים בחשבון לפני יצירת היישום.";
+"Sign in and select the same team as your publishing API key. Complete agreements, app setup, and App Privacy on Apple’s page. Your password and verification code stay with Apple." = "יש להתחבר ולבחור בצוות המשויך למפתח ה־API לפרסום. יש להשלים הסכמים, הגדרות יישום והצהרות פרטיות באתר של Apple. הסיסמה וקוד האימות נשארים אצל Apple.";
+"Apple could not create the app. Complete any required account setup in the Apple page, then try again." = "Apple לא הצליחה ליצור את היישום. יש להשלים את הגדרות החשבון הנדרשות באתר של Apple ולנסות שוב.";
+"Apple did not confirm App Privacy publication. Review the declaration on Apple’s page, then retry." = "Apple לא אישרה את פרסום הצהרת הפרטיות. יש לבדוק את ההצהרה באתר של Apple ולנסות שוב.";
+"Enter an app name (up to 30 characters), bundle ID, unique SKU, supported locale, version, and at least one platform." = "יש להזין שם יישום (עד 30 תווים), מזהה חבילה, SKU ייחודי, שפה נתמכת, גרסה ולפחות פלטפורמה אחת.";
+"Allow Accessibility for Development Management to open this app’s menu-bar panel, or open the panel yourself and retry." = "יש לאפשר גישת נגישות ל־Development Management לפתיחת חלונית היישום בשורת התפריטים, או לפתוח אותה ידנית ולנסות שוב.";
+"Allow Screen Recording for Development Management, then retry screenshots." = "יש לאפשר הקלטת מסך ל־Development Management ולנסות שוב לצלם את המסך.";
+"Could not render the Mac screenshot." = "לא ניתן ליצור את צילום המסך ל־Mac.";
+"Could not save the Mac screenshot." = "לא ניתן לשמור את צילום המסך ל־Mac.";
+"Open the app’s main window or menu-bar panel, then retry screenshots." = "יש לפתוח את החלון הראשי או את חלונית היישום בשורת התפריטים ולנסות שוב לצלם את המסך.";
+"The Mac screenshot build did not contain the selected app." = "בנייה לצילום מסך ב־Mac לא כללה את היישום שנבחר.";
+"The Mac archive is not sandboxed. Select the Mac App Store scheme and enable App Sandbox before publishing." = "ארכיון ה־Mac אינו מוגן ב־Sandbox. יש לבחור בתצורת Mac App Store ולהפעיל App Sandbox לפני הפרסום.";
+"Set the Mac app category in the selected scheme’s Info.plist before publishing." = "יש להגדיר את קטגוריית יישום ה־Mac ב־Info.plist של תצורת הבנייה שנבחרה לפני הפרסום.";
+"App Store publishing requires an iOS or native Mac App Store scheme." = "פרסום ב־App Store מחייב תצורת בנייה ל־iOS או ל־Mac App Store.";
+"No App Store version exists for this platform yet." = "עדיין אין גרסת App Store לפלטפורמה זו.";
+"Sign in using Apple Account in this window before publishing the reviewed App Privacy answers." = "יש להתחבר באמצעות חשבון Apple בחלון זה לפני פרסום הצהרות הפרטיות שנבדקו.";
+"Optional legacy Fastlane connection. The built-in Apple sign-in works without Fastlane or Terminal." = "חיבור Fastlane ישן ואופציונלי. ההתחברות המובנית ל־Apple פועלת ללא Fastlane או Terminal.";
+"Create your first app, complete account agreements, and manage App Privacy on Apple’s page inside Development Management. Your Apple password is handled by Apple and is never stored by this app." = "ניתן ליצור את היישום הראשון, להשלים הסכמים ולנהל הצהרות פרטיות באתר של Apple מתוך Development Management. סיסמת Apple מטופלת בידי Apple ואינה נשמרת ביישום זה.";
+"After you review and authorize a no-data declaration, Development Management publishes it through your Apple web session. Open Apple Account to sign in or complete other privacy answers on Apple’s page." = "לאחר בדיקה ואישור של הצהרה שאין איסוף נתונים, Development Management מפרסם אותה באמצעות ההתחברות לאתר של Apple. יש לפתוח את חשבון Apple כדי להתחבר או להשלים הצהרות פרטיות אחרות באתר.";
+"Reusing saved archive and package for %@ (%@); build and export are not needed.\n" = "נעשה שימוש חוזר בארכיון ובחבילה השמורים עבור %@ (%@); אין צורך בבנייה ובייצוא.\n";

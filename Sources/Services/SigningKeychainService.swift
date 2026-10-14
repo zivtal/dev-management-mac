@@ -120,7 +120,9 @@ struct LoginKeychainPasswordStore: SigningKeychainPasswordStore, @unchecked Send
     }
 
     func signingKeychainPassword() throws -> String? {
-        try credentialStore.string(for: .signingKeychainPassword)
+        try SilentKeychainAccess.perform {
+            try credentialStore.string(for: .signingKeychainPassword)
+        }
     }
 
     func setSigningKeychainPassword(_ password: String) throws {
@@ -149,19 +151,22 @@ actor SigningKeychainService {
     private let passwordStore: any SigningKeychainPasswordStore
     private let keychainURLOverride: URL?
     private let updatesSearchList: Bool
+    private let lockState: @Sendable (URL) -> Bool
 
     init(
         processRunner: any ProcessRunning = ProcessRunner(),
         fileManager: FileManager = .default,
         passwordStore: any SigningKeychainPasswordStore = LoginKeychainPasswordStore(),
         keychainURLOverride: URL? = nil,
-        updatesSearchList: Bool = true
+        updatesSearchList: Bool = true,
+        lockState: @escaping @Sendable (URL) -> Bool = SilentKeychainAccess.isUnlocked
     ) {
         self.processRunner = processRunner
         self.fileManager = fileManager
         self.passwordStore = passwordStore
         self.keychainURLOverride = keychainURLOverride
         self.updatesSearchList = updatesSearchList
+        self.lockState = lockState
     }
 
     private static let security = URL(fileURLWithPath: "/usr/bin/security")
@@ -248,16 +253,7 @@ actor SigningKeychainService {
     }
 
     func isUnlocked(url: URL) async throws -> Bool {
-        let result = try await processRunner.run(
-            executable: Self.security,
-            arguments: ["show-keychain-info", url.path],
-            workingDirectory: nil,
-            additionalEnvironment: [:],
-            standardInput: nil,
-            onOutput: nil,
-            terminateWhenOutput: nil
-        )
-        return result.terminationStatus == 0
+        lockState(url)
     }
 
     /// Imports a PKCS#12 identity and authorizes Apple's signing tools to use its key.
@@ -274,6 +270,7 @@ actor SigningKeychainService {
         // already-completed import so that retrying remains idempotent instead of
         // failing forever with Security's "item already exists" error.
         if try await containsIdentity(sha1Fingerprint: expectedSHA1Fingerprint) {
+            try await authorizeSigningTools(for: expectedSHA1Fingerprint)
             return
         }
         let keychainPassword = try requiredPassword()
@@ -301,6 +298,18 @@ actor SigningKeychainService {
                 keychainPath: url.path
             )
         }
+    }
+
+    /// Repair interrupted imports before codesign/productbuild can launch a dialog.
+    /// Only keys in this app's dedicated keychain are changed.
+    func authorizeSigningTools(for fingerprint: String) async throws {
+        guard try await containsIdentity(sha1Fingerprint: fingerprint) else { return }
+        let password = try requiredPassword()
+        try await runSecurity(SecurityCommand([
+            .plain("set-key-partition-list"),
+            .plain("-S"), .plain(Self.partitionList), .plain("-s"),
+            .plain("-k"), .secret(password), .plain(keychainURL.path)
+        ]))
     }
 
     /// Whether the dedicated keychain holds an identity with this fingerprint.

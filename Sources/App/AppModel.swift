@@ -838,7 +838,7 @@ final class AppModel: ObservableObject {
         refreshProjectVersions()
         guard let managedProject = projects.first(where: { $0.id == projectID }) else { return }
         let project = publishingSourceProject(for: managedProject)
-        guard project.effectiveApplicationPlatform == .iOS else {
+        guard project.supportsAppStorePublishing else {
             presentedError = AppStorePublishingError.unsupportedProject.localizedDescription
             return
         }
@@ -1126,7 +1126,7 @@ final class AppModel: ObservableObject {
         projectID: UUID
     ) async throws -> AppStoreConnectConfigurationSnapshot {
         guard let project = publishingSourceProject(id: projectID),
-              project.effectiveApplicationPlatform == .iOS else {
+              project.supportsAppStorePublishing else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
@@ -1136,7 +1136,7 @@ final class AppModel: ObservableObject {
         let service = try AppStoreConnectService(
             issuerID: credential.issuerID,
             keyID: credential.keyID,
-            privateKeyPEM: credential.privateKey
+            privateKeyPEM: credential.privateKey, platform: project.appStorePlatform
         )
         return try await service.fetchConfigurationSnapshot(
             bundleIdentifier: bundleIdentifier,
@@ -1197,7 +1197,7 @@ final class AppModel: ObservableObject {
     /// macOS project simply leaves the listing generation without change
     /// evidence rather than failing it.
     private func latestApprovedVersion(for project: ManagedProject) async throws -> String? {
-        guard project.effectiveApplicationPlatform == .iOS,
+        guard project.supportsAppStorePublishing,
               let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty,
               let currentVersion = project.marketingVersion?.nilIfEmpty else {
             return nil
@@ -1206,7 +1206,7 @@ final class AppModel: ObservableObject {
         let appStoreConnect = try AppStoreConnectService(
             issuerID: credential.issuerID,
             keyID: credential.keyID,
-            privateKeyPEM: credential.privateKey
+            privateKeyPEM: credential.privateKey, platform: project.appStorePlatform
         )
         let appID = try await appStoreConnect.applicationID(bundleIdentifier: bundleIdentifier)
         return try await appStoreConnect.latestApprovedVersion(
@@ -1220,7 +1220,7 @@ final class AppModel: ObservableObject {
         locales: [String]
     ) async throws -> AppStoreReleaseNotesGeneration {
         guard let project = publishingSourceProject(id: projectID),
-              project.effectiveApplicationPlatform == .iOS else {
+              project.supportsAppStorePublishing else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
@@ -1240,7 +1240,7 @@ final class AppModel: ObservableObject {
         let appStoreConnect = try AppStoreConnectService(
             issuerID: credential.issuerID,
             keyID: credential.keyID,
-            privateKeyPEM: credential.privateKey
+            privateKeyPEM: credential.privateKey, platform: project.appStorePlatform
         )
         let appID = try await appStoreConnect.applicationID(bundleIdentifier: bundleIdentifier)
         guard let previousApprovedVersion = try await appStoreConnect.latestApprovedVersion(
@@ -1310,7 +1310,7 @@ final class AppModel: ObservableObject {
 
         refreshProjectVersions()
         guard let project = publishingSourceProject(id: projectID),
-              project.effectiveApplicationPlatform == .iOS else {
+              project.supportsAppStorePublishing else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
@@ -1330,7 +1330,7 @@ final class AppModel: ObservableObject {
             let service = try AppStoreConnectService(
                 issuerID: credential.issuerID,
                 keyID: credential.keyID,
-                privateKeyPEM: credential.privateKey
+                privateKeyPEM: credential.privateKey, platform: project.appStorePlatform
             )
             let result = try await service.generateSubscriptionOfferCodes(
                 bundleIdentifier: bundleIdentifier,
@@ -1361,7 +1361,7 @@ final class AppModel: ObservableObject {
         offerID: String
     ) async throws -> AppStoreConnectOfferCodeDetailSnapshot {
         guard let project = publishingSourceProject(id: projectID),
-              project.effectiveApplicationPlatform == .iOS else {
+              project.supportsAppStorePublishing else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
@@ -1371,7 +1371,7 @@ final class AppModel: ObservableObject {
         let service = try AppStoreConnectService(
             issuerID: credential.issuerID,
             keyID: credential.keyID,
-            privateKeyPEM: credential.privateKey
+            privateKeyPEM: credential.privateKey, platform: project.appStorePlatform
         )
         return try await service.fetchSubscriptionOfferCodeDetails(
             bundleIdentifier: bundleIdentifier,

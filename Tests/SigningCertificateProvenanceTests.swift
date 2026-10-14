@@ -626,7 +626,8 @@ final class SigningCertificateProvenanceTests: XCTestCase {
                 processRunner: runner,
                 passwordStore: InMemoryPasswordStore(password: "pw"),
                 keychainURLOverride: keychainURL,
-                updatesSearchList: false
+                updatesSearchList: false,
+            lockState: { _ in true }
             ),
             pendingStore: pendingStore,
             provenanceStore: provenanceStore,

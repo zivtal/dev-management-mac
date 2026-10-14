@@ -230,6 +230,10 @@ private struct PublishingWindowView: View {
     @State private var savedSubscriptionBaseTerritories: [String: String] = [:]
     @State private var subscriptionPriceSaveStatus: SubscriptionPriceSaveStatus?
     @State private var isSavingSubscriptionPrices = false
+    @ObservedObject private var appleSession = AppleWebSession.shared
+    @State private var showsAppleAccount = false
+    @State private var showsAppCreation = false
+    @State private var appRecordMissing = false
     @State private var showsConfirmation = false
     @State private var showsCodeConfirmation = false
     @State private var selectedProductID = ""
@@ -287,7 +291,7 @@ private struct PublishingWindowView: View {
                     ContentUnavailableView(
                         "No publishable application",
                         systemImage: "shippingbox",
-                        description: Text("Add a managed iOS application.")
+                        description: Text("Add a managed iOS or macOS application.")
                     )
                 } else if let project = selectedProject {
                     Picker("Workspace", selection: $selectedWorkspace) {
@@ -357,6 +361,14 @@ private struct PublishingWindowView: View {
         }
         .padding(20)
         .frame(minWidth: 540, minHeight: 460)
+        .sheet(isPresented: $showsAppleAccount) { AppleAccountSetupView() }
+        .sheet(isPresented: $showsAppCreation) {
+            if let project = selectedProject {
+                AppStoreAppCreationView(project: project) {
+                    Task { await refreshAppStoreConfiguration() }
+                }
+            }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: selectedProjectID) {
             guard let projectID = selectedProjectID else { return }
@@ -846,6 +858,10 @@ private struct PublishingWindowView: View {
                     Button("Try Again") {
                         Task { await refreshAppStoreConfiguration() }
                     }
+                    if appRecordMissing {
+                        Button("Create App…") { showsAppCreation = true }
+                            .buttonStyle(.borderedProminent)
+                    }
                 }
             case .loaded(let snapshot):
                 HStack {
@@ -1001,7 +1017,7 @@ private struct PublishingWindowView: View {
                         }
                     }
                 } else {
-                    Label("No iOS App Store version exists yet.", systemImage: "plus.app")
+                    Label("No App Store version exists for this platform yet.", systemImage: "plus.app")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1505,6 +1521,7 @@ private struct PublishingWindowView: View {
             Button("Publishing Settings…") {
                 openPublishingSettings()
             }
+            Button("Apple Account…") { showsAppleAccount = true }
             Spacer()
             Button("Cancel") {
                 PublishingWindowPresenter.shared.close(projectID: project.id)
@@ -1558,7 +1575,7 @@ private struct PublishingWindowView: View {
     /// checkout for applications with a selected build branch.
     private var eligibleProjects: [ManagedProject] {
         model.projects
-            .filter { $0.effectiveApplicationPlatform == .iOS }
+            .filter { $0.supportsAppStorePublishing }
             .map(model.publishingSourceProject(for:))
     }
 
@@ -1685,6 +1702,7 @@ private struct PublishingWindowView: View {
             return
         }
         appStoreConfiguration = .loading
+        appRecordMissing = false
         do {
             let snapshot = try await model.loadAppStoreConnectConfiguration(projectID: projectID)
             appStoreConfiguration = .loaded(snapshot)
@@ -1692,6 +1710,7 @@ private struct PublishingWindowView: View {
         } catch is CancellationError {
             return
         } catch {
+            if case AppStoreConnectError.applicationNotFound = error { appRecordMissing = true }
             appStoreConfiguration = .error(error.localizedDescription)
         }
     }
@@ -2229,13 +2248,13 @@ private struct PublishingWindowView: View {
                 state: .blocked
             )
         }
-        guard model.preferences.appStorePrivacyAppleID?.nilIfEmpty != nil,
-              model.hasAppStorePrivacyFastlaneSession,
-              AppStorePrivacyPublishingService.executableURL() != nil else {
+        guard appleSession.canUseSession || (model.preferences.appStorePrivacyAppleID?.nilIfEmpty != nil
+              && model.hasAppStorePrivacyFastlaneSession
+              && AppStorePrivacyPublishingService.executableURL() != nil) else {
             return PublishingReadinessItem(
                 id: "privacy-account",
                 title: L10n.text("App Privacy automation needs attention"),
-                detail: L10n.text("Add the publisher Apple ID and Fastlane session in Publishing Settings. Fastlane must also be installed."),
+                detail: L10n.text("Sign in using Apple Account in this window before publishing the reviewed App Privacy answers."),
                 state: .blocked
             )
         }
@@ -3373,7 +3392,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 project.effectiveSupportedDeviceFamilies.contains(.iPhone)
             case .iPad:
                 project.effectiveSupportedDeviceFamilies.contains(.iPad)
-            case .appleWatch, .appleTV, .appleVisionPro:
+            case .appleWatch, .appleTV, .appleVisionPro, .mac:
                 false
             }
         }
@@ -3386,7 +3405,7 @@ private struct PerAppPublishingConfigurationEditor: View {
             switch platform {
             case .iPhone: device.mobileDeviceFamily == .iPhone
             case .iPad: device.mobileDeviceFamily == .iPad
-            case .appleWatch, .appleTV, .appleVisionPro: false
+            case .appleWatch, .appleTV, .appleVisionPro, .mac: false
             }
         }
     }
@@ -3545,7 +3564,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 dataTypes: $privacyDataTypes,
                 notes: $privacyNotes
             )
-            Text("Apple does not expose App Privacy through its public API. After you review and authorize a no-data declaration, Development Management publishes it through the Fastlane session stored in Publishing Settings.")
+            Text("After you review and authorize a no-data declaration, Development Management publishes it through your Apple web session. Open Apple Account to sign in or complete other privacy answers on Apple’s page.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if privacyDraftIsSpecified {

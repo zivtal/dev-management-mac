@@ -640,7 +640,7 @@ struct MenuBarView: View {
     }
 
     private func canPublish(_ project: ManagedProject) -> Bool {
-        project.effectiveApplicationPlatform == .iOS
+        project.supportsAppStorePublishing
     }
 
     private var showsGitBranchColumn: Bool {

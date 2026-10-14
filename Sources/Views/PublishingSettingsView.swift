@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct PublishingSettingsView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var showsAppleAccount = false
     @State private var openAIAPIKey = ""
     @State private var demoAccountName = ""
     @State private var demoAccountPassword = ""
@@ -148,7 +149,15 @@ struct PublishingSettingsView: View {
                 }
             }
 
+            Section("Apple Account") {
+                Button("Sign In to Apple…") { showsAppleAccount = true }
+                Text("Create your first app, complete account agreements, and manage App Privacy on Apple’s page inside Development Management. Your Apple password is handled by Apple and is never stored by this app.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("App Privacy Automation") {
+                Text("Optional legacy Fastlane connection. The built-in Apple sign-in works without Fastlane or Terminal.")
+                    .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Apple ID") {
                     TextField(
                         "publisher@example.com",
@@ -340,6 +349,7 @@ struct PublishingSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showsAppleAccount) { AppleAccountSetupView() }
         .padding(.top, 8)
     }
 

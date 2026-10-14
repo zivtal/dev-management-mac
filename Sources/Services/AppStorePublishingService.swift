@@ -28,7 +28,7 @@ enum AppStorePublishingError: LocalizedError {
         case .busy:
             return L10n.text("Another build, installation, publication, or offer-code request is already in progress.")
         case .unsupportedProject:
-            return L10n.text("App Store publishing requires a managed iOS application.")
+            return L10n.text("App Store publishing requires an iOS or native Mac App Store scheme.")
         case .missingBundleIdentifier:
             return L10n.text("The selected Xcode scheme does not provide an application bundle identifier.")
         case .missingVersion:
@@ -38,7 +38,7 @@ enum AppStorePublishingError: LocalizedError {
         case .missingProjectContainer:
             return L10n.text("The saved Xcode project or workspace no longer exists.")
         case .missingArchiveApplication:
-            return L10n.text("Xcode created an archive, but its iOS application metadata could not be read.")
+            return L10n.text("Xcode created an archive, but its application metadata could not be read.")
         case .archiveBundleIdentifierMismatch(let expected, let actual):
             return L10n.format("The archived app uses bundle identifier %@ instead of %@.", actual, expected)
         case .archiveVersionMismatch(let expected, let actual):
@@ -54,7 +54,7 @@ enum AppStorePublishingError: LocalizedError {
                 actual
             )
         case .noIPA:
-            return L10n.text("Xcode exported the archive, but no .ipa file was found.")
+            return L10n.text("Xcode exported the archive, but no store package was found.")
         case .noScreenshots:
             return L10n.text("The Simulator screenshot was captured, but its dimensions are not accepted by App Store Connect.")
         case .noSimulatorApplication:
@@ -63,7 +63,7 @@ enum AppStorePublishingError: LocalizedError {
             return L10n.text("Apple's App Store upload tool was not found in the selected Xcode installation.")
         case .uploadTransferFailed(let attempts):
             return L10n.format(
-                "Apple's upload tool repeatedly lost or corrupted the transfer. The upload was stopped after %d attempts. Check the network connection and try again; the validated IPA is not the cause of this failure.",
+                "Apple's upload tool repeatedly lost or corrupted the transfer. The upload was stopped after %d attempts. Check the network connection and try again; the validated package is not the cause of this failure.",
                 attempts
             )
         case .missingEditablePublishingDraft:
@@ -126,7 +126,7 @@ final class AppStorePublishingService {
         eventHandler: @escaping EventHandler
     ) async throws -> PublishingResult {
         let intent = configuration.intent
-        guard !project.isMacOSApplication else {
+        guard project.supportsAppStorePublishing else {
             throw AppStorePublishingError.unsupportedProject
         }
         guard let bundleIdentifier = project.bundleIdentifier, !bundleIdentifier.isEmpty else {
@@ -146,7 +146,7 @@ final class AppStorePublishingService {
         let appStoreConnect = try AppStoreConnectService(
             issuerID: configuration.appStoreConnectIssuerID,
             keyID: configuration.appStoreConnectKeyID,
-            privateKeyPEM: configuration.appStoreConnectPrivateKey
+            privateKeyPEM: configuration.appStoreConnectPrivateKey, platform: project.appStorePlatform
         )
         let appID = try await appStoreConnect.applicationID(bundleIdentifier: bundleIdentifier)
         let existingBuild = try await appStoreConnect.build(
@@ -230,7 +230,12 @@ final class AppStorePublishingService {
                 throw AppStorePublishingError.missingEditablePublishingDraft
             }
             eventHandler(.phase(.publishingPrivacy))
-            try await privacyPublishingService.publish(
+            if await AppleWebSession.shared.canUseSession {
+                try await AppleWebSession.shared.publishPrivacy(
+                    draft: privacyDraft, appID: appID, bundleIdentifier: bundleIdentifier)
+                eventHandler(.output(L10n.text("App Privacy answers were published in App Store Connect.\n")))
+            } else {
+                try await privacyPublishingService.publish(
                 draft: privacyDraft,
                 bundleIdentifier: bundleIdentifier,
                 appleID: configuration.appStorePrivacyAppleID,
@@ -238,6 +243,7 @@ final class AppStorePublishingService {
                 session: configuration.appStorePrivacyFastlaneSession,
                 onOutput: { eventHandler(.output($0)) }
             )
+            }
             try recordPrivacyPublication(
                 catalog: subscriptionCatalog,
                 publishedAt: ISO8601DateFormatter().string(from: Date())
@@ -375,7 +381,7 @@ final class AppStorePublishingService {
             targetVersion = localVersion
             targetBuildNumber = localBuildNumber
             eventHandler(.output(L10n.format(
-                "Reusing saved archive and IPA for %@ (%@); build and export are not needed.\n",
+                "Reusing saved archive and package for %@ (%@); build and export are not needed.\n",
                 localVersion, localBuildNumber
             )))
         } else {
@@ -388,7 +394,7 @@ final class AppStorePublishingService {
                 bundleIdentifiers: [bundleIdentifier],
                 issuerID: configuration.appStoreConnectIssuerID,
                 keyID: configuration.appStoreConnectKeyID,
-                privateKeyPEM: configuration.appStoreConnectPrivateKey
+                privateKeyPEM: configuration.appStoreConnectPrivateKey, platform: project.appStorePlatform
             )
             // Resolved before archiving: without a usable local distribution identity
             // the export can never succeed, and a Release archive is expensive.
@@ -702,6 +708,10 @@ final class AppStorePublishingService {
         platform: AppStoreScreenshotPlatform? = nil
     ) -> String? {
         let size = Set([width, height])
+        if platform == .mac {
+            return [(1280, 800), (1440, 900), (2560, 1600), (2880, 1800)]
+                .contains(where: { $0.0 == width && $0.1 == height }) ? "APP_DESKTOP" : nil
+        }
         if platform == .appleTV, size == Set([1_920, 1_080]) || size == Set([3_840, 2_160]) {
             return "APP_APPLE_TV"
         }
@@ -771,10 +781,10 @@ final class AppStorePublishingService {
                 ) else { return [] }
                 return enumerator.compactMap { value in
                     guard let url = value as? URL else { return nil }
-                    return screenshotAsset(at: url)
+                    return screenshotAsset(at: url, platformHint: project.isMacOSApplication ? .mac : nil)
                 }
             }
-            return screenshotAsset(at: url).map { [$0] } ?? []
+            return screenshotAsset(at: url, platformHint: project.isMacOSApplication ? .mac : nil).map { [$0] } ?? []
         }
         screenshots.append(contentsOf: discoverProjectScreenshots(project: project))
         screenshots.append(contentsOf: screenshotAssets(in: screenshotCacheDirectory(
@@ -783,7 +793,8 @@ final class AppStorePublishingService {
         )))
         var seenPaths: Set<String> = []
         return screenshots.filter {
-            seenPaths.insert($0.url.standardizedFileURL.path).inserted
+            ($0.platform == .mac) == project.isMacOSApplication
+                && seenPaths.insert($0.url.standardizedFileURL.path).inserted
         }
     }
 
@@ -828,7 +839,7 @@ final class AppStorePublishingService {
                 enumerator.skipDescendants()
                 continue
             }
-            guard lowerPath.contains("screenshot"), let asset = screenshotAsset(at: url) else {
+            guard lowerPath.contains("screenshot"), let asset = screenshotAsset(at: url, platformHint: project.isMacOSApplication ? .mac : nil) else {
                 continue
             }
             results.append(asset)
@@ -920,6 +931,9 @@ final class AppStorePublishingService {
         onUpdate: ScreenshotPreviewHandler? = nil,
         eventHandler: EventHandler? = nil
     ) async throws -> AppStoreScreenshotPreview {
+        if project.isMacOSApplication {
+            return try await prepareMacScreenshotPreview(project: project, configuredPaths: configuredPaths)
+        }
         let screenshotFixtureArguments = screenshotFixtureLaunchArguments(for: project)
         let screenshotConfiguration = Self.screenshotBuildConfiguration(
             availableConfigurations: project.availableConfigurations,
@@ -1241,7 +1255,7 @@ final class AppStorePublishingService {
                 configuration: releaseConfiguration,
                 archiveURL: archiveURL,
                 teamID: project.signingTeamID ?? project.projectSigningTeamID,
-                authenticationArguments: authenticationArguments
+                authenticationArguments: authenticationArguments, platform: project.appStorePlatform
             )
             _ = try await processRunner.runAndRequireSuccess(
                 executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
@@ -1258,6 +1272,10 @@ final class AppStorePublishingService {
             expectedBundleIdentifier: expectedBundleIdentifier,
             fileManager: fileManager
         )
+
+        if project.isMacOSApplication {
+            try MacStoreArchiveValidation.validate(archive: archiveURL, bundleIdentifier: expectedBundleIdentifier)
+        }
 
         // Every signed bundle in the archive — the app plus each app extension — needs
         // its own distribution profile before a manual export can succeed. The archive
@@ -1278,13 +1296,21 @@ final class AppStorePublishingService {
             issuerID: issuerID,
             keyID: keyID,
             privateKeyPEM: privateKey,
+            platform: project.appStorePlatform,
             onOutput: { eventHandler(.output($0)) }
         )
 
+        var installerIdentity: DistributionSigningIdentity?
+        if project.isMacOSApplication {
+            installerIdentity = try await DistributionCertificateProvisioningService(purpose: .macInstaller)
+                .prepareLocalIdentity(teamID: signingIdentity.teamID, issuerID: issuerID,
+                                      keyID: keyID, privateKeyPEM: privateKey,
+                                      onOutput: { eventHandler(.output($0)) })
+        }
         let exportOptions = Self.exportOptions(
             teamID: project.signingTeamID ?? project.projectSigningTeamID,
             signingIdentity: signingIdentity,
-            provisioningProfiles: provisioningProfiles
+            provisioningProfiles: provisioningProfiles, installerIdentity: installerIdentity
         )
         let plist = try PropertyListSerialization.data(
             fromPropertyList: exportOptions,
@@ -1318,11 +1344,11 @@ final class AppStorePublishingService {
         guard let ipaURL = try fileManager.contentsOfDirectory(
             at: exportURL,
             includingPropertiesForKeys: nil
-        ).first(where: { $0.pathExtension.lowercased() == "ipa" }) else {
+        ).first(where: { $0.pathExtension.lowercased() == project.appStorePlatform.artifactExtension }) else {
             throw AppStorePublishingError.noIPA
         }
         try checkpoint.markExported(ipaURL: ipaURL)
-        eventHandler(.output(L10n.text("Exported IPA saved locally for publishing retries.\n")))
+        eventHandler(.output(L10n.text("Exported package saved locally for publishing retries.\n")))
         return AppStoreBuildArtifact(
             ipaURL: ipaURL,
             archiveURL: archiveURL,
@@ -1330,6 +1356,12 @@ final class AppStorePublishingService {
             version: archiveMetadata.version,
             buildNumber: archiveMetadata.buildNumber
         )
+    }
+
+    static func bundleInfoURL(_ application: URL) -> URL {
+        let mac = application.appendingPathComponent("Contents/Info.plist")
+        return FileManager.default.fileExists(atPath: mac.path)
+            ? mac : application.appendingPathComponent("Info.plist")
     }
 
     static func archiveMetadata(
@@ -1347,7 +1379,7 @@ final class AppStorePublishingService {
         )) ?? []
         let metadata = applications.compactMap { application -> (String, String, String)? in
             guard application.pathExtension.lowercased() == "app",
-                  let data = try? Data(contentsOf: application.appendingPathComponent("Info.plist")),
+                  let data = try? Data(contentsOf: Self.bundleInfoURL(application)),
                   let values = try? PropertyListSerialization.propertyList(
                     from: data,
                     options: [],
@@ -1381,12 +1413,13 @@ final class AppStorePublishingService {
         configuration: String,
         archiveURL: URL,
         teamID: String?,
-        authenticationArguments: [String]
+        authenticationArguments: [String],
+        platform: AppStorePlatform = .iOS
     ) -> [String] {
         var arguments = containerArguments + [
             "-scheme", schemeName,
             "-configuration", configuration,
-            "-destination", "generic/platform=iOS",
+            "-destination", platform.destination,
             "-archivePath", archiveURL.path,
             "-allowProvisioningUpdates"
         ] + authenticationArguments
@@ -1420,7 +1453,8 @@ final class AppStorePublishingService {
     static func exportOptions(
         teamID: String?,
         signingIdentity: DistributionSigningIdentity,
-        provisioningProfiles: [String: String]
+        provisioningProfiles: [String: String],
+        installerIdentity: DistributionSigningIdentity? = nil
     ) -> [String: Any] {
         var options: [String: Any] = [
             "method": "app-store-connect",
@@ -1431,6 +1465,7 @@ final class AppStorePublishingService {
             "uploadSymbols": true,
             "signingCertificate": signingIdentity.sha1Fingerprint
         ]
+        if let installerIdentity { options["installerSigningCertificate"] = installerIdentity.sha1Fingerprint }
         let resolvedTeamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines)
         options["teamID"] = resolvedTeamID?.isEmpty == false
             ? resolvedTeamID
@@ -1473,7 +1508,7 @@ final class AppStorePublishingService {
         var seen: Set<String> = []
         for case let candidate as URL in enumerator {
             guard ["app", "appex"].contains(candidate.pathExtension.lowercased()) else { continue }
-            guard let data = try? Data(contentsOf: candidate.appendingPathComponent("Info.plist")),
+            guard let data = try? Data(contentsOf: Self.bundleInfoURL(candidate)),
                   let values = try? PropertyListSerialization.propertyList(
                     from: data,
                     options: [],
@@ -1506,8 +1541,14 @@ final class AppStorePublishingService {
             "com.apple.application-identifier",
             "com.apple.developer.team-identifier",
             "get-task-allow",
+            "com.apple.security.get-task-allow",
             "keychain-access-groups",
-            "beta-reports-active"
+            "beta-reports-active",
+            "com.apple.security.app-sandbox",
+            "com.apple.security.network.client",
+            "com.apple.security.network.server",
+            "com.apple.security.files.user-selected.read-write",
+            "com.apple.security.files.user-selected.read-only"
         ]
         return DeveloperTeamService.canonicalProvisioningEntitlementKeys(
             entitlements.keys
@@ -1594,9 +1635,9 @@ final class AppStorePublishingService {
 
         let uploaderURL = try appStoreUploaderURL()
         if checkpoint.isValidated {
-            eventHandler(.output(L10n.text("The saved IPA already passed validation; skipping validation.\n")))
+            eventHandler(.output(L10n.text("The saved package already passed validation; skipping validation.\n")))
         } else {
-            eventHandler(.output(L10n.text("Validating the exported IPA with Apple's App Store upload tool…\n")))
+            eventHandler(.output(L10n.text("Validating the exported package with Apple's App Store upload tool…\n")))
             _ = try await processRunner.runAndRequireSuccess(
                 executable: uploaderURL,
                 arguments: [
@@ -1611,7 +1652,7 @@ final class AppStorePublishingService {
             )
             try checkpoint.markValidated()
         }
-        eventHandler(.output(L10n.text("Uploading the exported IPA to App Store Connect…\n")))
+        eventHandler(.output(L10n.text("Uploading the exported package to App Store Connect…\n")))
         let maximumAttempts = 3
         for attempt in 1...maximumAttempts {
             let failureDetector = AppStoreUploadFailureDetector()
@@ -1674,7 +1715,7 @@ final class AppStorePublishingService {
     }
 
     func supportedScreenshotPlatforms(for project: ManagedProject) -> Set<AppStoreScreenshotPlatform> {
-        Set(screenshotBuildPlans(for: project).keys)
+        project.isMacOSApplication ? [.mac] : Set(screenshotBuildPlans(for: project).keys)
     }
 
     private func screenshotBuildPlans(
@@ -1903,7 +1944,7 @@ final class AppStorePublishingService {
             )
     }
 
-    private func screenshotCacheDirectory(
+    func screenshotCacheDirectory(
         for project: ManagedProject,
         screenshotSimulatorUDIDs: [String: String] = [:]
     ) -> URL {
@@ -2000,6 +2041,7 @@ final class AppStorePublishingService {
 
     private static func platformHint(from path: String) -> AppStoreScreenshotPlatform? {
         let path = path.lowercased()
+        if URL(fileURLWithPath: path).lastPathComponent.hasPrefix("mac-") { return .mac }
         if path.contains("watch") { return .appleWatch }
         if path.contains("vision") || path.contains("xros") { return .appleVisionPro }
         if path.contains("appletv") || path.contains("tvos") { return .appleTV }
@@ -2152,7 +2194,7 @@ final class AppStorePublishingService {
             return 10
         case .appleTV:
             return name.localizedCaseInsensitiveContains("4K") ? 100 : 10
-        case .appleVisionPro:
+        case .appleVisionPro, .mac:
             return 10
         }
     }
@@ -2246,6 +2288,7 @@ private extension AppStoreScreenshotPlatform {
         case .appleWatch: "watchsimulator"
         case .appleTV: "appletvsimulator"
         case .appleVisionPro: "xrsimulator"
+        case .mac: "macosx"
         }
     }
 
@@ -2255,6 +2298,7 @@ private extension AppStoreScreenshotPlatform {
         case .appleWatch: "WatchSimulator"
         case .appleTV: "AppleTVSimulator"
         case .appleVisionPro: "XRSimulator"
+        case .mac: "MacOSX"
         }
     }
 }

@@ -1392,3 +1392,38 @@
 "Choose a Watch scheme to install on iPhone and Apple Watch together." = "Choose a Watch scheme to install on iPhone and Apple Watch together.";
 
 "Install now builds both selected schemes, installing on iPhone before Apple Watch. Configuration and signing team apply to both." = "Install now builds both selected schemes, installing on iPhone before Apple Watch. Configuration and signing team apply to both.";
+
+/* Standalone Apple publishing */
+"Apple Account" = "Apple Account";
+"Apple Account…" = "Apple Account…";
+"Sign In to Apple…" = "Sign In to Apple…";
+"Create App…" = "Create App…";
+"Create App" = "Create App";
+"Create App in App Store Connect" = "Create App in App Store Connect";
+"Unique SKU" = "Unique SKU";
+"Mac" = "Mac";
+"iPhone / iPad / Watch" = "iPhone / iPad / Watch";
+"Reload Apple Sign-In" = "Reload Apple Sign-In";
+"I Created It on Apple’s Page" = "I Created It on Apple’s Page";
+"Sign in to Apple and select the correct team first." = "Sign in to Apple and select the correct team first.";
+"Choose both platforms only when their store schemes use this same bundle ID. The Watch app and widget are uploaded with the iOS app." = "Choose both platforms only when their store schemes use this same bundle ID. The Watch app and widget are uploaded with the iOS app.";
+"Sign in on Apple’s page and select the team used by this project. Apple handles your password and verification code. Complete any account agreements there before creating the app." = "Sign in on Apple’s page and select the team used by this project. Apple handles your password and verification code. Complete any account agreements there before creating the app.";
+"Sign in and select the same team as your publishing API key. Complete agreements, app setup, and App Privacy on Apple’s page. Your password and verification code stay with Apple." = "Sign in and select the same team as your publishing API key. Complete agreements, app setup, and App Privacy on Apple’s page. Your password and verification code stay with Apple.";
+"Apple could not create the app. Complete any required account setup in the Apple page, then try again." = "Apple could not create the app. Complete any required account setup in the Apple page, then try again.";
+"Apple did not confirm App Privacy publication. Review the declaration on Apple’s page, then retry." = "Apple did not confirm App Privacy publication. Review the declaration on Apple’s page, then retry.";
+"Enter an app name (up to 30 characters), bundle ID, unique SKU, supported locale, version, and at least one platform." = "Enter an app name (up to 30 characters), bundle ID, unique SKU, supported locale, version, and at least one platform.";
+"Allow Accessibility for Development Management to open this app’s menu-bar panel, or open the panel yourself and retry." = "Allow Accessibility for Development Management to open this app’s menu-bar panel, or open the panel yourself and retry.";
+"Allow Screen Recording for Development Management, then retry screenshots." = "Allow Screen Recording for Development Management, then retry screenshots.";
+"Could not render the Mac screenshot." = "Could not render the Mac screenshot.";
+"Could not save the Mac screenshot." = "Could not save the Mac screenshot.";
+"Open the app’s main window or menu-bar panel, then retry screenshots." = "Open the app’s main window or menu-bar panel, then retry screenshots.";
+"The Mac screenshot build did not contain the selected app." = "The Mac screenshot build did not contain the selected app.";
+"The Mac archive is not sandboxed. Select the Mac App Store scheme and enable App Sandbox before publishing." = "The Mac archive is not sandboxed. Select the Mac App Store scheme and enable App Sandbox before publishing.";
+"Set the Mac app category in the selected scheme’s Info.plist before publishing." = "Set the Mac app category in the selected scheme’s Info.plist before publishing.";
+"App Store publishing requires an iOS or native Mac App Store scheme." = "App Store publishing requires an iOS or native Mac App Store scheme.";
+"No App Store version exists for this platform yet." = "No App Store version exists for this platform yet.";
+"Sign in using Apple Account in this window before publishing the reviewed App Privacy answers." = "Sign in using Apple Account in this window before publishing the reviewed App Privacy answers.";
+"Optional legacy Fastlane connection. The built-in Apple sign-in works without Fastlane or Terminal." = "Optional legacy Fastlane connection. The built-in Apple sign-in works without Fastlane or Terminal.";
+"Create your first app, complete account agreements, and manage App Privacy on Apple’s page inside Development Management. Your Apple password is handled by Apple and is never stored by this app." = "Create your first app, complete account agreements, and manage App Privacy on Apple’s page inside Development Management. Your Apple password is handled by Apple and is never stored by this app.";
+"After you review and authorize a no-data declaration, Development Management publishes it through your Apple web session. Open Apple Account to sign in or complete other privacy answers on Apple’s page." = "After you review and authorize a no-data declaration, Development Management publishes it through your Apple web session. Open Apple Account to sign in or complete other privacy answers on Apple’s page.";
+"Reusing saved archive and package for %@ (%@); build and export are not needed.\n" = "Reusing saved archive and package for %@ (%@); build and export are not needed.\n";

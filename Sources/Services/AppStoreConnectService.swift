@@ -7,6 +7,7 @@ enum AppStoreScreenshotPlatform: String, CaseIterable, Equatable, Hashable, Send
     case appleWatch
     case appleTV
     case appleVisionPro
+    case mac
 
     var id: String { rawValue }
 
@@ -17,6 +18,7 @@ enum AppStoreScreenshotPlatform: String, CaseIterable, Equatable, Hashable, Send
         case .appleWatch: L10n.text("Apple Watch")
         case .appleTV: L10n.text("Apple TV")
         case .appleVisionPro: L10n.text("Apple Vision Pro")
+        case .mac: L10n.text("Mac")
         }
     }
 
@@ -27,11 +29,14 @@ enum AppStoreScreenshotPlatform: String, CaseIterable, Equatable, Hashable, Send
         case .appleWatch: "applewatch"
         case .appleTV: "appletv"
         case .appleVisionPro: "visionpro"
+        case .mac: "desktopcomputer"
         }
     }
 
     init?(displayType: String) {
-        if displayType.hasPrefix("APP_IPHONE") {
+        if displayType == "APP_DESKTOP" {
+            self = .mac
+        } else if displayType.hasPrefix("APP_IPHONE") {
             self = .iPhone
         } else if displayType.hasPrefix("APP_IPAD") {
             self = .iPad
@@ -229,12 +234,13 @@ final class AppStoreConnectService {
     }
 
     func createDistributionCertificate(
-        csrContent: String
+        csrContent: String,
+        purpose: DistributionCertificatePurpose = .application
     ) async throws -> AppStoreConnectCertificate {
         let response = try await request(
             method: "POST",
             path: "/v1/certificates",
-            body: Self.distributionCertificateCreateBody(csrContent: csrContent)
+            body: Self.distributionCertificateCreateBody(csrContent: csrContent, purpose: purpose)
         )
         guard let data = response["data"] as? [String: Any],
               let certificate = Self.certificate(data)
@@ -342,7 +348,7 @@ final class AppStoreConnectService {
             body: Self.appStoreProfileCreateBody(
                 name: name,
                 bundleIDResourceID: bundleIDResourceID,
-                certificateID: certificateID
+                certificateID: certificateID, platform: platform
             )
         )
         guard let data = response["data"] as? [String: Any],
@@ -356,14 +362,15 @@ final class AppStoreConnectService {
     static func appStoreProfileCreateBody(
         name: String,
         bundleIDResourceID: String,
-        certificateID: String
+        certificateID: String,
+        platform: AppStorePlatform = .iOS
     ) -> [String: Any] {
         [
             "data": [
                 "type": "profiles",
                 "attributes": [
                     "name": name,
-                    "profileType": AppStoreConnectProfile.appStoreProfileType
+                    "profileType": platform.profileType
                 ],
                 "relationships": [
                     "bundleId": [
@@ -441,12 +448,12 @@ final class AppStoreConnectService {
         return certificate
     }
 
-    static func distributionCertificateCreateBody(csrContent: String) -> [String: Any] {
+    static func distributionCertificateCreateBody(csrContent: String, purpose: DistributionCertificatePurpose = .application) -> [String: Any] {
         [
             "data": [
                 "type": "certificates",
                 "attributes": [
-                    "certificateType": "DISTRIBUTION",
+                    "certificateType": purpose.apiType,
                     "csrContent": csrContent
                 ]
             ]
@@ -490,6 +497,7 @@ final class AppStoreConnectService {
         return fractionalFormatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
+    let platform: AppStorePlatform
     private let session: URLSession
     private let issuerID: String
     private let keyID: String
@@ -500,8 +508,10 @@ final class AppStoreConnectService {
         issuerID: String,
         keyID: String,
         privateKeyPEM: String,
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        platform: AppStorePlatform = .iOS
     ) throws {
+        self.platform = platform
         self.issuerID = issuerID
         self.keyID = keyID
         self.session = session
@@ -581,7 +591,7 @@ final class AppStoreConnectService {
 
         let versions = try await pagedData(
             path: "/v1/apps/\(appID)/appStoreVersions",
-            query: ["filter[platform]": "IOS", "limit": "200"]
+            query: ["filter[platform]": platform.rawValue, "limit": "200"]
         )
         let selectedVersion = Self.selectedAppStoreVersion(
             versions,
@@ -1135,7 +1145,7 @@ final class AppStoreConnectService {
             where intent == .testFlight && status == 409 {
             let versions = try await pagedData(
                 path: "/v1/apps/\(appID)/appStoreVersions",
-                query: ["filter[platform]": "IOS", "limit": "200"]
+                query: ["filter[platform]": platform.rawValue, "limit": "200"]
             )
             guard Self.hasVersionBlockingNewStorefront(in: versions) else {
                 throw AppStoreConnectError.requestFailed(status, message)
@@ -1554,7 +1564,7 @@ final class AppStoreConnectService {
         let appID = try await findApplication(bundleIdentifier: bundleIdentifier)
         let versions = try await pagedData(
             path: "/v1/apps/\(appID)/appStoreVersions",
-            query: ["filter[platform]": "IOS", "limit": "200"]
+            query: ["filter[platform]": platform.rawValue, "limit": "200"]
         )
         guard Self.hasReadyForDistributionVersion(in: versions) else {
             throw AppStoreConnectError.offerCodesRequireReadyApp
@@ -1949,7 +1959,7 @@ final class AppStoreConnectService {
     ) async throws -> AppStoreConnectVersionReferenceSnapshot? {
         let versions = try await pagedData(
             path: "/v1/apps/\(appID)/appStoreVersions",
-            query: ["filter[platform]": "IOS", "limit": "200"]
+            query: ["filter[platform]": platform.rawValue, "limit": "200"]
         )
         return Self.latestApprovedVersion(in: versions, excluding: version)
     }
@@ -1966,7 +1976,7 @@ final class AppStoreConnectService {
                 "filter[app]": appID,
                 "filter[version]": buildNumber,
                 "filter[preReleaseVersion.version]": marketingVersion,
-                "filter[preReleaseVersion.platform]": "IOS",
+                "filter[preReleaseVersion.platform]": platform.rawValue,
                 "fields[builds]": "version,processingState,preReleaseVersion",
                 "fields[preReleaseVersions]": "version,platform",
                 "include": "preReleaseVersion",
@@ -1978,7 +1988,7 @@ final class AppStoreConnectService {
             builds: response["data"] as? [[String: Any]] ?? [],
             included: response["included"] as? [[String: Any]] ?? [],
             marketingVersion: marketingVersion,
-            buildNumber: buildNumber
+            buildNumber: buildNumber, platform: platform
         )
     }
 
@@ -1992,7 +2002,7 @@ final class AppStoreConnectService {
             query: [
                 "filter[app]": appID,
                 "filter[preReleaseVersion.version]": marketingVersion,
-                "filter[preReleaseVersion.platform]": "IOS",
+                "filter[preReleaseVersion.platform]": platform.rawValue,
                 "fields[builds]": "version,processingState,preReleaseVersion",
                 "fields[preReleaseVersions]": "version,platform",
                 "include": "preReleaseVersion",
@@ -2004,7 +2014,7 @@ final class AppStoreConnectService {
             builds: response["data"] as? [[String: Any]] ?? [],
             included: response["included"] as? [[String: Any]] ?? [],
             marketingVersion: marketingVersion,
-            buildNumber: nil
+            buildNumber: nil, platform: platform
         )
     }
 
@@ -2012,7 +2022,8 @@ final class AppStoreConnectService {
         builds: [[String: Any]],
         included: [[String: Any]],
         marketingVersion: String,
-        buildNumber: String?
+        buildNumber: String?,
+        platform: AppStorePlatform = .iOS
     ) -> AppStoreConnectBuildReference? {
         let preReleaseVersions = Dictionary(
             included.compactMap { resource -> (String, [String: Any])? in
@@ -2032,7 +2043,7 @@ final class AppStoreConnectService {
                   let preReleaseVersion = preReleaseVersions[preReleaseVersionID] else { return nil }
             let versionAttributes = Self.attributes(preReleaseVersion)
             guard versionAttributes["version"] as? String == marketingVersion,
-                  versionAttributes["platform"] as? String == "IOS" else { return nil }
+                  versionAttributes["platform"] as? String == platform.rawValue else { return nil }
             return AppStoreConnectBuildReference(
                 id: id,
                 version: marketingVersion,
@@ -2438,7 +2449,7 @@ final class AppStoreConnectService {
         let appID = try await findApplication(bundleIdentifier: bundleIdentifier)
         let versions = try await pagedData(
             path: "/v1/apps/\(appID)/appStoreVersions",
-            query: ["filter[platform]": "IOS", "limit": "200"]
+            query: ["filter[platform]": platform.rawValue, "limit": "200"]
         )
         guard let activeVersion = Self.activeReviewVersion(in: versions),
               activeVersion.versionString != version else {
@@ -2594,7 +2605,7 @@ final class AppStoreConnectService {
     private func hasPublishedVersion(appID: String, otherThan version: String) async throws -> Bool {
         let versions = try await pagedData(
             path: "/v1/apps/\(appID)/appStoreVersions",
-            query: ["filter[platform]": "IOS", "limit": "200"]
+            query: ["filter[platform]": platform.rawValue, "limit": "200"]
         )
         return Self.isVersionOnlyUpdate(versions: versions, currentVersion: version)
     }
@@ -3738,7 +3749,7 @@ final class AppStoreConnectService {
         let response = try await request(
             method: "GET",
             path: "/v1/apps/\(appID)/appStoreVersions",
-            query: ["filter[platform]": "IOS", "limit": "200"]
+            query: ["filter[platform]": platform.rawValue, "limit": "200"]
         )
         let versions = response["data"] as? [[String: Any]] ?? []
         if let existing = versions.first(where: {
@@ -3788,7 +3799,7 @@ final class AppStoreConnectService {
                 "data": [
                     "type": "appStoreVersions",
                     "attributes": [
-                        "platform": "IOS",
+                        "platform": platform.rawValue,
                         "versionString": version,
                         "copyright": copyright,
                         "releaseType": releaseAutomatically ? "AFTER_APPROVAL" : "MANUAL"

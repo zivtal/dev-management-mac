@@ -1,8 +1,30 @@
 # One-click App Store publishing
 
-Development Management inspects each managed iOS project when **Publish** is
+Development Management inspects each managed iOS or native Mac project when **Publish** is
 clicked. A local Xcode StoreKit configuration (`*.storekit`) is the preferred
 source for subscription groups, products, periods, prices, and localizations.
+
+For a first publication, **Create App…** opens Apple's sign-in page inside the
+app. Enter the app name, SKU, locale, and platforms after selecting the correct
+Apple team. Creation uses Apple's authenticated website endpoint because the
+[public API does not create app records](https://developer.apple.com/documentation/appstoreconnectapi/apps).
+Website endpoints are not a stable public contract: if creation is rejected,
+complete it with Apple's controls in the same window, then refresh. **Apple
+Account…** also provides account agreements and privacy setup. WebKit keeps the
+session locally; the app never extracts Apple passwords or cookies.
+
+Publish the iOS and native Mac schemes separately. They may share one App Store
+record when their bundle identifiers match. Watch and widgets are embedded in
+the iOS upload. The Mac scheme must be sandboxed and specify an app category.
+Mac export obtains its own installer certificate, creates a signed `.pkg`, and
+keeps Mac builds, review submissions, profiles, and screenshots separate from
+iOS. Mac screenshot capture uses only the selected app's window and Apple's
+[accepted screenshot dimensions](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications).
+
+The dedicated signing keychain is unlocked with its stored generated password.
+Status checks suppress authentication UI, and existing imported keys have their
+Apple signing-tool access repaired. Missing or inaccessible stored credentials
+stop publishing with an error; no keys are deleted or passwords guessed.
 
 The optional `app-store-publishing.json` file belongs in the managed app's root
 folder. It supplies production settings that aren't represented by StoreKit.
@@ -170,7 +192,9 @@ character limit; OpenAI does not create or replace those links.
 
 Apple does not expose the App Privacy questionnaire through the public App Store
 Connect API. For an explicitly reviewed **Data Not Collected** declaration,
-Development Management can publish the answer with Fastlane's authenticated
+Development Management can publish the answer through the built-in Apple web
+session; the following Fastlane configuration is an optional legacy alternative.
+It uses Fastlane's authenticated
 App Store Connect web session. Publishing Settings stores the Apple ID in app
 preferences and the `FASTLANE_SESSION` value in Keychain; the Apple ID password
 is never stored. Run the copied `fastlane spaceauth` command, paste the returned

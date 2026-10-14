@@ -17,6 +17,7 @@ INSTALL_PATH="/Applications/${APP_NAME}.app"
 INSTALL_TMP="/Applications/.${APP_NAME}.installing-$$.app"
 MOUNT_POINT=""
 DMG_ATTACHED=0
+SIGNING_CHECK_DIR=""
 
 cleanup() {
   local exit_code=$?
@@ -25,6 +26,7 @@ cleanup() {
   fi
   [[ -z "$MOUNT_POINT" ]] || rm -rf "$MOUNT_POINT"
   rm -rf "$INSTALL_TMP"
+  [[ -z "$SIGNING_CHECK_DIR" ]] || rm -rf "$SIGNING_CHECK_DIR"
   exit "$exit_code"
 }
 trap cleanup EXIT
@@ -66,6 +68,7 @@ require xcodegen "install with: brew install xcodegen"
 require xcodebuild "install Xcode command line tools"
 require hdiutil
 require codesign
+require security
 require ditto
 require killall
 require open
@@ -73,6 +76,14 @@ require pgrep
 require osascript
 
 cd "$ROOT"
+source "$ROOT/scripts/signing-continuity.sh"
+SIGNING_CHECK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/DevManagement-signing.XXXXXX")"
+SIGNING_REQUIREMENT="$SIGNING_CHECK_DIR/installed.requirement"
+capture_installed_signing_identity "$INSTALL_PATH" "$SIGNING_REQUIREMENT"
+SIGNING_ARGUMENTS=()
+if [[ -n "$PRESERVED_SIGNING_IDENTITY" ]]; then
+  SIGNING_ARGUMENTS=("CODE_SIGN_IDENTITY=$PRESERVED_SIGNING_IDENTITY")
+fi
 
 echo "==> Regenerating Xcode project"
 xcodegen generate
@@ -84,10 +95,12 @@ xcodebuild \
   -scheme "$SCHEME" \
   -configuration Release \
   -derivedDataPath "$DERIVED" \
+  "${SIGNING_ARGUMENTS[@]}" \
   clean build
 
 APP_PATH="$DERIVED/Build/Products/Release/${APP_NAME}.app"
 [[ -d "$APP_PATH" ]] || { echo "error: built app not found at $APP_PATH" >&2; exit 1; }
+verify_signing_continuity "$APP_PATH" "$SIGNING_REQUIREMENT"
 
 echo "==> Staging DMG contents"
 rm -rf "$STAGING"
@@ -112,10 +125,6 @@ rm -rf "$BUILD_DIR"
 echo "==> Verifying DMG"
 hdiutil verify "$DMG_PATH" >/dev/null
 
-echo "==> Closing running ${DISPLAY_NAME}"
-stop_process "$APP_NAME"
-cleanup_stale_login_items
-
 echo "==> Installing into /Applications"
 MOUNT_POINT="$(mktemp -d "${TMPDIR:-/tmp}/${APP_NAME}-dmg.XXXXXX")"
 hdiutil attach "$DMG_PATH" -nobrowse -readonly -mountpoint "$MOUNT_POINT" >/dev/null
@@ -123,7 +132,10 @@ DMG_ATTACHED=1
 
 rm -rf "$INSTALL_TMP"
 ditto "$MOUNT_POINT/${APP_NAME}.app" "$INSTALL_TMP"
-codesign --verify --deep --strict "$INSTALL_TMP"
+verify_signing_continuity "$INSTALL_TMP" "$SIGNING_REQUIREMENT"
+echo "==> Closing running ${DISPLAY_NAME}"
+stop_process "$APP_NAME"
+cleanup_stale_login_items
 rm -rf "$INSTALL_PATH"
 mv "$INSTALL_TMP" "$INSTALL_PATH"
 [[ ! -x "$LSREGISTER" ]] || "$LSREGISTER" -f "$INSTALL_PATH" 2>/dev/null || true

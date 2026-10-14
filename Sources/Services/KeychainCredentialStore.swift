@@ -98,6 +98,7 @@ final class KeychainCredentialStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnAttributes as String: true,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
     }

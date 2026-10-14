@@ -271,8 +271,8 @@ Settings contains six tabs and is the only ordinary app window.
 
 ## App Store publishing
 
-Publishing is available for managed iOS applications that use **Direct Xcode
-build**. The paper-plane action on an application row opens Publish with that
+Publishing is available for managed iOS and native macOS applications that use
+**Direct Xcode build**. The paper-plane action on an application row opens Publish with that
 application selected and locked; the footer **Publish…** action leaves the
 selector available. Each app chooses the default App Store Connect API or one
 named additional profile in its Publish window. Removing a named profile moves
@@ -293,13 +293,22 @@ submission. Review attachments are prepared and uploaded before that boundary.
 A hard intent guard prevents the TestFlight path from
 submitting review items. If the exact selected version and build are already in
 TestFlight, either action reuses it without another archive or upload.
-When an archive is needed, Xcode uses the selected App Store Connect `.p8` key
-for automatic distribution signing and provisioning; publishing does not rely
-on an Apple Account session stored in Xcode. Before spending time on an archive,
-Development Management checks that either the selected team has a local Apple
-Distribution identity or the API key can access certificates. Xcode cloud-signing
-permission failures are reported with the exact account permission or local
-certificate action required.
+If no app record exists, **Create App…** opens Apple's sign-in page inside
+Development Management. Sign in, select the API key's team, and create the app
+record there; iOS and Mac can share one record when both store schemes use the
+same bundle ID. The Watch app and widget travel inside the iOS archive. Configure
+and publish each platform's scheme separately. Apple's website endpoints can
+change; the embedded Apple page remains available to complete setup manually.
+
+Distribution signing uses locally issued identities and explicit profiles. The
+app unlocks its dedicated signing keychain using its stored generated password,
+repairs access for Apple's signing tools, and exports without Xcode cloud signing.
+Native Mac export also provisions a Mac Installer Distribution identity and
+produces a `.pkg`. Signing status checks disable authentication UI; an unavailable
+stored password produces an actionable error instead of asking for the Mac login
+password. Existing keys are never deleted to recover access. Mac screenshots can
+be supplied locally or captured from the selected app's window with Screen
+Recording permission; menu-bar apps may also require Accessibility permission.
 The publishing configuration editor provides a dedicated **Generate What’s New
 with OpenAI** button beside that field. It detects the latest approved App Store
 version and resolves a matching ancestor release tag or an exact marketing-version
@@ -327,8 +336,9 @@ Privacy checklist. Unsupported age-rating answers default to No or None; positiv
 answers require repository evidence. The user must review and save the draft
 before Upload or Publish. Publish uses the saved listing and What’s New text
 exactly as reviewed. Because Apple does not expose App Privacy through its public API,
-an authorized no-data declaration is published through the Fastlane session in
-Publishing Settings. Collected-data declarations retain a manual App Store
+an authorized no-data declaration is published through the built-in Apple web
+session. **Apple Account…** opens sign-in and account setup without Terminal;
+the legacy Fastlane session in Publishing Settings remains optional. Collected-data declarations retain a manual App Store
 Connect confirmation path. Support and
 privacy-policy URLs are required;
 Terms of Use is also required for subscription apps. Marketing and

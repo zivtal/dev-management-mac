@@ -174,7 +174,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: runner,
             passwordStore: store,
             keychainURLOverride: url,
-            updatesSearchList: false
+            updatesSearchList: false,
+            lockState: { _ in true }
         )
 
         _ = try await service.prepareKeychain(onOutput: { _ in })
@@ -194,8 +195,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             )
         }
         XCTAssertTrue(
-            runner.invocations.contains { $0.arguments.first == "show-keychain-info" },
-            "the lock state must be probed rather than assumed"
+            !runner.invocations.contains { $0.arguments.first == "show-keychain-info" },
+            "the CLI status query may prompt for a password and must never run"
         )
     }
 
@@ -208,7 +209,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: runner,
             passwordStore: InMemoryPasswordStore(password: "stored"),
             keychainURLOverride: url,
-            updatesSearchList: false
+            updatesSearchList: false,
+            lockState: { _ in true }
         )
 
         _ = try await service.prepareKeychain(onOutput: { _ in })
@@ -229,7 +231,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: absentRunner,
             passwordStore: InMemoryPasswordStore(),
             keychainURLOverride: absent,
-            updatesSearchList: false
+            updatesSearchList: false,
+            lockState: { _ in true }
         ).prepareKeychain(createIfMissing: false, onOutput: { _ in })
 
         XCTAssertTrue(absentRunner.invocations.isEmpty)
@@ -243,7 +246,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: existingRunner,
             passwordStore: InMemoryPasswordStore(password: "pw"),
             keychainURLOverride: existing,
-            updatesSearchList: false
+            updatesSearchList: false,
+            lockState: { _ in true }
         ).prepareKeychain(createIfMissing: false, onOutput: { _ in })
 
         XCTAssertTrue(
@@ -263,7 +267,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: runner,
             passwordStore: InMemoryPasswordStore(password: nil),
             keychainURLOverride: url,
-            updatesSearchList: false
+            updatesSearchList: false,
+            lockState: { _ in true }
         )
 
         do {
@@ -300,7 +305,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: runner,
             passwordStore: InMemoryPasswordStore(password: "stale"),
             keychainURLOverride: url,
-            updatesSearchList: false
+            updatesSearchList: false,
+            lockState: { _ in true }
         )
 
         do {
@@ -330,7 +336,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: runner,
             passwordStore: InMemoryPasswordStore(password: "stale"),
             keychainURLOverride: url,
-            updatesSearchList: false
+            updatesSearchList: false,
+            lockState: { _ in false }
         )
 
         do {
@@ -355,7 +362,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: runner,
             passwordStore: store,
             keychainURLOverride: url,
-            updatesSearchList: false
+            updatesSearchList: false,
+            lockState: { _ in true }
         )
 
         do {
@@ -381,7 +389,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: runner,
             passwordStore: InMemoryPasswordStore(password: "pw"),
             keychainURLOverride: url,
-            updatesSearchList: false
+            updatesSearchList: false,
+            lockState: { _ in true }
         )
 
         do {
@@ -424,7 +433,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: runner,
             passwordStore: InMemoryPasswordStore(password: "pw"),
             keychainURLOverride: url,
-            updatesSearchList: false
+            updatesSearchList: false,
+            lockState: { _ in true }
         )
 
         try await service.importIdentity(
@@ -437,10 +447,12 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
         XCTAssertFalse(
             runner.invocations.contains {
                 $0.standardInput?.hasPrefix("import") == true
-                    || $0.standardInput?.hasPrefix("set-key-partition-list") == true
             },
-            "an already-installed identity must not be imported or reauthorized again"
+            "an already-installed identity must not be imported again"
         )
+        XCTAssertTrue(runner.invocations.contains {
+            $0.standardInput?.hasPrefix("set-key-partition-list") == true
+        }, "retry must repair signing-tool access after an interrupted import")
     }
 
     func testRemoveIdentityTargetsOnlyTheDedicatedKeychainAndOnlyWhenPresent() async throws {
@@ -456,7 +468,8 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: runner,
             passwordStore: InMemoryPasswordStore(password: "pw"),
             keychainURLOverride: url,
-            updatesSearchList: false
+            updatesSearchList: false,
+            lockState: { _ in true }
         )
 
         try await service.removeIdentity(sha1Fingerprint: "DDEEFF")
@@ -534,7 +547,7 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: runner,
             passwordStore: InMemoryPasswordStore(password: "pw"),
             keychainURLOverride: url,
-            updatesSearchList: true
+            updatesSearchList: true, lockState: { _ in true }
         )
 
         _ = try await service.prepareKeychain(onOutput: { _ in })
@@ -563,7 +576,7 @@ final class SigningProcessAndRecoveryTests: XCTestCase {
             processRunner: runner,
             passwordStore: InMemoryPasswordStore(password: "pw"),
             keychainURLOverride: url,
-            updatesSearchList: true
+            updatesSearchList: true, lockState: { _ in true }
         )
 
         _ = try await service.prepareKeychain(onOutput: { _ in })

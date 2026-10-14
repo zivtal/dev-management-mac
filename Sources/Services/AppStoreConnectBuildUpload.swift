@@ -25,17 +25,17 @@ extension AppStoreConnectService {
         let uploads = try await pagedData(path: "/v1/apps/\(appID)/buildUploads", query: [
             "filter[cfBundleShortVersionString]": marketingVersion,
             "filter[cfBundleVersion]": buildNumber,
-            "filter[platform]": "IOS",
+            "filter[platform]": platform.rawValue,
             "sort": "-uploadedDate",
             "limit": "200"
         ])
-        return Self.matchingBuildUpload(in: uploads, marketingVersion: marketingVersion, buildNumber: buildNumber)
+        return Self.matchingBuildUpload(in: uploads, marketingVersion: marketingVersion, buildNumber: buildNumber, platform: platform)
     }
 
     func isBuildSubmitted(appID: String, marketingVersion: String, buildID: String) async throws -> Bool {
         let versions = try await pagedData(path: "/v1/apps/\(appID)/appStoreVersions", query: [
             "filter[versionString]": marketingVersion,
-            "filter[platform]": "IOS",
+            "filter[platform]": platform.rawValue,
             "fields[appStoreVersions]": "versionString,appStoreState,build",
             "include": "build",
             "limit": "200"
@@ -58,14 +58,14 @@ extension AppStoreConnectService {
     ]
 
     static func matchingBuildUpload(
-        in uploads: [[String: Any]], marketingVersion: String, buildNumber: String
+        in uploads: [[String: Any]], marketingVersion: String, buildNumber: String, platform: AppStorePlatform = .iOS
     ) -> AppStoreConnectBuildUpload? {
         let matches = uploads.compactMap { resource -> AppStoreConnectBuildUpload? in
             guard let id = resource["id"] as? String,
                   let attributes = resource["attributes"] as? [String: Any],
                   attributes["cfBundleShortVersionString"] as? String == marketingVersion,
                   attributes["cfBundleVersion"] as? String == buildNumber,
-                  attributes["platform"] as? String == "IOS",
+                  attributes["platform"] as? String == platform.rawValue,
                   let state = attributes["state"] as? [String: Any],
                   let value = state["state"] as? String else { return nil }
             let errors = (state["errors"] as? [[String: Any]] ?? []).map { error in

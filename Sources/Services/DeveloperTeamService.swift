@@ -145,10 +145,10 @@ final class DeveloperTeamService {
     /// Every locally usable identity, newest expiry first. Provisioning checks each
     /// one against the App Store Connect account: a revoked renewal must not hide an
     /// older identity that is still active there.
-    func distributionSigningIdentities(teamID: String?) -> [DistributionSigningIdentity] {
+    func distributionSigningIdentities(teamID: String?, purpose: DistributionCertificatePurpose = .application) -> [DistributionSigningIdentity] {
         Self.distributionSigningIdentities(
             certificateRecords: signingCertificateRecords(),
-            teamID: teamID
+            teamID: teamID, purpose: purpose
         )
     }
 
@@ -166,11 +166,12 @@ final class DeveloperTeamService {
 
     static func distributionCertificateRecords(
         certificateRecords: [SigningCertificateRecord],
-        teamID: String?
+        teamID: String?,
+        purpose: DistributionCertificatePurpose = .application
     ) -> [SigningCertificateRecord] {
         let normalizedTeamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines)
         return certificateRecords.filter { record in
-            distributionCertificatePrefixes.contains(where: record.commonName.hasPrefix)
+            purpose.namePrefixes.contains(where: record.commonName.hasPrefix)
                 && (normalizedTeamID?.isEmpty != false
                     || record.organizationalUnit == normalizedTeamID)
         }
@@ -197,11 +198,12 @@ final class DeveloperTeamService {
     static func distributionSigningIdentities(
         certificateRecords: [SigningCertificateRecord],
         teamID: String?,
-        now: Date = Date()
+        now: Date = Date(),
+        purpose: DistributionCertificatePurpose = .application
     ) -> [DistributionSigningIdentity] {
         let candidates = distributionCertificateRecords(
             certificateRecords: certificateRecords,
-            teamID: teamID
+            teamID: teamID, purpose: purpose
         )
         .filter { $0.sha1Fingerprint?.isEmpty == false && $0.isValid(at: now) }
         .sorted { left, right in
@@ -351,6 +353,7 @@ final class DeveloperTeamService {
 
         let entitlements = dictionary["Entitlements"] as? [String: Any]
         let applicationIdentifier = entitlements?["application-identifier"] as? String
+            ?? entitlements?["com.apple.application-identifier"] as? String
         let identifierPrefix = "\(teamID)."
         let bundleIdentifier: String?
         if let applicationIdentifier, applicationIdentifier.hasPrefix(identifierPrefix) {
@@ -463,7 +466,7 @@ final class DeveloperTeamService {
             kSecReturnRef: true
         ]
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+        guard SilentKeychainAccess.perform({ SecItemCopyMatching(query as CFDictionary, &result) }) == errSecSuccess,
               let identities = result as? [SecIdentity]
         else {
             return []

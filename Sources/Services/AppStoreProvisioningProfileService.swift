@@ -81,7 +81,8 @@ actor AppStoreProvisioningProfileService {
         bundleIdentifiers: [String],
         issuerID: String,
         keyID: String,
-        privateKeyPEM: String
+        privateKeyPEM: String,
+        platform: AppStorePlatform = .iOS
     ) async throws {
         let identifiers = Self.uniqueIdentifiers(bundleIdentifiers)
         guard !identifiers.isEmpty else { return }
@@ -105,6 +106,7 @@ actor AppStoreProvisioningProfileService {
         issuerID: String,
         keyID: String,
         privateKeyPEM: String,
+        platform: AppStorePlatform = .iOS,
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws -> [String: String] {
         let uniqueTargets = Self.uniqueTargets(targets)
@@ -115,7 +117,7 @@ actor AppStoreProvisioningProfileService {
         var pending: [String] = []
         for target in uniqueTargets {
             let bundleIdentifier = target.bundleIdentifier
-            if let match = Self.installedAppStoreProfile(
+            if platform == .iOS, let match = Self.installedAppStoreProfile(
                 in: installed,
                 bundleIdentifier: bundleIdentifier,
                 teamID: identity.teamID,
@@ -137,7 +139,7 @@ actor AppStoreProvisioningProfileService {
         let appStoreConnect = try AppStoreConnectService(
             issuerID: issuerID,
             keyID: keyID,
-            privateKeyPEM: privateKeyPEM
+            privateKeyPEM: privateKeyPEM, platform: platform
         )
         let certificateID = try await self.certificateID(
             for: identity,
@@ -159,6 +161,7 @@ actor AppStoreProvisioningProfileService {
         let needingCreation = pending.filter { bundleIdentifier in
             Self.reusableAccountProfile(
                 in: accountProfiles,
+                platform: appStoreConnect.platform,
                 bundleIdentifier: bundleIdentifier,
                 certificateID: certificateID,
                 requiredEntitlementKeys: requiredEntitlementsByIdentifier[bundleIdentifier] ?? []
@@ -209,6 +212,7 @@ actor AppStoreProvisioningProfileService {
     ) async throws -> AppStoreConnectProfile {
         if let reusable = Self.reusableAccountProfile(
             in: accountProfiles,
+            platform: appStoreConnect.platform,
             bundleIdentifier: bundleIdentifier,
             certificateID: certificateID,
             requiredEntitlementKeys: requiredEntitlementKeys
@@ -274,7 +278,7 @@ actor AppStoreProvisioningProfileService {
         )
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         try content.write(
-            to: directory.appendingPathComponent("\(Self.installedFilename(for: profile)).mobileprovision"),
+            to: directory.appendingPathComponent("\(Self.installedFilename(for: profile)).\(profile.profileType == "MAC_APP_STORE" ? "provisionprofile" : "mobileprovision")"),
             options: [.atomic]
         )
     }
@@ -350,6 +354,7 @@ actor AppStoreProvisioningProfileService {
 
     static func reusableAccountProfile(
         in profiles: [AppStoreConnectProfile],
+        platform: AppStorePlatform = .iOS,
         bundleIdentifier: String,
         certificateID: String,
         requiredEntitlementKeys: Set<String> = [],
@@ -357,7 +362,7 @@ actor AppStoreProvisioningProfileService {
     ) -> AppStoreConnectProfile? {
         guard !bundleIdentifier.contains("*") else { return nil }
         return profiles.first { profile in
-            profile.profileType == AppStoreConnectProfile.appStoreProfileType
+            profile.profileType == platform.profileType
                 && profile.bundleIdentifier == bundleIdentifier
                 && profile.isActive(at: now)
                 && profile.certificateIDs.contains(certificateID)
