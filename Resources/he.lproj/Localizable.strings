@@ -1464,3 +1464,35 @@
 
 "Select the devices allowed to receive this application. Newly discovered devices are never selected automatically. Selection is saved separately for each application." = "יש לבחור את המכשירים המורשים לקבל את היישום. מכשירים שהתגלו לאחרונה לעולם אינם נבחרים אוטומטית. הבחירה נשמרת בנפרד לכל יישום.";
 "Older settings saved only excluded devices. Select your intended devices once to resume installations for this application." = "ההגדרות הישנות שמרו רק מכשירים שהוחרגו. יש לבחור פעם אחת את המכשירים הרצויים כדי לחדש התקנות של יישום זה.";
+
+/* Settings backup */
+"Backup" = "גיבוי";
+"Export Settings…" = "ייצוא הגדרות…";
+"Import Settings…" = "ייבוא הגדרות…";
+"The export includes every preference, the application list with each application's settings, publishing and sandbox settings, and all stored credentials, including OpenAI and App Store Connect private keys. Importing replaces the current configuration." = "הייצוא כולל את כל ההעדפות, את רשימת היישומים עם ההגדרות של כל יישום, את הגדרות הפרסום וה‑Sandbox ואת כל פרטי הגישה השמורים, כולל מפתחות פרטיים של OpenAI ושל App Store Connect. ייבוא מחליף את התצורה הנוכחית.";
+"Replace current settings?" = "להחליף את ההגדרות הנוכחיות?";
+"Import and Replace" = "ייבוא והחלפה";
+"All current preferences, applications, publishing settings, and stored credentials will be replaced by the export from %@ containing %d applications. The activity log is kept." = "כל ההעדפות, היישומים, הגדרות הפרסום ופרטי הגישה השמורים יוחלפו בייצוא מ‑%@ שמכיל %d יישומים. יומן הפעילות נשמר.";
+"Export Development Management settings" = "ייצוא הגדרות Development Management";
+"Export" = "ייצוא";
+"Export…" = "ייצוא…";
+"Encrypted settings exported to %@." = "ההגדרות יוצאו באופן מוצפן אל %@.";
+"Unencrypted settings exported to %@. Keep this file private; it contains your keys." = "ההגדרות יוצאו ללא הצפנה אל %@. יש לשמור על הקובץ פרטי; הוא מכיל את המפתחות שלך.";
+"Choose a Development Management settings export" = "בחירת קובץ ייצוא הגדרות של Development Management";
+"Settings imported: %d applications restored." = "ההגדרות יובאו: %d יישומים שוחזרו.";
+"Protect the settings export" = "הגנה על ייצוא ההגדרות";
+"Enter the export password" = "הזנת סיסמת הייצוא";
+"The file will contain your OpenAI and App Store Connect private keys and other credentials. Enter a password to encrypt it, or leave it blank to save a plain JSON file." = "הקובץ יכיל את המפתחות הפרטיים של OpenAI ושל App Store Connect ופרטי גישה נוספים. יש להזין סיסמה כדי להצפין אותו, או להשאיר ריק כדי לשמור קובץ JSON רגיל.";
+"This settings file is encrypted. Enter the password that was used when it was exported." = "קובץ ההגדרות מוצפן. יש להזין את הסיסמה ששימשה בעת הייצוא.";
+"Password" = "סיסמה";
+"Confirm password" = "אימות סיסמה";
+"The passwords do not match." = "הסיסמאות אינן תואמות.";
+"Settings exported" = "ההגדרות יוצאו";
+"Settings imported" = "ההגדרות יובאו";
+"%d applications and %d installation records were restored." = "%d יישומים ו‑%d רשומות התקנה שוחזרו.";
+"The selected file is not a Development Management settings export." = "הקובץ שנבחר אינו קובץ ייצוא הגדרות של Development Management.";
+"This settings file was created by a newer version of Development Management (format %d). Update the app before importing it." = "קובץ ההגדרות נוצר בגרסה חדשה יותר של Development Management (פורמט %d). יש לעדכן את היישום לפני הייבוא.";
+"This settings file is encrypted. Enter its password to import it." = "קובץ ההגדרות מוצפן. יש להזין את הסיסמה שלו כדי לייבא אותו.";
+"The password does not match this settings file." = "הסיסמה אינה תואמת לקובץ ההגדרות.";
+"The settings file is damaged and could not be read." = "קובץ ההגדרות פגום ולא ניתן לקרוא אותו.";
+"Wait for the current installation or publication to finish before importing settings." = "יש להמתין לסיום ההתקנה או הפרסום הנוכחיים לפני ייבוא ההגדרות.";

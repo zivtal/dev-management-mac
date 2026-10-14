@@ -177,6 +177,18 @@ Settings contains six tabs and is the only ordinary app window.
 - Set the reinstall interval from 1 through 30 days.
 - Enable or disable launch at login.
 - Enable or disable success notifications.
+- Export the entire configuration to one JSON file: General preferences, the
+  application list with every per-application setting, installation history,
+  all publishing and sandbox settings, and every stored credential (OpenAI key,
+  default and per-profile App Store Connect `.p8` private keys, App Review demo
+  account, and Fastlane session). An optional password encrypts the file with
+  AES-256-GCM and a PBKDF2-derived key; without a password the file is plain
+  JSON and must be kept private. The activity log and the machine-local signing
+  keychain password are not exported.
+- Import such a file to replace the current preferences, applications,
+  installation records, and Keychain credentials after confirmation. Import is
+  unavailable while an installation or publication is running, and the activity
+  log is kept.
 - View the installed marketing version and build number.
 
 #### Applications
@@ -808,6 +820,9 @@ Current unit coverage verifies:
   validation.
 - Named App Store Connect profile persistence, separate Keychain accounts,
   attribute-only existence checks, per-app selection, and legacy decoding.
+- Settings export envelopes: plaintext and password-encrypted round trips,
+  wrong-password and missing-password rejection, unrelated-file and
+  newer-format rejection, and the dated default filename.
 
 Manual release validation should also cover USB and Wi-Fi discovery, direct
 Xcode installation, Settings persistence, launch at login, notifications, and

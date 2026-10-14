@@ -1464,3 +1464,35 @@
 
 "Select the devices allowed to receive this application. Newly discovered devices are never selected automatically. Selection is saved separately for each application." = "Select the devices allowed to receive this application. Newly discovered devices are never selected automatically. Selection is saved separately for each application.";
 "Older settings saved only excluded devices. Select your intended devices once to resume installations for this application." = "Older settings saved only excluded devices. Select your intended devices once to resume installations for this application.";
+
+/* Settings backup */
+"Backup" = "Backup";
+"Export Settings…" = "Export Settings…";
+"Import Settings…" = "Import Settings…";
+"The export includes every preference, the application list with each application's settings, publishing and sandbox settings, and all stored credentials, including OpenAI and App Store Connect private keys. Importing replaces the current configuration." = "The export includes every preference, the application list with each application's settings, publishing and sandbox settings, and all stored credentials, including OpenAI and App Store Connect private keys. Importing replaces the current configuration.";
+"Replace current settings?" = "Replace current settings?";
+"Import and Replace" = "Import and Replace";
+"All current preferences, applications, publishing settings, and stored credentials will be replaced by the export from %@ containing %d applications. The activity log is kept." = "All current preferences, applications, publishing settings, and stored credentials will be replaced by the export from %@ containing %d applications. The activity log is kept.";
+"Export Development Management settings" = "Export Development Management settings";
+"Export" = "Export";
+"Export…" = "Export…";
+"Encrypted settings exported to %@." = "Encrypted settings exported to %@.";
+"Unencrypted settings exported to %@. Keep this file private; it contains your keys." = "Unencrypted settings exported to %@. Keep this file private; it contains your keys.";
+"Choose a Development Management settings export" = "Choose a Development Management settings export";
+"Settings imported: %d applications restored." = "Settings imported: %d applications restored.";
+"Protect the settings export" = "Protect the settings export";
+"Enter the export password" = "Enter the export password";
+"The file will contain your OpenAI and App Store Connect private keys and other credentials. Enter a password to encrypt it, or leave it blank to save a plain JSON file." = "The file will contain your OpenAI and App Store Connect private keys and other credentials. Enter a password to encrypt it, or leave it blank to save a plain JSON file.";
+"This settings file is encrypted. Enter the password that was used when it was exported." = "This settings file is encrypted. Enter the password that was used when it was exported.";
+"Password" = "Password";
+"Confirm password" = "Confirm password";
+"The passwords do not match." = "The passwords do not match.";
+"Settings exported" = "Settings exported";
+"Settings imported" = "Settings imported";
+"%d applications and %d installation records were restored." = "%d applications and %d installation records were restored.";
+"The selected file is not a Development Management settings export." = "The selected file is not a Development Management settings export.";
+"This settings file was created by a newer version of Development Management (format %d). Update the app before importing it." = "This settings file was created by a newer version of Development Management (format %d). Update the app before importing it.";
+"This settings file is encrypted. Enter its password to import it." = "This settings file is encrypted. Enter its password to import it.";
+"The password does not match this settings file." = "The password does not match this settings file.";
+"The settings file is damaged and could not be read." = "The settings file is damaged and could not be read.";
+"Wait for the current installation or publication to finish before importing settings." = "Wait for the current installation or publication to finish before importing settings.";

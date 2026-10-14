@@ -829,6 +829,137 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Settings backup
+
+    /// Collects every preference, managed application, installation record, and
+    /// Keychain credential into one portable archive.
+    func makeSettingsArchive() throws -> SettingsArchive {
+        var credentials = SettingsArchiveCredentials()
+        credentials.openAIAPIKey = try credentialStore.string(for: .openAIAPIKey)
+        credentials.appStoreConnectPrivateKey = try credentialStore.appStoreConnectPrivateKey(profileID: nil)
+        for profile in preferences.appStoreConnectCredentialProfiles ?? [] {
+            if let key = try credentialStore.appStoreConnectPrivateKey(profileID: profile.id) {
+                credentials.appStoreConnectProfilePrivateKeys[profile.id.uuidString] = key
+            }
+        }
+        credentials.appReviewDemoAccountName = try credentialStore.string(for: .appReviewDemoAccountName)
+        credentials.appReviewDemoAccountPassword = try credentialStore.string(for: .appReviewDemoAccountPassword)
+        credentials.appStorePrivacyFastlaneSession = try credentialStore.string(for: .appStorePrivacyFastlaneSession)
+
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return SettingsArchive(
+            exportedAt: Date(),
+            appVersion: [version, build.map { "(\($0))" }].compactMap { $0 }.joined(separator: " ").nilIfEmpty,
+            preferences: preferences,
+            projects: projects,
+            installationRecords: installationRecords,
+            credentials: credentials
+        )
+    }
+
+    func exportSettings(to url: URL, password: String?) throws {
+        let data = try SettingsTransferService.encode(try makeSettingsArchive(), password: password)
+        try data.write(to: url, options: .atomic)
+        addActivity(
+            level: .info,
+            title: L10n.text("Settings exported"),
+            details: url.path
+        )
+    }
+
+    /// Replaces every current preference, application, installation record, and
+    /// stored credential with the archive contents. The activity log is kept.
+    func importSettings(_ archive: SettingsArchive) throws {
+        guard !hasActiveWork else { throw SettingsImportError.busy }
+
+        for session in simulatorSessions.values { session.stop() }
+        simulatorSessions = [:]
+        installAllTargets = [:]
+        completedInstallAllTargets = []
+        failedAttemptCooldowns = [:]
+        projectIconURLs = [:]
+        gitBranchesByProjectID = [:]
+        availableGitBranchesByProjectID = [:]
+
+        var importedPreferences = archive.preferences
+        importedPreferences.excludedDeviceUDIDs = nil
+        isLoading = true
+        preferences = importedPreferences
+        projects = archive.projects
+        installationRecords = archive.installationRecords
+        isLoading = false
+        persist()
+
+        try applyImportedCredentials(archive.credentials, profiles: importedPreferences.appStoreConnectCredentialProfiles ?? [])
+
+        setLaunchAtLogin(importedPreferences.launchAtLogin)
+        addActivity(
+            level: .success,
+            title: L10n.text("Settings imported"),
+            details: L10n.format(
+                "%d applications and %d installation records were restored.",
+                projects.count,
+                installationRecords.count
+            )
+        )
+        restartMonitoring()
+        refreshProjectVersions()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            async let icons: Void = self.refreshProjectIcons()
+            async let branches: Void = self.refreshProjectGitBranches()
+            _ = await (icons, branches)
+            await self.refreshBuildBranchVersions()
+            await self.refreshDevices(installWhenDue: false)
+        }
+    }
+
+    private func applyImportedCredentials(
+        _ credentials: SettingsArchiveCredentials,
+        profiles: [AppStoreConnectCredentialProfile]
+    ) throws {
+        func replace(_ credential: PublishingCredential, with value: String?) throws {
+            if let value = value?.nilIfEmpty {
+                try credentialStore.set(value, for: credential)
+            } else {
+                try credentialStore.remove(credential)
+            }
+        }
+
+        try replace(.openAIAPIKey, with: credentials.openAIAPIKey)
+        hasOpenAIAPIKey = credentialStore.contains(.openAIAPIKey)
+
+        if let key = credentials.appStoreConnectPrivateKey?.nilIfEmpty {
+            try credentialStore.setAppStoreConnectPrivateKey(key, profileID: nil)
+        } else {
+            try credentialStore.removeAppStoreConnectPrivateKey(profileID: nil)
+        }
+        hasAppStoreConnectPrivateKey = credentialStore.containsAppStoreConnectPrivateKey(profileID: nil)
+
+        for profileID in appStoreConnectPrivateKeyProfileIDs where !profiles.contains(where: { $0.id == profileID }) {
+            try credentialStore.removeAppStoreConnectPrivateKey(profileID: profileID)
+        }
+        var importedProfileIDs: Set<UUID> = []
+        for profile in profiles {
+            if let key = credentials.appStoreConnectProfilePrivateKeys[profile.id.uuidString]?.nilIfEmpty {
+                try credentialStore.setAppStoreConnectPrivateKey(key, profileID: profile.id)
+                importedProfileIDs.insert(profile.id)
+            } else {
+                try credentialStore.removeAppStoreConnectPrivateKey(profileID: profile.id)
+            }
+        }
+        appStoreConnectPrivateKeyProfileIDs = importedProfileIDs
+
+        try replace(.appReviewDemoAccountName, with: credentials.appReviewDemoAccountName)
+        try replace(.appReviewDemoAccountPassword, with: credentials.appReviewDemoAccountPassword)
+        hasAppReviewDemoAccount = credentialStore.contains(.appReviewDemoAccountName)
+            && credentialStore.contains(.appReviewDemoAccountPassword)
+
+        try replace(.appStorePrivacyFastlaneSession, with: credentials.appStorePrivacyFastlaneSession)
+        hasAppStorePrivacyFastlaneSession = credentialStore.contains(.appStorePrivacyFastlaneSession)
+    }
+
     func publish(
         projectID: UUID,
         intent: PublishingIntent = .publish,
