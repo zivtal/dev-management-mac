@@ -235,7 +235,10 @@ preferences and the `FASTLANE_SESSION` value in Keychain; the Apple ID password
 is never stored. Run the copied `fastlane spaceauth` command, paste the returned
 session, and authorize the per-app declaration in App Setup. A successful run
 records `publishedAt` in the manifest and does not repeat the operation unless
-the privacy draft changes. Collected-data declarations still require manual
+the privacy draft changes. When Apple rejects the saved Fastlane session, the
+run stops with a single instruction to sign in with Apple Account in the
+publishing window or refresh the session with `fastlane spaceauth`, instead of
+Fastlane's login fallback output. Collected-data declarations still require manual
 purpose, linking, and tracking answers in App Store Connect, followed by the
 manual confirmation in the editor.
 

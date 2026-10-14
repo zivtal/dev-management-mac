@@ -5,6 +5,7 @@ enum AppStorePrivacyPublishingError: LocalizedError {
     case missingAppleID
     case missingSession
     case collectedDataNeedsDetails
+    case sessionExpired
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +17,8 @@ enum AppStorePrivacyPublishingError: LocalizedError {
             L10n.text("Save a Fastlane App Store Connect session in Publishing settings before publishing App Privacy answers.")
         case .collectedDataNeedsDetails:
             L10n.text("Apps that collect data require Apple purpose, linking, and tracking answers. Complete App Privacy in App Store Connect for this app.")
+        case .sessionExpired:
+            L10n.text("The saved Fastlane App Store Connect session has expired, so the App Privacy answers were not published. Sign in with Apple Account… in this window and try again, or run fastlane spaceauth and save the new session in Publishing settings.")
         }
     }
 }
@@ -35,11 +38,11 @@ struct FastlaneAppPrivacyUsage: Codable, Equatable, Sendable {
 final class AppStorePrivacyPublishingService {
     typealias OutputHandler = @Sendable (String) -> Void
 
-    private let processRunner: ProcessRunner
+    private let processRunner: any ProcessRunning
     private let fileManager: FileManager
 
     init(
-        processRunner: ProcessRunner = ProcessRunner(),
+        processRunner: any ProcessRunning = ProcessRunner(),
         fileManager: FileManager = .default
     ) {
         self.processRunner = processRunner
@@ -68,6 +71,17 @@ final class AppStorePrivacyPublishingService {
             throw AppStorePrivacyPublishingError.collectedDataNeedsDetails
         }
         return [FastlaneAppPrivacyUsage(dataProtections: ["DATA_NOT_COLLECTED"])]
+    }
+
+    /// Spaceship reports a rejected `FASTLANE_SESSION` as a login fallback and then
+    /// fails on the service key it cannot fetch without an interactive login.
+    static func indicatesExpiredSession(_ output: String) -> Bool {
+        let markers = [
+            "Available session is not valid anymore",
+            "Session loaded from environment variable is not valid",
+            "Could not receive latest API key from App Store Connect"
+        ]
+        return markers.contains { output.contains($0) }
     }
 
     static func normalizedSession(_ value: String) -> String? {
@@ -127,20 +141,25 @@ final class AppStorePrivacyPublishingService {
         if let teamID = teamID?.nilIfEmpty {
             arguments.append("team_id:\(teamID)")
         }
-        _ = try await processRunner.runAndRequireSuccess(
-            executable: executable,
-            arguments: arguments,
-            workingDirectory: temporaryDirectory,
-            additionalEnvironment: [
-                "FASTLANE_SESSION": session,
-                "FASTLANE_IS_INTERACTIVE": "false",
-                "SPACESHIP_ONLY_ALLOW_INTERACTIVE_2FA": "true",
-                "FASTLANE_SKIP_UPDATE_CHECK": "true",
-                "FASTLANE_OPT_OUT_USAGE": "true",
-                "FASTLANE_DISABLE_COLORS": "1"
-            ],
-            onOutput: onOutput
-        )
+        do {
+            _ = try await processRunner.runAndRequireSuccess(
+                executable: executable,
+                arguments: arguments,
+                workingDirectory: temporaryDirectory,
+                additionalEnvironment: [
+                    "FASTLANE_SESSION": session,
+                    "FASTLANE_IS_INTERACTIVE": "false",
+                    "SPACESHIP_ONLY_ALLOW_INTERACTIVE_2FA": "true",
+                    "FASTLANE_SKIP_UPDATE_CHECK": "true",
+                    "FASTLANE_OPT_OUT_USAGE": "true",
+                    "FASTLANE_DISABLE_COLORS": "1"
+                ],
+                onOutput: onOutput
+            )
+        } catch ProcessRunnerError.commandFailed(_, _, let output)
+            where Self.indicatesExpiredSession(output) {
+            throw AppStorePrivacyPublishingError.sessionExpired
+        }
         onOutput(L10n.text("App Privacy answers were published in App Store Connect.\n"))
     }
 }

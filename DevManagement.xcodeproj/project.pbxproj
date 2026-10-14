@@ -116,6 +116,7 @@
 		D52961329C5206214FDA8DA3 /* AppStoreDistributionSigningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42050875C39C6F8D066FD010 /* AppStoreDistributionSigningTests.swift */; };
 		D62324A78C666F5EF8101F39 /* XcodeGenProjectPreparationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13FDDF9F48698084B25CFFA3 /* XcodeGenProjectPreparationTests.swift */; };
 		D65D97E3585DFF4F4C1B1409 /* ConnectedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0958EDE18F62F4A209B64D6 /* ConnectedDevice.swift */; };
+		D7D7E044882703EAF7AF893B /* AppStorePrivacySessionExpiryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D16932D122900012441979AF /* AppStorePrivacySessionExpiryTests.swift */; };
 		DB4806E1F6347EF27E63E72E /* SimulatorSessionRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A4C5DB940288C4CDF21634A /* SimulatorSessionRetryTests.swift */; };
 		DB97A95115436415096EE602 /* RedeemCodesWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0ACE515316EFEF59D186D43 /* RedeemCodesWindow.swift */; };
 		DF9FE0026BF751BB8ED17633 /* InstallationBuildBranchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 937AECA4C5F4BF711EFBA36A /* InstallationBuildBranchTests.swift */; };
@@ -274,6 +275,7 @@
 		D085DB26020DCCCA468F3EA7 /* MacOSInstallationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacOSInstallationTests.swift; sourceTree = "<group>"; };
 		D098A21064D2822733DC96B9 /* SourceChangeWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceChangeWatcher.swift; sourceTree = "<group>"; };
 		D0ACE515316EFEF59D186D43 /* RedeemCodesWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedeemCodesWindow.swift; sourceTree = "<group>"; };
+		D16932D122900012441979AF /* AppStorePrivacySessionExpiryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStorePrivacySessionExpiryTests.swift; sourceTree = "<group>"; };
 		D190FC0A3C788DB8CD0DA91D /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		D444947DEF3918348A11669E /* SimulatorDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorDevice.swift; sourceTree = "<group>"; };
 		D4E551EDA5AB8441BCD618FA /* ProjectsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsSettingsView.swift; sourceTree = "<group>"; };
@@ -488,6 +490,7 @@
 				EA1F534FD2993AC883A1EA56 /* AppStoreConnectReviewSubmissionTests.swift */,
 				0CB882F938CF4D541C2DF343 /* AppStoreConnectSigningRequestTests.swift */,
 				42050875C39C6F8D066FD010 /* AppStoreDistributionSigningTests.swift */,
+				D16932D122900012441979AF /* AppStorePrivacySessionExpiryTests.swift */,
 				265B3A6989EFA22CF8354D17 /* AppStorePublishingCheckpointTests.swift */,
 				7FA9DEC991B43F6B915C1712 /* AppStorePublishingTests.swift */,
 				2515F748D286466B830769B9 /* AppStoreReleaseNotesEvidenceTests.swift */,
@@ -738,6 +741,7 @@
 				B053F9EB45F1331720625669 /* AppStoreConnectReviewSubmissionTests.swift in Sources */,
 				4F11A5CF8829E494E7FAE4A8 /* AppStoreConnectSigningRequestTests.swift in Sources */,
 				D52961329C5206214FDA8DA3 /* AppStoreDistributionSigningTests.swift in Sources */,
+				D7D7E044882703EAF7AF893B /* AppStorePrivacySessionExpiryTests.swift in Sources */,
 				11F1B17F599E3F6A23B9DAE6 /* AppStorePublishingCheckpointTests.swift in Sources */,
 				4349D459F2E4B2C4F17EA0E1 /* AppStorePublishingTests.swift in Sources */,
 				8A6420D3B6D3360950D8EAE0 /* AppStoreReleaseNotesEvidenceTests.swift in Sources */,
@@ -895,7 +899,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development: Ziv Tal (PFB88Y2DHG)";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 145;
+				CURRENT_PROJECT_VERSION = 146;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -915,7 +919,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.4.4;
+				MARKETING_VERSION = 2.4.5;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -963,7 +967,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development: Ziv Tal (PFB88Y2DHG)";
 				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 145;
+				CURRENT_PROJECT_VERSION = 146;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 52HV33827A;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -977,7 +981,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.4.4;
+				MARKETING_VERSION = 2.4.5;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
