@@ -1753,7 +1753,7 @@ final class AppModel: ObservableObject {
                     : []
             } else {
                 targets = project.devicesInInstallationOrder(
-                    devices.filter { targetDeviceUDIDs.contains($0.udid) }
+                    devices.filter { targetDeviceUDIDs.contains($0.udid) && project.installationEnabled(for: $0) }
                 ).map {
                     ProjectInstallationTarget(identifier: $0.udid, name: $0.name, device: $0)
                 }

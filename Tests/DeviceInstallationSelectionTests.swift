@@ -19,16 +19,16 @@ final class DeviceInstallationSelectionTests: XCTestCase {
         isInstallReady: true
     )
 
-    func testProjectDevicesAreEnabledIndependentlyByDefault() {
+    func testProjectDevicesRequireIndependentExplicitSelection() {
         var firstProject = makeProject(families: [.iPhone, .iPad])
         let secondProject = makeProject(families: [.iPhone, .iPad])
 
-        firstProject.setInstallationEnabled(false, for: iPhone.udid)
+        firstProject.setInstallationEnabled(true, for: iPad.udid)
 
         XCTAssertFalse(firstProject.installationEnabled(for: iPhone))
         XCTAssertTrue(firstProject.installationEnabled(for: iPad))
-        XCTAssertTrue(secondProject.installationEnabled(for: iPhone))
-        XCTAssertTrue(secondProject.installationEnabled(for: iPad))
+        XCTAssertFalse(secondProject.installationEnabled(for: iPhone))
+        XCTAssertFalse(secondProject.installationEnabled(for: iPad))
     }
 
     func testDeviceCanBeExcludedAndEnabledAgainForOneProject() {
@@ -42,9 +42,64 @@ final class DeviceInstallationSelectionTests: XCTestCase {
         XCTAssertNil(project.excludedDeviceUDIDs)
     }
 
+    func testNewDevicesStayUnselectedAfterAnExistingDeviceIsChosen() {
+        var project = makeProject(families: [.iPhone, .iPad])
+        XCTAssertFalse(project.installationEnabled(for: iPhone))
+        XCTAssertFalse(project.installationEnabled(for: iPad))
+        project.setInstallationEnabled(true, for: iPhone.udid)
+        let stranger = ConnectedDevice(
+            udid: "NEW-PHONE", name: "iPhone 17", model: "iPhone 17", platform: "iOS",
+            transportType: "localNetwork", isInstallReady: true
+        )
+        XCTAssertFalse(project.installationEnabled(for: stranger))
+        XCTAssertEqual(project.selectedDeviceCount(in: [iPhone, iPad, stranger]), 1)
+        XCTAssertEqual(project.installationBatches(for: [stranger, iPad, iPhone]).flatMap { $0.devices.map(\.udid) }, [iPhone.udid])
+    }
+
+    func testLegacyExclusionsAndDeviceOrderDoNotAuthorizeInstallations() throws {
+        var project = makeProject(families: [.iPhone, .iPad])
+        project.excludedDeviceUDIDs = [iPad.udid]
+        project.installationDeviceOrder = [iPhone.udid]
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(project)) as? [String: Any])
+        json.removeValue(forKey: "selectedDeviceUDIDs")
+        var legacy = try JSONDecoder().decode(ManagedProject.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(legacy.selectedDeviceUDIDs)
+        XCTAssertFalse(legacy.installationEnabled(for: iPhone))
+        XCTAssertFalse(legacy.installationEnabled(for: iPad))
+        legacy.setInstallationEnabled(true, for: iPhone.udid)
+        XCTAssertTrue(legacy.installationEnabled(for: iPhone))
+        XCTAssertFalse(legacy.installationEnabled(for: iPad))
+    }
+
+    func testExplicitSelectionsSurvivePersistenceAndTransportChanges() throws {
+        var project = makeProject(families: [.iPhone, .iPad])
+        project.setInstallationEnabled(true, for: iPhone.udid)
+        var restored = try JSONDecoder().decode(ManagedProject.self, from: JSONEncoder().encode(project))
+        let reconnected = ConnectedDevice(
+            udid: iPhone.udid, name: "Renamed phone", model: "iPhone 17 Pro", platform: "iOS",
+            transportType: "wired", isInstallReady: true
+        )
+        XCTAssertTrue(restored.installationEnabled(for: reconnected))
+        XCTAssertFalse(restored.installationEnabled(for: iPad))
+        restored.setInstallationEnabled(false, for: iPhone.udid)
+        restored = try JSONDecoder().decode(ManagedProject.self, from: JSONEncoder().encode(restored))
+        XCTAssertEqual(restored.selectedDeviceUDIDs, [])
+        XCTAssertFalse(restored.installationEnabled(for: reconnected))
+        XCTAssertTrue(restored.installationBatches(for: [iPhone, iPad]).isEmpty)
+    }
+
+    func testExplicitSelectionStillRequiresSchemeCompatibility() {
+        var project = makeProject(families: [.iPhone])
+        project.setInstallationEnabled(true, for: iPad.udid)
+        XCTAssertFalse(project.installationEnabled(for: iPad))
+        XCTAssertTrue(project.installationBatches(for: [iPad]).isEmpty)
+    }
+
     func testSelectedDeviceCountReflectsCurrentSelectionEvenWhenProjectIsPaused() {
         var project = makeProject(families: [.iPhone, .iPad])
 
+        project.setInstallationEnabled(true, for: iPhone.udid)
+        project.setInstallationEnabled(true, for: iPad.udid)
         XCTAssertEqual(project.selectedDeviceCount(in: [iPhone, iPad]), 2)
 
         project.setInstallationEnabled(false, for: iPhone.udid)
@@ -57,6 +112,7 @@ final class DeviceInstallationSelectionTests: XCTestCase {
     func testPausedProjectKeepsItsDeviceSelectionButDisablesInstallation() {
         var project = makeProject(families: [.iPhone])
 
+        project.setInstallationEnabled(true, for: iPhone.udid)
         XCTAssertTrue(project.isSelectedInstallationTarget(iPhone))
         XCTAssertTrue(project.installationEnabled(for: iPhone))
 

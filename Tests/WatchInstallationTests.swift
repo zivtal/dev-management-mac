@@ -17,7 +17,7 @@ final class WatchInstallationTests: XCTestCase {
             containerPath: "/tmp/Example/Example.xcodeproj", containerKind: .project,
             scheme: "ExampleWatch", configuration: "Debug",
             availableSchemes: ["ExampleWatch"], availableConfigurations: ["Debug"],
-            isEnabled: true, applicationPlatform: platform
+            isEnabled: true, selectedDeviceUDIDs: [phone.udid, watch.udid], applicationPlatform: platform
         )
     }
 

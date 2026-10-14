@@ -210,7 +210,11 @@ Settings contains six tabs and is the only ordinary app window.
 - View whether the selected scheme supports iPhone, iPad, or both. Only
   compatible connected devices are offered as installation targets.
 - Choose installation devices independently for every app. A compatible new
-  device is selected by default, and exclusions are persisted by app and UDID.
+  device starts unselected; explicit selections are persisted by app and UDID.
+  Newly discovered devices never become installation targets automatically.
+  Older settings stored only exclusions, so after upgrading to 2.4.1 select
+  the intended devices once in each app's settings. Installation history is
+  preserved and is never used as permission to install on a device.
 - Install the selected app immediately or reveal its folder in Finder.
 - Remove one or more entries without deleting their source folders.
 - Queue all enabled applications for immediate installation.
@@ -787,7 +791,8 @@ Current unit coverage verifies:
 
 - CoreDevice JSON decoding, paired-device filtering, transport independence,
   device ordering, and separation of iOS and Watch installation targets.
-- Default, excluded, restored, and legacy-decoded device installation choices.
+- Explicit per-app device selections, unselected new discoveries, reconnects,
+  and safe legacy decoding without inferring approval from exclusions.
 - Reinstall threshold behavior and the one-day scheduling minimum.
 - Success-notification content.
 - iPhone app-icon preference over Watch icons.

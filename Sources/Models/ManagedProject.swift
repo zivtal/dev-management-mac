@@ -48,6 +48,9 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
     var supportedDeviceFamilies: Set<MobileDeviceFamily>? = nil
     var bundleIdentifier: String? = nil
     var excludedDeviceUDIDs: Set<String>? = nil
+    /// Missing in older settings, which only recorded exclusions. Never infer
+    /// approval from discovery or installation history; legacy projects opt in again.
+    var selectedDeviceUDIDs: Set<String>? = []
     var installationDeviceOrder: [String]? = nil
     var signingTeamID: String? = nil
     var projectSigningTeamID: String? = nil
@@ -207,7 +210,7 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
     }
 
     func isSelectedInstallationTarget(_ device: ConnectedDevice) -> Bool {
-        supports(device) && excludedDeviceUDIDs?.contains(device.udid) != true
+        supports(device) && selectedDeviceUDIDs?.contains(device.udid) == true
     }
 
     func selectedDeviceCount(in connectedDevices: [ConnectedDevice]) -> Int {
@@ -221,13 +224,14 @@ struct ManagedProject: Identifiable, Codable, Equatable, Sendable {
     }
 
     mutating func setInstallationEnabled(_ enabled: Bool, for deviceUDID: String) {
-        var exclusions = excludedDeviceUDIDs ?? []
+        var selections = selectedDeviceUDIDs ?? []
         if enabled {
-            exclusions.remove(deviceUDID)
+            selections.insert(deviceUDID)
         } else {
-            exclusions.insert(deviceUDID)
+            selections.remove(deviceUDID)
         }
-        excludedDeviceUDIDs = exclusions.isEmpty ? nil : exclusions
+        selectedDeviceUDIDs = selections
+        excludedDeviceUDIDs = nil
     }
 
     func devicesInInstallationOrder(_ devices: [ConnectedDevice]) -> [ConnectedDevice] {

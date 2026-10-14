@@ -35,7 +35,9 @@ struct MenuBarView: View {
         .padding(.vertical, 14)
         .padding(.leading, 14)
         .padding(.trailing, 16)
-        .frame(width: showsGitBranchColumn ? 765 : 635)
+        // Fixed grid columns need 748/618 points, plus outer padding and
+        // space for a non-overlay scrollbar. A narrower proposal clips the left edge.
+        .frame(width: showsGitBranchColumn ? 800 : 670)
         .frame(height: popoverSizing.popoverHeight, alignment: .top)
         .background {
             MenuBarOpenObserver {

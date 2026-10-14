@@ -1461,3 +1461,6 @@
 
 "Generate Settings with OpenAI can fill an unset encryption answer from source evidence. Existing answers are preserved. Review the answer and evidence before saving." = "יצירת הגדרות עם OpenAI יכולה למלא תשובה חסרה בנושא הצפנה על סמך ראיות מקוד המקור. תשובות קיימות נשמרות. יש לבדוק את התשובה ואת הראיות לפני השמירה.";
 "AI encryption evidence" = "ראיות AI בנושא הצפנה";
+
+"Select the devices allowed to receive this application. Newly discovered devices are never selected automatically. Selection is saved separately for each application." = "יש לבחור את המכשירים המורשים לקבל את היישום. מכשירים שהתגלו לאחרונה לעולם אינם נבחרים אוטומטית. הבחירה נשמרת בנפרד לכל יישום.";
+"Older settings saved only excluded devices. Select your intended devices once to resume installations for this application." = "ההגדרות הישנות שמרו רק מכשירים שהוחרגו. יש לבחור פעם אחת את המכשירים הרצויים כדי לחדש התקנות של יישום זה.";

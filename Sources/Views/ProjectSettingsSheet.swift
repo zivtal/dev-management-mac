@@ -354,7 +354,11 @@ struct ProjectSettingsSheet: View {
                 settingsDivider
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Only devices supported by the selected Xcode scheme are shown. Selection is saved separately for this application.")
+                    Text("Select the devices allowed to receive this application. Newly discovered devices are never selected automatically. Selection is saved separately for each application.")
+                    if project.selectedDeviceUDIDs == nil {
+                        Text("Older settings saved only excluded devices. Select your intended devices once to resume installations for this application.")
+                            .foregroundStyle(.orange)
+                    }
                     Text("Drag devices to set their installation order. The order is saved separately for this application.")
                     if project.isWatchOSApplication || project.companionWatch != nil {
                         Text("Pair your Apple Watch with Xcode and enable Developer Mode on both the Watch and its iPhone. Install the iPhone companion first if the Watch app requires it.")

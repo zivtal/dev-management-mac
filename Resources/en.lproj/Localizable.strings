@@ -1461,3 +1461,6 @@
 
 "Generate Settings with OpenAI can fill an unset encryption answer from source evidence. Existing answers are preserved. Review the answer and evidence before saving." = "Generate Settings with OpenAI can fill an unset encryption answer from source evidence. Existing answers are preserved. Review the answer and evidence before saving.";
 "AI encryption evidence" = "AI encryption evidence";
+
+"Select the devices allowed to receive this application. Newly discovered devices are never selected automatically. Selection is saved separately for each application." = "Select the devices allowed to receive this application. Newly discovered devices are never selected automatically. Selection is saved separately for each application.";
+"Older settings saved only excluded devices. Select your intended devices once to resume installations for this application." = "Older settings saved only excluded devices. Select your intended devices once to resume installations for this application.";
