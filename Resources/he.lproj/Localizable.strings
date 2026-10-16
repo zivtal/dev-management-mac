@@ -1566,3 +1566,28 @@
 "schemaVersion must be 1 or 2." = "schemaVersion חייב להיות 1 או 2.";
 
 "demo video" = "סרטון הדגמה";
+
+/* Screenshot content validation and repair */
+"Could not decode screenshot pixels." = "לא ניתן לפענח את הפיקסלים של צילום המסך.";
+"Screenshot %@ [%@]: %@" = "צילום מסך %@ [%@]: %@";
+"Invalid dimensions: %d × %d." = "ממדים לא תקינים: %d × %d.";
+"Blank or near-uniform image (mean %.2f, variance %.2f, dominant color %.2f%%)." = "תמונה ריקה או כמעט אחידה (ממוצע %.2f, שונות %.2f, צבע דומיננטי %.2f%%).";
+"A welcome or locked-vault screen is visible. Prepare a demo content screen." = "מוצג מסך פתיחה או כספת נעולה. יש להכין מסך עם תוכן הדגמה.";
+"Waiting for demo content text: %@" = "ממתין לטקסט של תוכן ההדגמה: %@";
+"Duplicate image within the screenshot set." = "תמונה כפולה בתוך קבוצת צילומי המסך.";
+"No screenshot content became ready." = "לא התקבל צילום מסך עם תוכן מוכן.";
+"No screenshot is available for %@." = "אין צילום מסך זמין עבור %@.";
+"Choose an existing editable App Store version for screenshot repair." = "יש לבחור גרסה קיימת הניתנת לעריכה ב־App Store לתיקון צילומי המסך.";
+"Validating screenshot content…" = "בודק את תוכן צילומי המסך…";
+"Regenerate screenshot preview" = "יצירה מחדש של תצוגת צילומי המסך";
+"App Store version to repair" = "גרסת App Store לתיקון";
+"Screenshot display type" = "סוג התצוגה של צילום המסך";
+"Inspect the preview and use content matching the selected App Store version. Replacement changes screenshots only; the existing build is preserved." = "יש לבדוק את התצוגה המקדימה ולהשתמש בתוכן המתאים לגרסת ה־App Store שנבחרה. ההחלפה משנה רק את צילומי המסך; הבנייה הקיימת נשמרת.";
+"Replace screenshots on existing version" = "החלפת צילומי מסך בגרסה קיימת";
+"Screenshot replacement completed. Resubmit the existing version in App Store Connect." = "החלפת צילומי המסך הושלמה. יש לשלוח מחדש את הגרסה הקיימת לבדיקה ב־App Store Connect.";
+"%@ demo capture" = "צילום הדגמה עבור %@";
+"Demo launch arguments (one per line)" = "ארגומנטים להפעלת הדגמה (אחד בכל שורה)";
+"Required content text" = "טקסט נדרש במסך התוכן";
+"Use an app-supported demo mode with sample data, or prepare and unlock a Simulator before capture. Required content text must be visible in the finished screen." = "יש להשתמש במצב הדגמה של היישום עם נתונים לדוגמה, או להכין סימולטור ולפתוח את הנעילה לפני הצילום. הטקסט הנדרש חייב להופיע במסך המוכן.";
+"The Mac app window is blank. Prepare a demo content screen before capture." = "חלון יישום ה־Mac ריק. יש להכין מסך עם תוכן הדגמה לפני הצילום.";
+"Screenshot device: %@, %@, UDID %@\n" = "מכשיר לצילום מסך: %@, %@, UDID %@\n";

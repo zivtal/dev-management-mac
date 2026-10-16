@@ -1566,3 +1566,28 @@
 "schemaVersion must be 1 or 2." = "schemaVersion must be 1 or 2.";
 
 "demo video" = "demo video";
+
+/* Screenshot content validation and repair */
+"Could not decode screenshot pixels." = "Could not decode screenshot pixels.";
+"Screenshot %@ [%@]: %@" = "Screenshot %@ [%@]: %@";
+"Invalid dimensions: %d × %d." = "Invalid dimensions: %d × %d.";
+"Blank or near-uniform image (mean %.2f, variance %.2f, dominant color %.2f%%)." = "Blank or near-uniform image (mean %.2f, variance %.2f, dominant color %.2f%%).";
+"A welcome or locked-vault screen is visible. Prepare a demo content screen." = "A welcome or locked-vault screen is visible. Prepare a demo content screen.";
+"Waiting for demo content text: %@" = "Waiting for demo content text: %@";
+"Duplicate image within the screenshot set." = "Duplicate image within the screenshot set.";
+"No screenshot content became ready." = "No screenshot content became ready.";
+"No screenshot is available for %@." = "No screenshot is available for %@.";
+"Choose an existing editable App Store version for screenshot repair." = "Choose an existing editable App Store version for screenshot repair.";
+"Validating screenshot content…" = "Validating screenshot content…";
+"Regenerate screenshot preview" = "Regenerate screenshot preview";
+"App Store version to repair" = "App Store version to repair";
+"Screenshot display type" = "Screenshot display type";
+"Inspect the preview and use content matching the selected App Store version. Replacement changes screenshots only; the existing build is preserved." = "Inspect the preview and use content matching the selected App Store version. Replacement changes screenshots only; the existing build is preserved.";
+"Replace screenshots on existing version" = "Replace screenshots on existing version";
+"Screenshot replacement completed. Resubmit the existing version in App Store Connect." = "Screenshot replacement completed. Resubmit the existing version in App Store Connect.";
+"%@ demo capture" = "%@ demo capture";
+"Demo launch arguments (one per line)" = "Demo launch arguments (one per line)";
+"Required content text" = "Required content text";
+"Use an app-supported demo mode with sample data, or prepare and unlock a Simulator before capture. Required content text must be visible in the finished screen." = "Use an app-supported demo mode with sample data, or prepare and unlock a Simulator before capture. Required content text must be visible in the finished screen.";
+"The Mac app window is blank. Prepare a demo content screen before capture." = "The Mac app window is blank. Prepare a demo content screen before capture.";
+"Screenshot device: %@, %@, UDID %@\n" = "Screenshot device: %@, %@, UDID %@\n";

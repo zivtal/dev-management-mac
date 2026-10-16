@@ -699,3 +699,146 @@ The old `-t macos` syntax belongs to legacy altool; it is not added to this uplo
 References: [Apple platform deletion rules](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-platforms/),
 [build platform filters](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-builds),
 and [Mac screenshot sizes](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/).
+
+## Screenshot content validation and repair (2.4.8)
+
+A screenshot is ready only after pixel validation, accepted display dimensions,
+and content checks. Both Publish and Upload to TestFlight stop if any supported
+screenshot family fails or is unavailable. The file path and display type appear
+in readiness and the publishing error. Invalid supplied files are reported rather
+than silently discarded. A valid iPhone image cannot hide a failed iPad capture.
+
+The validator decodes the image and measures a 256×256 sample: luminance mean,
+variance, near-black/white coverage, and the largest quantized RGB color bucket.
+Variance below 4 (on the 0–255 scale), or at least 95% black, white, or one near-color
+bucket blocks upload. Decoded-image fingerprints reject duplicate content within
+one locale/display set, including differently named copies. Reusing a screenshot
+in a different localization is allowed. All candidates are checked before any
+screenshot-set deletion or reservation; the uploader checks again before each
+asset reservation. Localized fallback images go through the same gate.
+
+OCR catches known empty-vault and unlock screens. It cannot identify every app's
+login or splash screen. Inspect the preview and configure **Required content text**
+for a phrase visible only after the desired real content is ready. This matches
+Apple's [Guideline 2.3.3](https://developer.apple.com/help/app-review/guideline-reference/2-3-3-screenshots):
+show the app in use. Automated validation is not a substitute for that inspection.
+
+### Capture and demo configuration
+
+Simulator images are captured directly with `simctl io <selected-UDID> screenshot`.
+There is no phone-to-iPad scaling or padding. The target's supported device families
+select separate iPhone/iPad simulators; a universal simulator build may be reused
+for both. Watch/TV/Vision use their own family/scheme. Local PNG/JPEG files and
+cached captures use the same validator. Only native Mac window capture uses a
+16:10 canvas; the original Mac window is also checked for blank content before
+compositing, so the backdrop cannot conceal a black window.
+
+Capture waits for `simctl bootstatus -b`, launches the chosen app on the chosen
+UDID, then samples every two seconds until two successive frames pass validation.
+The default retry budget is 30 seconds, configurable up to 60 seconds. Process
+failures propagate. Pixel/readiness failures retry and report their file/type.
+Prepared simulator captures do not reinstall or terminate the existing app, so
+an unlocked content screen is preserved. Automatic captures install the simulator
+build and launch it with the configured arguments. The existing
+`-AppStoreScreenshotFixture` convention remains supported.
+
+**Publishing Configuration → Screenshots** provides per-family demo launch
+arguments (one argument per line) and required content text. These settings use a
+Debug simulator build, preserve the app version/build, and never change production
+privacy protection. The app itself must implement the supplied launch mode.
+For example, an app with an implemented `-DemoMode YES` content fixture can use:
+
+```json
+"screenshotCapture": {
+  "iPad": {
+    "launchArguments": ["-DemoMode", "YES"],
+    "readyText": "Sample vault entries",
+    "timeoutSeconds": 40
+  }
+}
+```
+
+This object belongs under `publication`, including shared or platform-specific
+publication in schema 2. Family keys are `iPhone`, `iPad`, `appleWatch`, `appleTV`,
+`appleVisionPro`, and `mac`. Mac capture accepts the demo arguments and content-text
+check, but uses ScreenCaptureKit rather than the simulator retry loop.
+After changing capture settings, use **Regenerate screenshot preview** to discard
+cached generated images. Supplied screenshot files remain authoritative.
+
+### KeyPassX investigation, October 16, 2026
+
+The historical cache contains a reproducible validation failure:
+
+| Capture | Dimensions | Mean luminance | Variance | Near-black fraction |
+| --- | --- | --- | --- | --- |
+| 0.1.32 (33), iPad Pro 13-inch M5 | 2064×2752 | 0.01158 | 0.63929 | 99.974% |
+| 0.1.34 (35), same iPad | 2064×2752 | 252.80104 | 126.64103 | 0% |
+
+Files are under
+`~/Library/Caches/DevManagement/AppStoreScreenshots/45299918-C2BD-4ABE-8935-C4B41615E870/<version-build>/Default-v1/Screenshots/`.
+The first image visibly shows a black loading frame with a small spinner. The
+later image shows KeyPassX's empty-vault welcome screen. Neither is suitable store
+content. The 0.1.34 publish log at `2026-10-14T19:08:38Z` says:
+
+```text
+Found 3 valid local or cached screenshot(s).
+Prepared 3 App Store screenshot(s).
+Keeping 1 existing screenshot(s) for APP_IPAD_PRO_3GEN_129.
+```
+
+Previously “valid” meant accepted dimensions only. Apple's COMPLETE asset state
+also only confirmed processing, not visible content. Therefore the UI could show
+a newer preview while Publish retained the earlier remote screenshot. This
+retention and the missing pixel gate explain how a bad capture survives retries;
+the exact remote image's provenance was not downloaded/verified during this audit.
+
+Booting `EFD140A2-A821-460A-9EE5-C0C369433C1D` and launching the already installed
+0.1.34 (35) simulator app produced the welcome screen at both 3 and 15 seconds,
+not the historical black frame. The historical timing/GPU transition is therefore
+intermittent; the audit does not claim a proven Metal defect. The cache and installed
+bundle confirm `UIDeviceFamily = [1, 2]` and the correct app/version. Source inspection
+found an inactive/authentication privacy overlay, but no `isCaptured` handler;
+the visible historical spinner is not sufficient to attribute it to that overlay.
+The old fixed three-second delay provided no rendered-content guarantee.
+
+KeyPassX implements a Debug-only `-ui-test-vault YES` fixture in
+`Sources/KeyPassX/UITestVaultFixture.swift`. It creates sample entries and isolates
+preferences/cloud access, but leaves the vault locked. The publisher previously
+recognized only `-AppStoreScreenshotFixture`, so this fixture was not used.
+Arguments alone are insufficient for this particular app: prepare the simulator,
+unlock the synthetic vault, and show its entry list. Do not use a real vault.
+
+### Repair KeyPassX 0.1.34 without a new build
+
+1. Prepare the **iPad Pro 13-inch (M5)** simulator with KeyPassX 0.1.34 (35).
+   The original Debug simulator app is still cached at
+   `.../0-1-34-35/Default-v1/Build-iPhone/Build/Products/Debug-iphonesimulator/KeyPassXiOS.app`.
+   Run it with `-ui-test-vault YES`, unlock the synthetic vault using its fixture
+   password (`ui-test-password`), and leave the sample entry list visible.
+2. In **Publishing Configuration → Screenshots**, choose that prepared iPad
+   simulator. Leave its demo launch arguments empty for this prepared-screen
+   capture, and set required content text to a visible sample entry (for example
+   `Email`). Save. Use supplied screenshots or prepared content screens for other
+   supported device families as needed.
+3. In the Publish overview, choose **Regenerate screenshot preview**. Inspect the
+   iPad content image. If other families fail validation, their failures still
+   block ordinary Publish, but the targeted repair validates just the selected
+   display type so iPad-only metadata repair remains possible.
+4. Enter **0.1.34** in **App Store version to repair**, choose
+   **APP_IPAD_PRO_3GEN_129**, and click **Replace screenshots on existing version**.
+   It validates all selected assets first, resolves the existing editable iOS
+   0.1.34 version, deletes/recreates only that display type's set in each existing
+   localization, uploads reservation/chunks/checksum, and waits for COMPLETE.
+   No archive, build upload, version creation, build attachment change, or review
+   submission occurs. Retry this action after a transfer failure.
+5. In App Store Connect, inspect the iOS 0.1.34 iPad screenshots in every locale,
+   confirm build **35** remains attached, address any other review messages, and
+   resubmit that version. The local project has since advanced to 0.1.38 (39), so
+   ordinary Publish would target that newer version; use this repair action for
+   the old version.
+
+Ordinary Publish now retains remote screenshots only if their completed assets'
+checksums/order match the validated local files. Different content is replaced.
+The explicit replacement option forces deletion/recreation of matching display
+sets, including when the old assets claim COMPLETE. Replacement is not atomic in
+ASC: validation occurs first, but a network failure after deletion requires retry.

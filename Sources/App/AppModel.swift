@@ -1281,6 +1281,23 @@ final class AppModel: ObservableObject {
         activePublishingTasks[projectID]?.cancel()
     }
 
+    func replaceAppStoreScreenshots(project: ManagedProject, version: String, displayType: String,
+        screenshots: [AppStoreScreenshotAsset], onOutput: @escaping @Sendable (String) -> Void
+    ) async throws {
+        let publication = try AppStorePublishingManifest.load(from: project.folderURL)?
+            .publication(for: project.appStorePlatform)
+        for asset in screenshots where asset.displayType == displayType {
+            try AppStoreScreenshotValidator.validate(asset,
+                readyText: publication?.screenshotCapture?[asset.platform.rawValue]?.readyText)
+        }
+        let credential = try appStoreConnectCredentialMaterial(for: project)
+        let service = try AppStoreConnectService(issuerID: credential.issuerID, keyID: credential.keyID,
+            privateKeyPEM: credential.privateKey, platform: project.appStorePlatform)
+        guard let bundleID = project.bundleIdentifier?.nilIfEmpty else { throw AppStorePublishingError.missingBundleIdentifier }
+        try await service.replaceScreenshots(bundleIdentifier: bundleID, version: version,
+            displayType: displayType, screenshots: screenshots, onOutput: onOutput)
+    }
+
     func loadAppStoreConnectConfiguration(
         projectID: UUID,
         projectOverride: ManagedProject? = nil

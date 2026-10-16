@@ -392,6 +392,15 @@ Submit for Review shown. Redeem Codes, live Installation Log, and Publishing Log
 panels float above ordinary windows while they are open. Both live logs include
 runtime, copyable command output, and automatic scrolling.
 
+Screenshot capture now waits for validated content frames. Blank, near-uniform,
+wrong-size, duplicate, and known welcome/unlock images block both release actions.
+Configure demo launch arguments and required content text under **Publishing
+Configuration → Screenshots**, or use a prepared simulator's unlocked sample-data
+screen. **Regenerate screenshot preview** and **Replace screenshots on existing
+version** repair one display type on an existing editable version without uploading
+a new build. Inspect the preview before replacement; see the KeyPassX repair steps
+in the publishing guide.
+
 The full archive, metadata, screenshot, TestFlight, review-attachment, and
 submission pipeline is documented in
 [One-click App Store publishing](Docs/AppStorePublishing.md).

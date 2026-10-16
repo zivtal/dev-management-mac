@@ -257,6 +257,10 @@ private struct PublishingWindowView: View {
     @State private var pendingPublishingIntent = PublishingIntent.publish
     @State private var releasePlatforms: Set<AppStorePlatform>? = nil
     @State private var showsPublicationStatus = false
+    @State private var screenshotRepairVersion = ""
+    @State private var screenshotRepairType = "APP_IPAD_PRO_3GEN_129"
+    @State private var screenshotRepairLog = ""
+    @State private var screenshotWorkInProgress = false
     private let projectID: UUID
 
     init(initialProjectID: UUID, initialAction: PublishingAction = .release) {
@@ -753,6 +757,8 @@ private struct PublishingWindowView: View {
                     ))
                     .font(.subheadline.bold())
 
+                    screenshotRepairControls
+
                     if preview.screenshotPreview.screenshots.isEmpty {
                         Label(
                             "Screenshots are being extracted automatically from every supported Simulator family.",
@@ -785,6 +791,51 @@ private struct PublishingWindowView: View {
             )
             .font(.caption)
             .foregroundStyle(.secondary)
+        }
+    }
+
+    private var screenshotRepairControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button("Regenerate screenshot preview") {
+                Task {
+                    screenshotWorkInProgress = true
+                    defer { screenshotWorkInProgress = false }
+                    await refreshSubscriptionSummary(regenerateScreenshots: true)
+                }
+            }
+            .disabled(screenshotWorkInProgress || model.isPublishing(projectID: projectID))
+            TextField("App Store version to repair", text: $screenshotRepairVersion)
+            Picker("Screenshot display type", selection: $screenshotRepairType) {
+                ForEach(Array(Set((localPublishingPreview?.screenshotPreview.screenshots ?? []).map(\.displayType)
+                    + ["APP_IPAD_PRO_3GEN_129"])).sorted(), id: \.self) { type in
+                    Text(verbatim: type).tag(type)
+                }
+            }
+            Text("Inspect the preview and use content matching the selected App Store version. Replacement changes screenshots only; the existing build is preserved.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button("Replace screenshots on existing version") {
+                guard let project = selectedProject, let preview = localPublishingPreview else { return }
+                let assets = preview.screenshotPreview.screenshots
+                let version = screenshotRepairVersion.trimmingCharacters(in: .whitespacesAndNewlines)
+                let displayType = screenshotRepairType
+                screenshotWorkInProgress = true
+                screenshotRepairLog = ""
+                Task {
+                    defer { screenshotWorkInProgress = false }
+                    do {
+                        try await model.replaceAppStoreScreenshots(project: project, version: version,
+                            displayType: displayType, screenshots: assets, onOutput: { line in
+                                Task { @MainActor in screenshotRepairLog += line }
+                            })
+                        screenshotRepairLog += L10n.text("Screenshot replacement completed. Resubmit the existing version in App Store Connect.")
+                        await refreshAppStoreConfiguration()
+                    } catch { screenshotRepairLog += error.localizedDescription }
+                }
+            }
+            .disabled(screenshotWorkInProgress || model.isPublishing(projectID: projectID) || screenshotRepairVersion.nilIfEmpty == nil)
+            if !screenshotRepairLog.isEmpty {
+                Text(verbatim: screenshotRepairLog).font(.caption.monospaced()).textSelection(.enabled)
+            }
         }
     }
 
@@ -1652,7 +1703,7 @@ private struct PublishingWindowView: View {
         releaseAutomaticallySelection
     }
 
-    private func refreshSubscriptionSummary() async {
+    private func refreshSubscriptionSummary(regenerateScreenshots: Bool = false) async {
         guard let project = selectedProject else {
             subscriptionSummary = .none
             localPublishingPreview = nil
@@ -1725,7 +1776,8 @@ private struct PublishingWindowView: View {
                             current.screenshotPreview = updated
                             localPublishingPreview = current
                         }
-                    }
+                    },
+                    regenerate: regenerateScreenshots
                 )
                 guard selectedProjectID == project.id,
                       var current = localPublishingPreview
@@ -2206,6 +2258,16 @@ private struct PublishingWindowView: View {
                 detail: L10n.text("Checking supplied assets and available simulators…"),
                 state: .checking
             )
+        }
+        let issues = preview.screenshotPreview.blockingIssues
+        if !issues.isEmpty {
+            return PublishingReadinessItem(id: "screenshots", title: L10n.text("Screenshots need attention"),
+                detail: issues.joined(separator: "\n"), state: .blocked)
+        }
+        if screenshotWorkInProgress || preview.screenshotPreview.devices.isEmpty
+            || preview.screenshotPreview.devices.contains(where: { $0.state == .capturing || $0.state == .ready }) {
+            return PublishingReadinessItem(id: "screenshots", title: L10n.text("Screenshots"),
+                detail: L10n.text("Validating screenshot content…"), state: .checking)
         }
         let screenshots = preview.screenshotPreview.screenshots.count
         let devices = preview.screenshotPreview.devices
@@ -2881,6 +2943,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var privacyChoicesURL = ""
     @State private var screenshotPaths = "Screenshots"
     @State private var screenshotSimulatorUDIDs: [String: String] = [:]
+    @State private var screenshotCapture: [String: AppStoreScreenshotCaptureOptions] = [:]
     @State private var screenshotSimulators: [SimulatorDevice] = []
     @State private var isLoadingScreenshotSimulators = false
     @State private var screenshotSimulatorLoadError: String?
@@ -3391,6 +3454,19 @@ private struct PerAppPublishingConfigurationEditor: View {
                 text: $screenshotPaths,
                 height: 80
             )
+            ForEach(screenshotSourcePlatforms) { platform in
+                Text(L10n.format("%@ demo capture", platform.title)).font(.headline)
+                TextField("Demo launch arguments (one per line)", text: Binding(
+                    get: { screenshotCapture[platform.rawValue]?.launchArguments.joined(separator: "\n") ?? "" },
+                    set: { screenshotCapture[platform.rawValue, default: .init()].launchArguments = $0.split(whereSeparator: \.isNewline).map(String.init) }
+                ), axis: .vertical)
+                TextField("Required content text", text: Binding(
+                    get: { screenshotCapture[platform.rawValue]?.readyText ?? "" },
+                    set: { screenshotCapture[platform.rawValue, default: .init()].readyText = $0.nilIfEmpty }
+                ))
+            }
+            Text("Use an app-supported demo mode with sample data, or prepare and unlock a Simulator before capture. Required content text must be visible in the finished screen.")
+                .font(.caption).foregroundStyle(.secondary)
             Toggle("Replace existing screenshots for matching device sizes", isOn: $replaceScreenshots)
             Divider()
             HStack {
@@ -4135,6 +4211,7 @@ private struct PerAppPublishingConfigurationEditor: View {
         privacyChoicesURL = publication.privacyChoicesURL ?? ""
         screenshotPaths = (publication.screenshotPaths ?? []).joined(separator: "\n")
         screenshotSimulatorUDIDs = publication.screenshotSimulatorUDIDs ?? [:]
+        screenshotCapture = publication.screenshotCapture ?? [:]
         reviewAttachmentPaths = (publication.reviewAttachmentPaths ?? []).joined(separator: "\n")
         replaceScreenshots = publication.replaceScreenshots ?? false
         releaseAutomatically = publication.releaseAutomatically ?? true
@@ -4243,6 +4320,7 @@ private struct PerAppPublishingConfigurationEditor: View {
             screenshotSimulatorUDIDs: screenshotSimulatorUDIDs.isEmpty
                 ? nil
                 : screenshotSimulatorUDIDs,
+            screenshotCapture: screenshotCapture.isEmpty ? nil : screenshotCapture,
             reviewAttachmentPaths: reviewAttachmentPaths.split(whereSeparator: \.isNewline).map(String.init),
             replaceScreenshots: replaceScreenshots,
             review: AppStoreReviewManifestConfiguration(
