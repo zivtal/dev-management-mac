@@ -109,7 +109,8 @@ enum AppStoreScreenshotValidator {
 
     static func isKnownEmptyScreen(_ text: String) -> Bool {
         let text = text.lowercased()
-        return text.contains("no vaults yet") || text.contains("open a keepass vault to get started")
+        return (text.contains("your watch vault") && text.contains("wrist detection"))
+            || text.contains("no vaults yet") || text.contains("open a keepass vault to get started")
             || (text.contains("master password") && (text.contains("unlock vault") || text.contains("unlock")))
     }
 

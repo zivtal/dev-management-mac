@@ -935,5 +935,9 @@ launch around this script.
   starts; the pending queue is not restored after relaunch.
 - Failed-attempt cooldowns are not persisted across relaunches.
 - The Activity log retains only the latest 100 entries.
+- Screenshot capture can use a managed app’s Debug demo fixture. Invalid generated
+  cache images regenerate automatically; invalid supplied images still block
+  publishing. `capture-screenshots --project PATH --platform IOS` validates the
+  same pipeline locally without uploading. See [publishing details](Docs/AppStorePublishing.md).
 - The DMG is unsigned and not notarized for public distribution; its app keeps
   the configured Apple Development signature.

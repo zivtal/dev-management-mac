@@ -801,12 +801,12 @@ found an inactive/authentication privacy overlay, but no `isCaptured` handler;
 the visible historical spinner is not sufficient to attribute it to that overlay.
 The old fixed three-second delay provided no rendered-content guarantee.
 
-KeyPassX implements a Debug-only `-ui-test-vault YES` fixture in
-`Sources/KeyPassX/UITestVaultFixture.swift`. It creates sample entries and isolates
-preferences/cloud access, but leaves the vault locked. The publisher previously
-recognized only `-AppStoreScreenshotFixture`, so this fixture was not used.
-Arguments alone are insufficient for this particular app: prepare the simulator,
-unlock the synthetic vault, and show its entry list. Do not use a real vault.
+At the original investigation, KeyPassX's `-ui-test-vault YES` fixture created
+sample entries but left the vault locked. The publisher recognized only
+`-AppStoreScreenshotFixture`, so it never used that fixture. KeyPassX 0.1.39 now
+supports the publisher's flag and opens sample content automatically; see
+**Automatic demo content and recovery** below. The old binary still needs the
+prepared-simulator workflow when repairing screenshots for that exact version.
 
 ### Repair KeyPassX 0.1.34 without a new build
 
@@ -833,7 +833,7 @@ unlock the synthetic vault, and show its entry list. Do not use a real vault.
    submission occurs. Retry this action after a transfer failure.
 5. In App Store Connect, inspect the iOS 0.1.34 iPad screenshots in every locale,
    confirm build **35** remains attached, address any other review messages, and
-   resubmit that version. The local project has since advanced to 0.1.38 (39), so
+   resubmit that version. The local project has since advanced to 0.1.39 (40), so
    ordinary Publish would target that newer version; use this repair action for
    the old version.
 
@@ -852,3 +852,72 @@ independently scrolling publishing columns and the fixed release footer, includi
 on shorter windows. A global screenshot validation failure is listed once instead
 of being repeated under every device family. Screenshot validation remains a
 publication blocker until the underlying content is corrected.
+
+## Automatic demo content and recovery (2.5.0)
+
+The KeyPassX capture failures after the validation update had a separate cause:
+normal launches show a welcome/locked vault, and the existing `-ui-test-vault`
+fixture only selected its sample file without unlocking it. Its Watch app also
+required wrist authentication and had no sample data. Blocking those captures was
+correct, but validation alone could not produce usable store screenshots.
+
+KeyPassX now implements `-AppStoreScreenshotFixture` in Debug builds. The iOS/Mac
+fixture opens an encrypted, temporary synthetic vault with isolated preferences;
+iPad opens its sample Email entry. Watch opens the same kind of entry from an
+in-memory synthetic snapshot, without pairing or reading stored credentials.
+Release builds exclude this mode. Background locking remains active. The normal
+UI renders the screenshots; no artificial screenshot canvas or privacy bypass is
+used. iPad uses its supported larger-text launch setting for a readable capture.
+
+The local KeyPassX publication configuration uses this setup:
+
+```json
+"screenshotCapture": {
+  "iPhone": {
+    "launchArguments": ["-AppStoreScreenshotFixture"],
+    "readyText": "Email", "timeoutSeconds": 60
+  },
+  "iPad": {
+    "launchArguments": ["-AppStoreScreenshotFixture",
+      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"],
+    "readyText": "Email", "timeoutSeconds": 60
+  },
+  "appleWatch": {
+    "launchArguments": ["-AppStoreScreenshotFixture"],
+    "readyText": "Email", "timeoutSeconds": 60
+  }
+}
+```
+
+Invalid generated cache files are deleted and recaptured on the next attempt.
+Invalid supplied files remain blocking errors and are never deleted automatically.
+A specific Watch `IXErrorDomain / Uninstall requested` installation race is retried
+up to three times; other errors fail immediately. No simulator data is erased.
+Watch welcome/wrist-lock screens are now rejected by the empty-screen detector.
+The existing uniform-color, dimension, duplicate, and content-text gates remain.
+
+To exercise the same capture pipeline without uploading or submitting anything:
+
+```sh
+"/Applications/Development Management.app/Contents/MacOS/Development Management" \
+  capture-screenshots --project /path/to/app --platform IOS
+```
+
+This command regenerates previews, builds with scheme workflow actions removed,
+prints validated file paths, and exits nonzero if any required family fails.
+It does not require ASC credentials or change the managed app's version.
+
+After reopening Publish, inspect all previews and use **Upload to TestFlight**
+for a new version/build, then **Submit for Review** when that matching build is
+processed. Normal publishing replaces different remote screenshot content and
+reuses an already uploaded matching build. To repair a rejected older version
+without a build upload, use **Replace screenshots on existing version**, verify
+that the pictured UI matches that version, then resubmit it in App Store Connect.
+
+Validation on 2026-10-16 used KeyPassX 0.1.39 (40) and the actual capture command:
+all three required families passed pixel/dimension/OCR validation. The output was
+1320×2868 (`APP_IPHONE_67`), 2064×2752 (`APP_IPAD_PRO_3GEN_129`), and 422×514
+(`APP_WATCH_ULTRA`). The images show the sample vault list and masked Email entry
+details. No screenshots were uploaded or review submissions changed during this
+verification. Development Management passed 516 unit tests; KeyPassX passed 119
+package tests including localization parity and the fixture unlock/lock regression.

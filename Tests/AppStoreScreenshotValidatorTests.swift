@@ -81,6 +81,7 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
     func testKnownWelcomeAndUnlockScreensAreBlocked() {
         XCTAssertTrue(AppStoreScreenshotValidator.isKnownEmptyScreen("Your vault. Your keys.\nNo vaults yet. Import a KeePass vault"))
         XCTAssertTrue(AppStoreScreenshotValidator.isKnownEmptyScreen("Master password\nUnlock"))
+        XCTAssertTrue(AppStoreScreenshotValidator.isKnownEmptyScreen("Your Watch vault. Wrist Detection is required."))
         XCTAssertFalse(AppStoreScreenshotValidator.isKnownEmptyScreen("Vault entries\nEmail\nBank"))
     }
 
@@ -115,6 +116,46 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
             XCTFail("Black capture must not become a successful screenshot")
         } catch { XCTAssertTrue(error.localizedDescription.contains("APP_IPAD_PRO_3GEN_129")) }
         XCTAssertEqual(captures, 2)
+    }
+
+    func testInvalidGeneratedCacheIsRemovedButInvalidSuppliedImageIsPreserved() throws {
+        let cached = try asset(color: CGColor(gray: 0, alpha: 1))
+        let valid = try asset()
+        let result = try AppStoreScreenshotRecovery.validatedAssets([cached, valid],
+            cacheDirectory: cached.url.deletingLastPathComponent(), options: [:], primaryLocale: "en-US")
+        XCTAssertEqual(result, [valid])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cached.url.path))
+        let supplied = try asset(color: CGColor(gray: 1, alpha: 1))
+        XCTAssertThrowsError(try AppStoreScreenshotRecovery.validatedAssets([supplied],
+            cacheDirectory: URL(fileURLWithPath: "/different-cache"), options: [:], primaryLocale: "en-US"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: supplied.url.path))
+    }
+
+    func testSimulatorInstallRetriesAppconduitRaceAndStopsAtLimit() async throws {
+        let transient = ProcessRunnerError.commandFailed(executable: "xcrun", status: 24,
+            output: "IXErrorDomain: Uninstall requested error")
+        var attempts = 0
+        try await ScreenshotSimulatorInstallation.run(install: {
+            attempts += 1
+            if attempts < 2 { throw transient }
+        }, pause: {})
+        XCTAssertEqual(attempts, 2)
+        attempts = 0
+        do {
+            try await ScreenshotSimulatorInstallation.run(install: { attempts += 1; throw transient }, pause: {})
+            XCTFail("Persistent installation errors must fail")
+        } catch { XCTAssertEqual(attempts, 3) }
+    }
+
+    func testSimulatorInstallDoesNotRetryUnrelatedErrors() async throws {
+        var attempts = 0
+        do {
+            try await ScreenshotSimulatorInstallation.run(install: {
+                attempts += 1
+                throw ProcessRunnerError.commandFailed(executable: "xcrun", status: 1, output: "Invalid signature")
+            }, pause: {})
+            XCTFail()
+        } catch { XCTAssertEqual(attempts, 1) }
     }
 
     func testIPadLaunchUsesSelectedUDIDAndDemoArguments() {

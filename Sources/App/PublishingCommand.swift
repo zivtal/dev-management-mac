@@ -1,8 +1,8 @@
 import Foundation
 
-/// Invoked directly through the app executable; no menu bar, monitoring, builds or ASC writes.
+/// Invoked directly through the app executable; no menu bar or monitoring. Screenshot capture builds locally; it never writes to ASC.
 enum PublishingCommand {
-    static let commands = ["doctor", "status", "dry-run"]
+    static let commands = ["doctor", "status", "dry-run", "capture-screenshots"]
 
     @MainActor static func run(_ arguments: [String]) async -> Int32 {
         do {
@@ -22,10 +22,10 @@ enum PublishingCommand {
             let keyID = options["--key-id"] ?? preferences.appStoreConnectKeyID ?? ""
             let privateKey: String
             if let path = options["--private-key-path"] { privateKey = try String(contentsOfFile: path, encoding: .utf8) }
-            else if command != "dry-run" || options["--app-id"] != nil { privateKey = try store.appStoreConnectPrivateKey(profileID: nil) ?? "" }
+            else if ["doctor", "status"].contains(command) || options["--app-id"] != nil { privateKey = try store.appStoreConnectPrivateKey(profileID: nil) ?? "" }
             else { privateKey = "" }
             let platforms = try parsePlatforms(options["--platform"])
-            if command != "dry-run" {
+            if ["doctor", "status"].contains(command) {
                 guard let appID = options["--app-id"] else { throw AppStoreReleaseError.invalid(usage) }
                 for platform in (platforms ?? Set(AppStorePlatform.allCases)).sorted(by: { $0.rawValue < $1.rawValue }) {
                     let service = try AppStoreConnectService(issuerID: issuer, keyID: keyID, privateKeyPEM: privateKey, platform: platform)
@@ -36,7 +36,7 @@ enum PublishingCommand {
             guard let path = options["--project"] else { throw AppStoreReleaseError.invalid(usage) }
             let folder = URL(fileURLWithPath: path).standardizedFileURL
             let descriptor = try await ProjectDiscoveryService().discover(folderURL: folder)
-            let project = descriptor.makeManagedProject()
+            let project = state.projects.first { $0.folderURL.standardizedFileURL == folder } ?? descriptor.makeManagedProject()
             let review = AppStoreReviewConfiguration(contactFirstName: preferences.appStoreReviewFirstName ?? "",
                 contactLastName: preferences.appStoreReviewLastName ?? "", contactPhone: preferences.appStoreReviewPhone ?? "",
                 contactEmail: preferences.appStoreReviewEmail ?? "", notes: preferences.appStoreReviewNotes ?? "",
@@ -53,6 +53,26 @@ enum PublishingCommand {
                 replaceActiveReviewVersion: false, testFlight: nil, selectedPlatforms: platforms)
             let targets = try await AppStoreReleaseCoordinator.targets(project: project, configuration: config, validateReviewRequirements: false)
             let manifest = try AppStorePublishingManifest.load(from: folder)
+            if command == "capture-screenshots" {
+                for target in targets {
+                    print("Capturing \(target.label). No uploads or App Store changes.")
+                    let preview = try await AppStorePublishingService().prepareScreenshotPreview(
+                        project: target.project, configuredPaths: target.configuration.screenshotPaths,
+                        screenshotSimulatorUDIDs: target.configuration.screenshotSimulatorUDIDs,
+                        eventHandler: { event in
+                            if case .output(let text) = event { print(text, terminator: "") }
+                        }, regenerate: true)
+                    guard preview.blockingIssues.isEmpty, !preview.screenshots.isEmpty else {
+                        throw AppStoreScreenshotValidationError(issues: preview.blockingIssues.isEmpty
+                            ? ["No screenshots captured."] : preview.blockingIssues)
+                    }
+                    try AppStoreScreenshotValidator.validateSet(preview.screenshots)
+                    for asset in preview.screenshots {
+                        print("VALID \(asset.displayType): \(asset.url.path)")
+                    }
+                }
+                return 0
+            }
             let history = AppStoreReleaseHistory()
             print("Dry run: no archives, uploads, version changes, or App Store writes.")
             for target in targets {
@@ -90,6 +110,7 @@ enum PublishingCommand {
     private static let usage = """
     Usage: Development Management doctor|status --app-id ID [--platform IOS,MAC_OS]
            Development Management dry-run --project PATH [--platform MAC_OS] [--app-id ID]
+           Development Management capture-screenshots --project PATH [--platform IOS]
     Credentials default to Publishing settings/Keychain. Override with --issuer-id ID --key-id ID --private-key-path PATH.
     Doctor reports current state; missing fields are diagnostics. API/configuration errors exit nonzero.
     """

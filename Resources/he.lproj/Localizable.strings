@@ -1597,3 +1597,7 @@
 "View details…" = "הצגת פרטים…";
 
 "View details for %@" = "הצגת פרטים עבור %@";
+
+"Regenerating invalid cached screenshot: %@\n" = "צילום מסך לא תקין במטמון נוצר מחדש: %@\n";
+
+"Simulator installation was interrupted by appconduit; retrying without removing app data.\n" = "התקנת הסימולטור הופסקה על ידי appconduit; ניסיון חוזר ללא הסרת נתוני היישום.\n";

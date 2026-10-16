@@ -1597,3 +1597,7 @@
 "View details…" = "View details…";
 
 "View details for %@" = "View details for %@";
+
+"Regenerating invalid cached screenshot: %@\n" = "Regenerating invalid cached screenshot: %@\n";
+
+"Simulator installation was interrupted by appconduit; retrying without removing app data.\n" = "Simulator installation was interrupted by appconduit; retrying without removing app data.\n";

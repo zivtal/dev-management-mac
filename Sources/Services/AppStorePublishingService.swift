@@ -1070,10 +1070,10 @@ final class AppStorePublishingService {
             configuredPaths: configuredPaths,
             screenshotSimulatorUDIDs: screenshotSimulatorUDIDs
         )
-        try AppStoreScreenshotValidator.validateSet(screenshots, primaryLocale: publication?.locale ?? "en-US")
-        for asset in screenshots {
-            try AppStoreScreenshotValidator.validate(asset, readyText: captureOptions[asset.platform.rawValue]?.readyText)
-        }
+        screenshots = try AppStoreScreenshotRecovery.validatedAssets(screenshots,
+            cacheDirectory: screenshotCacheDirectory(for: project, screenshotSimulatorUDIDs: screenshotSimulatorUDIDs),
+            options: captureOptions, primaryLocale: publication?.locale ?? "en-US",
+            onOutput: { eventHandler?(.output($0)) })
         if !screenshots.isEmpty {
             eventHandler?(.output(L10n.format(
                 "Found %d valid local or cached screenshot(s).\n",
@@ -1303,10 +1303,12 @@ final class AppStorePublishingService {
             arguments: ["simctl", "bootstatus", simulator.udid, "-b"]
         )
         if !preservePreparedScreen {
-            _ = try await processRunner.runAndRequireSuccess(
-                executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
-                arguments: ["simctl", "install", simulator.udid, application.url.path]
-            )
+            try await ScreenshotSimulatorInstallation.run(install: {
+                _ = try await self.processRunner.runAndRequireSuccess(
+                    executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                    arguments: ["simctl", "install", simulator.udid, application.url.path]
+                )
+            }, onOutput: { eventHandler?(.output($0)) })
         }
         _ = try await processRunner.runAndRequireSuccess(
             executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
