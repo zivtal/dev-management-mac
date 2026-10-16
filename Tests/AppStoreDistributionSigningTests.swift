@@ -167,6 +167,52 @@ final class AppStoreDistributionSigningTests: XCTestCase {
         ])
     }
 
+    func testMacBookmarkSandboxAndRuntimeEntitlementsAreNotProfileCapabilities() {
+        let entitlements: [String: Any] = [
+            "com.apple.security.app-sandbox": true,
+            "com.apple.security.files.bookmarks.app-scope": true,
+            "com.apple.security.files.bookmarks.document-scope": true,
+            "com.apple.security.files.user-selected.read-write": true,
+            "com.apple.security.network.client": true,
+            "com.apple.security.device.camera": true,
+            "com.apple.security.cs.allow-jit": true,
+            "com.apple.security.application-groups": ["TEAM.example"]
+        ]
+        XCTAssertTrue(AppStorePublishingService.requiredProfileEntitlementKeys(
+            from: entitlements, platform: .macOS).isEmpty)
+        XCTAssertTrue(AppStorePublishingService.requiredProfileEntitlementKeys(
+            from: entitlements, platform: .iOS).contains("com.apple.security.application-groups"))
+    }
+
+    func testMacRestrictedAndUnknownEntitlementsStillRequireProfileAuthorization() throws {
+        let required = AppStorePublishingService.requiredProfileEntitlementKeys(from: [
+            "com.apple.security.files.bookmarks.app-scope": true,
+            "com.apple.developer.icloud-services": ["CloudKit"],
+            "com.apple.developer.aps-environment": "development",
+            "keychain-access-groups": ["TEAM.example.shared"],
+            "com.apple.security.unknown-capability": true
+        ], platform: .macOS)
+        XCTAssertEqual(required, ["com.apple.developer.icloud-services", "aps-environment",
+                                  "keychain-access-groups", "com.apple.security.unknown-capability"])
+        let missing = AppStoreProvisioningProfileService.missingEntitlementKeys(required,
+            inProfileContent: try Self.profileContent(entitlementKeys: ["aps-environment"]))
+        XCTAssertEqual(missing, ["com.apple.developer.icloud-services", "keychain-access-groups",
+                                 "com.apple.security.unknown-capability"])
+    }
+
+    func testMacProfileWithoutBookmarkEntitlementCanBeReused() throws {
+        let required = AppStorePublishingService.requiredProfileEntitlementKeys(from: [
+            "com.apple.security.files.bookmarks.app-scope": true,
+            "com.apple.security.app-sandbox": true,
+            "keychain-access-groups": ["TEAM.shared"],
+            "com.apple.developer.icloud-services": ["CloudKit"]
+        ], platform: .macOS)
+        XCTAssertTrue(AppStoreProvisioningProfileService.missingEntitlementKeys(required,
+            inProfileContent: try Self.profileContent(entitlementKeys: [
+                "keychain-access-groups", "com.apple.developer.icloud-services"
+            ])).isEmpty)
+    }
+
     // MARK: - Local identity selection
 
     func testDistributionSigningIdentityRequiresFingerprintAndMatchingTeam() {

@@ -1423,6 +1423,7 @@ final class AppStorePublishingService {
         // was already validated above, so the fallback only guards an unexpected layout.
         let discoveredTargets = Self.archivedProvisioningTargets(
             at: archiveURL,
+            platform: project.appStorePlatform,
             fileManager: fileManager
         )
         let archivedTargets = discoveredTargets.isEmpty
@@ -1633,6 +1634,7 @@ final class AppStorePublishingService {
     /// development and production values.
     static func archivedProvisioningTargets(
         at archiveURL: URL,
+        platform: AppStorePlatform = .iOS,
         fileManager: FileManager = .default
     ) -> [AppStoreProvisioningTarget] {
         let applicationsURL = archiveURL
@@ -1664,18 +1666,17 @@ final class AppStorePublishingService {
             targets.append(AppStoreProvisioningTarget(
                 bundleIdentifier: identifier,
                 requiredEntitlementKeys: requiredProfileEntitlementKeys(
-                    inCodeSignatureAt: candidate
+                    inCodeSignatureAt: candidate, platform: platform
                 )
             ))
         }
         return targets
     }
 
-    /// Entitlements that represent capabilities and therefore must be present in a
-    /// reusable provisioning profile. The ignored keys are universal signing
-    /// metadata or intentionally differ between development and distribution.
+    /// Profile-backed capabilities. macOS sandbox and Hardened Runtime entitlements
+    /// remain in the code signature but do not require profile authorization (TN3125).
     static func requiredProfileEntitlementKeys(
-        from entitlements: [String: Any]
+        from entitlements: [String: Any], platform: AppStorePlatform = .iOS
     ) -> Set<String> {
         let signingMetadata: Set<String> = [
             "application-identifier",
@@ -1684,20 +1685,21 @@ final class AppStorePublishingService {
             "get-task-allow",
             "com.apple.security.get-task-allow",
             "keychain-access-groups",
-            "beta-reports-active",
-            "com.apple.security.app-sandbox",
-            "com.apple.security.network.client",
-            "com.apple.security.network.server",
-            "com.apple.security.files.user-selected.read-write",
-            "com.apple.security.files.user-selected.read-only"
+            "beta-reports-active"
         ]
+        var ignored = signingMetadata
+        if platform == .macOS {
+            ignored.formUnion(MacProvisioningEntitlements.unrestricted)
+            // Keychain access is restricted on macOS, unlike App Sandbox permissions.
+            ignored.remove("keychain-access-groups")
+        }
         return DeveloperTeamService.canonicalProvisioningEntitlementKeys(
             entitlements.keys
-        ).subtracting(signingMetadata)
+        ).subtracting(ignored)
     }
 
     private static func requiredProfileEntitlementKeys(
-        inCodeSignatureAt bundleURL: URL
+        inCodeSignatureAt bundleURL: URL, platform: AppStorePlatform
     ) -> Set<String> {
         var staticCode: SecStaticCode?
         guard SecStaticCodeCreateWithPath(
@@ -1720,7 +1722,7 @@ final class AppStorePublishingService {
         else {
             return []
         }
-        return requiredProfileEntitlementKeys(from: entitlements)
+        return requiredProfileEntitlementKeys(from: entitlements, platform: platform)
     }
 
     static func isDistributionSigningFailure(_ message: String) -> Bool {

@@ -86,7 +86,7 @@ final class StandalonePublishingTests: XCTestCase {
         XCTAssertEqual(AppStorePublishingService.requiredProfileEntitlementKeys(from: [
             "com.apple.security.app-sandbox": true, "com.apple.security.get-task-allow": true,
             "com.apple.security.network.client": true, "com.apple.developer.icloud-services": ["CloudKit"]
-        ]), ["com.apple.developer.icloud-services"])
+        ], platform: .macOS), ["com.apple.developer.icloud-services"])
     }
 
     func testPortableMacArchiveCannotBePublishedAsStoreApp() {

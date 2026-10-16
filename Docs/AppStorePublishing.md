@@ -986,3 +986,18 @@ The readiness check still blocks older source versions when the selected version
 has a build, is in review or released, or when that platform has a newer approved
 or active review version. The existing version setup updates the reusable draft's
 version string during Publish.
+
+### Mac sandbox entitlements and provisioning profiles
+
+The profile validator applies macOS-specific rules when inspecting a Mac archive.
+Documented unrestricted sandbox and Hardened Runtime entitlements, including
+`com.apple.security.files.bookmarks.app-scope` and document-scoped bookmarks, stay
+in the app signature but do not have to appear in its distribution profile.
+They are not Developer Portal capabilities to enable. See Apple's
+[TN3125](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles).
+
+Restricted iCloud, push and Keychain capabilities still require profile
+authorization. Unknown keys are not silently excluded, and the Mac exemptions
+do not apply to iOS. Matching existing Mac profiles can be reused without
+creating another profile merely because they omit a sandbox entitlement.
+Retries preserve the managed app's version/build and reuse its saved archive.
