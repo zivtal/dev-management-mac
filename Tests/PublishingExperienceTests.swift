@@ -1,7 +1,35 @@
+import AppKit
+import SwiftUI
 import XCTest
 @testable import DevManagement
 
 final class PublishingExperienceTests: XCTestCase {
+    @MainActor
+    func testLongFailureDetailsDoNotExpandReadinessCardsBeyondTheWindow() {
+        let detail = String(repeating: "Screenshot /Users/example/Library/Caches/VeryLongPath/image.png: capture failed.\n", count: 100)
+        let items = (0..<7).map { index in
+            PublishingReadinessItem(id: "\(index)", title: "Screenshot status",
+                detail: index == 5 ? detail : "Ready", state: index == 5 ? .blocked : .ready)
+        }
+        let host = NSHostingView(rootView: PublishingReadinessView(
+            report: PublishingReadinessReport(items: items), target: "1.0 (1)",
+            onEditApp: {}, onOpenSettings: {}).frame(width: 1_000))
+        host.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(host.fittingSize.height, 0)
+        XCTAssertLessThan(host.fittingSize.height, 500,
+            "Full diagnostics belong in the details sheet, not an unbounded readiness card")
+    }
+
+    func testGlobalScreenshotValidationIssuesAreNotRepeatedForEveryDevice() {
+        let devices = [AppStoreScreenshotPlatform.iPhone, .iPad, .appleWatch].map {
+            AppStoreScreenshotCaptureDevice(platform: $0, name: nil, runtime: nil,
+                state: .failed("phone failed\nipad failed"))
+        }
+        let preview = AppStoreScreenshotPreview(devices: devices, screenshots: [],
+            validationIssues: ["phone failed", "ipad failed", "phone failed"])
+        XCTAssertEqual(preview.blockingIssues, ["phone failed", "ipad failed"])
+    }
+
     func testPublishingActionsHaveExplicitReviewBehavior() {
         XCTAssertTrue(PublishingIntent.publish.submitsForReview)
         XCTAssertFalse(PublishingIntent.testFlight.submitsForReview)

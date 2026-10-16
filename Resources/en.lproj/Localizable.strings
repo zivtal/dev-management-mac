@@ -1591,3 +1591,9 @@
 "Use an app-supported demo mode with sample data, or prepare and unlock a Simulator before capture. Required content text must be visible in the finished screen." = "Use an app-supported demo mode with sample data, or prepare and unlock a Simulator before capture. Required content text must be visible in the finished screen.";
 "The Mac app window is blank. Prepare a demo content screen before capture." = "The Mac app window is blank. Prepare a demo content screen before capture.";
 "Screenshot device: %@, %@, UDID %@\n" = "Screenshot device: %@, %@, UDID %@\n";
+
+"Copy details" = "Copy details";
+
+"View details…" = "View details…";
+
+"View details for %@" = "View details for %@";

@@ -1591,3 +1591,9 @@
 "Use an app-supported demo mode with sample data, or prepare and unlock a Simulator before capture. Required content text must be visible in the finished screen." = "יש להשתמש במצב הדגמה של היישום עם נתונים לדוגמה, או להכין סימולטור ולפתוח את הנעילה לפני הצילום. הטקסט הנדרש חייב להופיע במסך המוכן.";
 "The Mac app window is blank. Prepare a demo content screen before capture." = "חלון יישום ה־Mac ריק. יש להכין מסך עם תוכן הדגמה לפני הצילום.";
 "Screenshot device: %@, %@, UDID %@\n" = "מכשיר לצילום מסך: %@, %@, UDID %@\n";
+
+"Copy details" = "העתקת הפרטים";
+
+"View details…" = "הצגת פרטים…";
+
+"View details for %@" = "הצגת פרטים עבור %@";

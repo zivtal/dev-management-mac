@@ -5,6 +5,7 @@ struct PublishingReadinessView: View {
     let target: String
     let onEditApp: () -> Void
     let onOpenSettings: () -> Void
+    @State private var selectedDetail: PublishingReadinessItem?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -55,6 +56,29 @@ struct PublishingReadinessView: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(summaryColor.opacity(0.28), lineWidth: 1)
         }
+        .sheet(item: $selectedDetail) { item in
+            VStack(alignment: .leading, spacing: 16) {
+                Text(verbatim: item.title).font(.headline)
+                ScrollView {
+                    Text(verbatim: item.detail)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .scrollIndicators(.visible)
+                HStack {
+                    Button("Copy details") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(item.detail, forType: .string)
+                    }
+                    Spacer()
+                    Button("Done") { selectedDetail = nil }
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(20)
+            .frame(width: 600, height: 400)
+        }
     }
 
     private func readinessItem(_ item: PublishingReadinessItem) -> some View {
@@ -74,13 +98,18 @@ struct PublishingReadinessView: View {
                 Text(verbatim: item.detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(3)
+                    .truncationMode(.tail)
+                Button("View details…") { selectedDetail = item }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                    .accessibilityLabel(L10n.format("View details for %@", item.title))
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(10)
         .background(color(for: item.state).opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     private var summaryTitle: String {

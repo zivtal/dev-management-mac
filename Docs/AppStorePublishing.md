@@ -842,3 +842,13 @@ checksums/order match the validated local files. Different content is replaced.
 The explicit replacement option forces deletion/recreation of matching display
 sets, including when the old assets claim COMPLETE. Replacement is not atomic in
 ASC: validation occurs first, but a network failure after deletion requires retry.
+
+## Readiness layout (2.4.9)
+
+Readiness cards show at most three lines of detail. **View details…** opens the
+complete, selectable diagnostic text in a scrollable sheet with **Copy details**.
+The readiness panel has its own bounded scroll area, leaving space for the
+independently scrolling publishing columns and the fixed release footer, including
+on shorter windows. A global screenshot validation failure is listed once instead
+of being repeated under every device family. Screenshot validation remains a
+publication blocker until the underlying content is corrected.

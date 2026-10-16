@@ -101,7 +101,11 @@ struct AppStoreScreenshotPreview: Equatable, Sendable {
     var validationIssues: [String] = []
 
     var blockingIssues: [String] {
-        validationIssues + devices.compactMap { device in
+        if !validationIssues.isEmpty {
+            var seen: Set<String> = []
+            return validationIssues.filter { seen.insert($0).inserted }
+        }
+        return devices.compactMap { device in
             switch device.state {
             case .failed(let reason): return "\(device.platform.title): \(reason)"
             case .unavailable: return L10n.format("No screenshot is available for %@.", device.platform.title)

@@ -310,32 +310,40 @@ private struct PublishingWindowView: View {
                     .frame(maxWidth: .infinity)
 
                     if selectedWorkspace == .overview {
-                        if let configurationSaveConfirmation {
-                            Label(configurationSaveConfirmation, systemImage: "checkmark.circle.fill")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.green)
-                                .padding(10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                        GeometryReader { geometry in
+                            VStack(alignment: .leading, spacing: 16) {
+                                if let configurationSaveConfirmation {
+                                    Label(configurationSaveConfirmation, systemImage: "checkmark.circle.fill")
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(.green)
+                                        .padding(10)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                                }
+                                ScrollView {
+                                    PublishingReadinessView(
+                                        report: releaseReadinessReport(for: project),
+                                        target: L10n.format(
+                                            "%@ (%@)",
+                                            project.marketingVersion ?? "—",
+                                            project.buildNumber ?? "—"
+                                        ),
+                                        onEditApp: {
+                                            configurationSaveConfirmation = nil
+                                            configurationEditorStartsWithAI = false
+                                            configurationEditorInitialTab = firstConfigurationTabNeedingAttention
+                                            configurationEditorHighlightsMissingFields = true
+                                            selectedWorkspace = .configuration
+                                        },
+                                        onOpenSettings: openPublishingSettings
+                                    )
+                                }
+                                .frame(height: min(260, geometry.size.height * 0.45))
+                                .scrollIndicators(.visible)
+                                projectOptions(project)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
                         }
-                        PublishingReadinessView(
-                            report: releaseReadinessReport(for: project),
-                            target: L10n.format(
-                                "%@ (%@)",
-                                project.marketingVersion ?? "—",
-                                project.buildNumber ?? "—"
-                            ),
-                            onEditApp: {
-                                configurationSaveConfirmation = nil
-                                configurationEditorStartsWithAI = false
-                                configurationEditorInitialTab = firstConfigurationTabNeedingAttention
-                                configurationEditorHighlightsMissingFields = true
-                                selectedWorkspace = .configuration
-                            },
-                            onOpenSettings: openPublishingSettings
-                        )
-                        projectOptions(project)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                         footer(project)
                     } else {
                         PerAppPublishingConfigurationEditor(
@@ -1802,7 +1810,9 @@ private struct PublishingWindowView: View {
                                 state: .failed(error.localizedDescription)
                             )
                         },
-                    screenshots: localScreenshots
+                    screenshots: localScreenshots,
+                    validationIssues: (error as? AppStoreScreenshotValidationError)?.issues
+                        ?? [error.localizedDescription]
                 )
                 localPublishingPreview = current
             }
