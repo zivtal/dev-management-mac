@@ -55,7 +55,7 @@ configurable number of days.
 - A notification after every successful installation, including the app,
   device, model, connection type, and discovered app icon.
 - Launch at login, enabled by default on first run.
-- One-click iOS publishing that prepares metadata and screenshots, creates the
+- One-click publishing for selected iOS and macOS schemes that prepares metadata and screenshots, creates the
   App Store version, ensures the exact build is available to internal
   TestFlight testers, uploads project-owned review attachments, and submits the
   release for App Review. A separate upload-only action stops at TestFlight, and

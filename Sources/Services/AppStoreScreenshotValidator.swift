@@ -144,12 +144,12 @@ enum AppStoreScreenshotCapture {
         for _ in 0..<attempts {
             try Task.checkCancellation()
             try await pause()
-            let asset = try await capture()
             do {
+                let asset = try await capture()
                 try AppStoreScreenshotValidator.validate(asset, readyText: options.readyText)
                 consecutive += 1
                 if consecutive >= 2 { return asset }
-            } catch {
+            } catch let error as AppStoreScreenshotValidationError {
                 consecutive = 0
                 lastError = error
                 onOutput(error.localizedDescription + "\n")

@@ -55,6 +55,34 @@ final class AppStoreReleasePlanTests: XCTestCase {
         catch { XCTAssertTrue(error.localizedDescription.contains("Select at least one")) }
     }
 
+    func testExplicitMacStoreConfigurationIsPreservedAndPreviewResolvesDebugIdentity() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var p = project(); p.folderPath = root.path
+        p.availableConfigurations = ["Debug", "Release", "AppStore"]
+        let manifest = AppStorePublishingManifest(schemaVersion: 2, platforms: [
+            "MAC_OS": .init(scheme: "MacStore", configuration: "AppStore")])
+        try JSONEncoder().encode(manifest).write(to: root.appendingPathComponent("app-store-publishing.json"))
+        let targets = try await AppStoreReleaseCoordinator.targets(project: p, configuration: configuration(), runner: MacConfigurationRunner())
+        let mac = try XCTUnwrap(targets.first?.project)
+        XCTAssertEqual(mac.configuration, "AppStore")
+        XCTAssertEqual(mac.bundleIdentifier, "com.example.store")
+        let preview = try await AppStoreReleaseCoordinator.screenshotProject(mac, runner: MacConfigurationRunner())
+        XCTAssertEqual(preview.configuration, "Debug")
+        XCTAssertEqual(preview.bundleIdentifier, "com.example.local")
+        XCTAssertEqual(preview.appStorePlatform, .macOS)
+        XCTAssertEqual(preview.marketingVersion, mac.marketingVersion)
+    }
+
+    func testScreenshotRegenerationCachesAreIsolatedPerReleasePlatform() {
+        let ios = project()
+        var mac = ios; mac.applicationPlatform = .macOS
+        let service = AppStorePublishingService()
+        XCTAssertNotEqual(service.screenshotCacheDirectory(for: ios), service.screenshotCacheDirectory(for: mac))
+        var legacy = ios; legacy.configuration = "Debug"; legacy.availableConfigurations = ["Debug", "Release"]
+        XCTAssertEqual(AppStoreReleaseCoordinator.archiveConfiguration(for: legacy), "Release")
+    }
+
     func testPlatformFailureStopsRemainingTargetsAndReportsCompletedOnes() async throws {
         let p = project()
         let targets = ["Phone", "Mac", "Other"].map { scheme -> AppStoreReleaseTarget in
@@ -201,6 +229,17 @@ final class AppStoreReleasePlanTests: XCTestCase {
               review: .init(contactFirstName: "Pat", contactLastName: "Lee", contactPhone: "123", contactEmail: "a@b.com", notes: "", demoAccountRequired: false, demoAccountName: nil, demoAccountPassword: nil),
               manualMetadata: nil, manualLocalizations: [], screenshotPaths: [], screenshotSimulatorUDIDs: [:], reviewAttachmentPaths: [],
               replaceScreenshots: false, releaseAutomatically: false, replaceActiveReviewVersion: false, testFlight: nil)
+    }
+}
+
+private struct MacConfigurationRunner: ProcessRunning {
+    func run(executable: URL, arguments: [String], workingDirectory: URL?, additionalEnvironment: [String: String],
+             standardInput: Data?, onOutput: ProcessRunner.OutputHandler?, terminateWhenOutput: ProcessRunner.OutputTerminationPredicate?) async throws -> CommandResult {
+        XCTAssertTrue(arguments.contains("generic/platform=macOS"))
+        let bundle = arguments.contains("AppStore") ? "com.example.store" : "com.example.local"
+        return CommandResult(terminationStatus: 0, output: """
+        [{"buildSettings":{"PRODUCT_TYPE":"com.apple.product-type.application","WRAPPER_EXTENSION":"app","SDKROOT":"macosx","PRODUCT_BUNDLE_IDENTIFIER":"\(bundle)","MARKETING_VERSION":"1","CURRENT_PROJECT_VERSION":"1"}}]
+        """)
     }
 }
 

@@ -33,7 +33,8 @@ final class MacStoreScreenshotService {
         let prepared = try XcodeSchemeBuildPreparationService().prepare(project: project)
         defer { prepared.removeTemporaryFile(fileManager: .default) }
         let container = project.containerURL.pathExtension == "xcworkspace" ? "-workspace" : "-project"
-        let configuration = project.availableConfigurations.first { $0 == "Debug" } ?? project.configuration
+        let previewProject = try await AppStoreReleaseCoordinator.screenshotProject(project)
+        let configuration = previewProject.configuration
         let buildRoot = root.appendingPathComponent("Build")
         _ = try await ProcessRunner().runAndRequireSuccess(executable: URL(fileURLWithPath: "/usr/bin/xcodebuild"),
             arguments: [container, project.containerPath, "-scheme", prepared.name,
@@ -43,7 +44,7 @@ final class MacStoreScreenshotService {
         let apps = try FileManager.default.contentsOfDirectory(at: products, includingPropertiesForKeys: nil)
         guard let url = apps.first(where: {
             guard $0.pathExtension == "app", let bundle = Bundle(url: $0) else { return false }
-            return bundle.bundleIdentifier == project.bundleIdentifier
+            return bundle.bundleIdentifier == previewProject.bundleIdentifier
         }) else { throw failure("The Mac screenshot build did not contain the selected app.") }
         let launch = NSWorkspace.OpenConfiguration()
         launch.arguments = options.launchArguments
@@ -68,19 +69,18 @@ final class MacStoreScreenshotService {
         config.width = Int(window.frame.width * 2)
         config.height = Int(window.frame.height * 2)
         config.showsCursor = false
-        let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-        let metrics = try AppStoreScreenshotValidator.metrics(image)
-        guard !metrics.isNearUniform else {
-            throw AppStoreScreenshotValidationError(issues: [L10n.text("The Mac app window is blank. Prepare a demo content screen before capture.")])
-        }
-        let png = try canvas(image)
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         let output = outputDirectory.appendingPathComponent("mac-window.png")
-        try png.write(to: output, options: .atomic)
-        let asset = AppStoreScreenshotAsset(url: output, displayType: "APP_DESKTOP", platform: .mac,
-                                       automaticallyCaptured: true)
-        try AppStoreScreenshotValidator.validate(asset, readyText: options.readyText)
-        return asset
+        return try await AppStoreScreenshotCapture.waitForContent(options: options) {
+            let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            let metrics = try AppStoreScreenshotValidator.metrics(image)
+            guard !metrics.isNearUniform else {
+                throw AppStoreScreenshotValidationError(issues: [L10n.text("The Mac app window is blank. Prepare a demo content screen before capture.")])
+            }
+            try canvas(image).write(to: output, options: .atomic)
+            return AppStoreScreenshotAsset(url: output, displayType: "APP_DESKTOP", platform: .mac,
+                                           automaticallyCaptured: true)
+        }
     }
 
     private static func openMenuBarPanel(pid: pid_t) throws {
@@ -97,21 +97,19 @@ final class MacStoreScreenshotService {
     }
 
     /// Fit the real window on an opaque 16:10 canvas accepted by the Mac App Store.
-    private static func canvas(_ image: CGImage) throws -> Data {
-        guard let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 2560, pixelsHigh: 1600,
-            bitsPerSample: 8, samplesPerPixel: 3, hasAlpha: false, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
-              let context = NSGraphicsContext(bitmapImageRep: bitmap) else { throw failure("Could not render the Mac screenshot.") }
-        NSGraphicsContext.saveGraphicsState()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        NSGraphicsContext.current = context
-        NSColor(white: 0.12, alpha: 1).setFill()
-        NSRect(x: 0, y: 0, width: 2560, height: 1600).fill()
+    static func canvas(_ image: CGImage) throws -> Data {
+        // AppKit cannot create a drawing context for a packed 24-bit RGB bitmap on all systems.
+        // Use a supported 32-bit opaque context; the PNG still has no alpha channel.
+        guard let context = CGContext(data: nil, width: 2560, height: 1600,
+            bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { throw failure("Could not render the Mac screenshot.") }
+        context.setFillColor(CGColor(gray: 0.12, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 2560, height: 1600))
         let scale = min(2400 / CGFloat(image.width), 1440 / CGFloat(image.height), 1)
         let size = NSSize(width: CGFloat(image.width) * scale, height: CGFloat(image.height) * scale)
-        NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
-            .draw(in: NSRect(x: (2560-size.width)/2, y: (1600-size.height)/2, width: size.width, height: size.height))
-        guard let data = bitmap.representation(using: .png, properties: [:]) else { throw failure("Could not save the Mac screenshot.") }
+        context.draw(image, in: CGRect(x: (2560-size.width)/2, y: (1600-size.height)/2, width: size.width, height: size.height))
+        guard let rendered = context.makeImage(),
+              let data = NSBitmapImageRep(cgImage: rendered).representation(using: .png, properties: [:]) else { throw failure("Could not save the Mac screenshot.") }
         return data
     }
 
@@ -120,10 +118,11 @@ final class MacStoreScreenshotService {
 
 extension AppStorePublishingService {
     func prepareMacScreenshotPreview(project: ManagedProject, configuredPaths: [String]) async throws -> AppStoreScreenshotPreview {
-        let assets = localScreenshotAssets(project: project, configuredPaths: configuredPaths)
-        try AppStoreScreenshotValidator.validateSet(assets)
+        let candidates = localScreenshotAssets(project: project, configuredPaths: configuredPaths).filter { $0.platform == .mac }
         let options = try AppStorePublishingManifest.load(from: project.folderURL)?
             .publication(for: project.appStorePlatform)?.screenshotCapture?["mac"] ?? .init()
+        let assets = try AppStoreScreenshotRecovery.validatedAssets(candidates,
+            cacheDirectory: screenshotCacheDirectory(for: project), options: ["mac": options], primaryLocale: "en-US")
         for asset in assets { try AppStoreScreenshotValidator.validate(asset, readyText: options.readyText) }
         let preview = try await MacStoreScreenshotService.preview(project: project, existing: assets,
             outputDirectory: screenshotCacheDirectory(for: project), options: options)

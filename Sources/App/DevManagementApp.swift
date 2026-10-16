@@ -6,6 +6,15 @@ struct DevManagementEntry {
     static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())
         if let command = arguments.first, PublishingCommand.commands.contains(command) {
+            if command == "capture-screenshots" {
+                // Mac window capture needs AppKit's window-server connection and main run loop.
+                // dispatchMain alone leaves CoreGraphics uninitialized in command-line mode.
+                let application = NSApplication.shared
+                application.setActivationPolicy(.accessory)
+                Task { exit(await PublishingCommand.run(arguments)) }
+                application.run()
+                return
+            }
             Task { exit(await PublishingCommand.run(arguments)) }
             dispatchMain()
         } else {

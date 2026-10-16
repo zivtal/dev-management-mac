@@ -13,8 +13,10 @@ complete it with Apple's controls in the same window, then refresh. **Apple
 Account…** also provides account agreements and privacy setup. WebKit keeps the
 session locally; the app never extracts Apple passwords or cookies.
 
-Publish the iOS and native Mac schemes separately. They may share one App Store
-record when their bundle identifiers match. Watch and widgets are embedded in
+Configure both schemes in the schema-2 `platforms` section, then select iOS, macOS,
+or both in the Publish window. Publish completes each selected platform through
+build processing and confirmed App Review submission. They may share one App Store
+record when their store bundle identifiers match. Watch and widgets are embedded in
 the iOS upload. The Mac scheme must be sandboxed and specify an app category.
 Mac export obtains its own installer certificate, creates a signed `.pkg`, and
 keeps Mac builds, review submissions, profiles, and screenshots separate from
@@ -951,3 +953,26 @@ App Store setup complete unless it was actually deferred, and marks Review as
 skipped. The finished progress label says **Completed** instead of looking stuck
 at step 4 of 5. **Continue to App Review…** returns to the publishing overview for
 review and confirmation; it does not submit automatically.
+
+### Mac store configuration and screenshot identity
+
+An explicit platform `configuration` is used for both resolving build settings and
+archiving. For example, `MAC_OS: {"scheme":"MyMacApp","configuration":"AppStore"}`
+can select a sandboxed store build with the shared iOS bundle identifier while
+Debug/Release retain a separate local Mac identity. Legacy single-platform projects
+still default to Release. The managed app's version and build are preserved.
+
+Mac previews resolve the Debug configuration's own bundle identifier and wait for
+two validated content frames using the configured `screenshotCapture.mac` launch
+arguments and `readyText`. The preview and the archive can therefore have different
+bundle identifiers. Screenshot caches are separated by release platform so
+regenerating Mac screenshots cannot remove the iPhone/iPad/Watch set.
+
+For KeyPassX, the local publishing manifest now selects `KeyPassXMac / AppStore`
+and defaults to `MAC_OS` while iOS 0.1.39 remains in review. The Mac configuration
+uses the shared store identifier, sandbox, user-selected file access, network
+client, shared Keychain group and the publisher's existing encryption declaration.
+Its Debug preview uses `-AppStoreScreenshotFixture` and requires `Email` on screen.
+Choose **Publish**, not **Upload to TestFlight**, to continue through review.
+A draft named 1.0 is updated to the source marketing version when the Mac release
+is prepared; publishing does not rewrite source version numbers to match a draft.

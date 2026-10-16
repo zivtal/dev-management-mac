@@ -1695,13 +1695,17 @@ private struct PublishingWindowView: View {
     }
 
     private func refreshSubscriptionSummary(regenerateScreenshots: Bool = false) async {
-        guard let project = selectedProject else {
+        guard var project = selectedProject else {
             subscriptionSummary = .none
             localPublishingPreview = nil
             return
         }
         subscriptionSummary = .loading
         do {
+            // Switching platforms changes the scheme's bundle ID, version and supported devices.
+            // Never carry the managed iOS target's metadata into the Mac preview.
+            project = try await AppStoreReleaseCoordinator.resolve(project: project, platform: project.appStorePlatform)
+            try Task.checkCancellation()
             let catalog = try StoreKitSubscriptionDiscoveryService().discover(
                 project: project,
                 defaultLocale: model.preferences.appStoreLocale?.nilIfEmpty ?? "en-US"

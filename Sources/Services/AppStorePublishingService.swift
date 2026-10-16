@@ -1390,15 +1390,10 @@ final class AppStorePublishingService {
                     preparedScheme.removedActionTitles.count
                 )))
             }
-            let releaseConfiguration = project.availableConfigurations.first(where: {
-                $0.caseInsensitiveCompare("Release") == .orderedSame
-            }) ?? project.availableConfigurations.first(where: {
-                $0.localizedCaseInsensitiveContains("release")
-            }) ?? project.configuration
             let archiveArguments = Self.archiveArguments(
                 containerArguments: xcodeContainerArguments(for: project),
                 schemeName: preparedScheme.name,
-                configuration: releaseConfiguration,
+                configuration: project.configuration,
                 archiveURL: archiveURL,
                 teamID: project.signingTeamID ?? project.projectSigningTeamID,
                 authenticationArguments: authenticationArguments, platform: project.appStorePlatform
@@ -2077,6 +2072,7 @@ final class AppStorePublishingService {
             .appendingPathComponent("DevManagement", isDirectory: true)
             .appendingPathComponent("AppStoreScreenshots", isDirectory: true)
             .appendingPathComponent(project.id.uuidString, isDirectory: true)
+            .appendingPathComponent(project.appStorePlatform.rawValue, isDirectory: true)
             .appendingPathComponent("\(version)-\(build)", isDirectory: true)
             .appendingPathComponent(
                 Self.screenshotSourceCacheKey(

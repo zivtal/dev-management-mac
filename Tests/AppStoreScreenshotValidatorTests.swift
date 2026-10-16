@@ -118,6 +118,34 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
         XCTAssertEqual(captures, 2)
     }
 
+    func testMacRawWindowValidationRetriesBeforeCanvasRendering() async throws {
+        let content = try asset()
+        var captures = 0
+        _ = try await AppStoreScreenshotCapture.waitForContent(options: .init(timeoutSeconds: 8), capture: {
+            captures += 1
+            if captures == 1 { throw AppStoreScreenshotValidationError(issues: ["Blank Mac window"]) }
+            return content
+        }, pause: {})
+        XCTAssertEqual(captures, 3)
+    }
+
+    @MainActor func testMacCanvasProducesOpaqueValidDesktopPNGWithRealContent() throws {
+        let input = try asset(width: 1600, height: 1000)
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(input.url as CFURL, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let png = try MacStoreScreenshotService.canvas(image)
+        let renderedSource = try XCTUnwrap(CGImageSourceCreateWithData(png as CFData, nil))
+        let rendered = try XCTUnwrap(CGImageSourceCreateImageAtIndex(renderedSource, 0, nil))
+        XCTAssertEqual(rendered.width, 2560)
+        XCTAssertEqual(rendered.height, 1600)
+        XCTAssertTrue([CGImageAlphaInfo.none, .noneSkipFirst, .noneSkipLast].contains(rendered.alphaInfo))
+        XCTAssertFalse(try AppStoreScreenshotValidator.metrics(rendered).isNearUniform)
+        let output = input.url.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + ".png")
+        files.append(output)
+        try png.write(to: output)
+        XCTAssertNoThrow(try AppStoreScreenshotValidator.validate(.init(url: output, displayType: "APP_DESKTOP", platform: .mac)))
+    }
+
     func testInvalidGeneratedCacheIsRemovedButInvalidSuppliedImageIsPreserved() throws {
         let cached = try asset(color: CGColor(gray: 0, alpha: 1))
         let valid = try asset()

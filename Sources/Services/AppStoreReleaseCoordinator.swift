@@ -16,7 +16,7 @@ enum AppStoreReleaseCoordinator {
                         validateReviewRequirements: Bool = true) async throws -> [AppStoreReleaseTarget] {
         let manifest = try AppStorePublishingManifest.load(from: project.folderURL)
         let entries = manifest?.platforms ?? [project.appStorePlatform.rawValue:
-            AppStorePlatformReleaseConfiguration(scheme: project.scheme, configuration: project.configuration)]
+            AppStorePlatformReleaseConfiguration(scheme: project.scheme, configuration: archiveConfiguration(for: project))]
         let selected = configuration.selectedPlatforms.map { Set($0.map(\.rawValue)) }
             ?? Set(manifest?.defaultPlatforms ?? Array(entries.keys))
         guard !selected.isEmpty, selected.isSubset(of: Set(entries.keys)) else {
@@ -38,6 +38,22 @@ enum AppStoreReleaseCoordinator {
             targets.append(AppStoreReleaseTarget(project: target, configuration: config))
         }
         return targets
+    }
+
+    /// Explicit store configurations may carry a different bundle ID and sandbox entitlements.
+    /// Only legacy, single-scheme projects need a Release default.
+    static func archiveConfiguration(for project: ManagedProject) -> String {
+        project.availableConfigurations.first { $0.caseInsensitiveCompare("Release") == .orderedSame }
+            ?? project.configuration
+    }
+
+    static func screenshotProject(_ project: ManagedProject,
+                                  runner: any ProcessRunning = ProcessRunner()) async throws -> ManagedProject {
+        var preview = project
+        preview.configuration = project.availableConfigurations.first {
+            $0.caseInsensitiveCompare("Debug") == .orderedSame
+        } ?? project.configuration
+        return try await resolve(project: preview, platform: project.appStorePlatform, runner: runner)
     }
 
     static func resolve(project: ManagedProject, platform: AppStorePlatform,
