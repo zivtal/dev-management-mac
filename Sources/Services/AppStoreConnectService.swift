@@ -98,6 +98,17 @@ struct AppStoreScreenshotCaptureDevice: Equatable, Sendable, Identifiable {
 struct AppStoreScreenshotPreview: Equatable, Sendable {
     let devices: [AppStoreScreenshotCaptureDevice]
     let screenshots: [AppStoreScreenshotAsset]
+    var validationIssues: [String] = []
+
+    var blockingIssues: [String] {
+        validationIssues + devices.compactMap { device in
+            switch device.state {
+            case .failed(let reason): return "\(device.platform.title): \(reason)"
+            case .unavailable: return L10n.format("No screenshot is available for %@.", device.platform.title)
+            default: return nil
+            }
+        }
+    }
 }
 
 struct AppStoreConnectPublication: Sendable {
@@ -1739,6 +1750,50 @@ final class AppStoreConnectService {
         )
     }
 
+    /// Repairs only the chosen display type on an existing editable version. Never creates a version/build.
+    func replaceScreenshots(bundleIdentifier: String, version: String, displayType: String,
+        screenshots: [AppStoreScreenshotAsset], onOutput: @escaping @Sendable (String) -> Void
+    ) async throws {
+        let selected = screenshots.filter { $0.displayType == displayType }
+        guard !selected.isEmpty else {
+            throw AppStoreScreenshotValidationError(issues: [L10n.format("No screenshot is available for %@.", displayType)])
+        }
+        try AppStoreScreenshotValidator.validateSet(selected)
+        let appID = try await findApplication(bundleIdentifier: bundleIdentifier)
+        let versions = try await pagedData(path: "/v1/apps/\(appID)/appStoreVersions",
+            query: ["filter[platform]": platform.rawValue, "filter[versionString]": version])
+        guard let target = versions.first(where: {
+            Self.attributes($0)["versionString"] as? String == version
+                && Self.attributes($0)["platform"] as? String == platform.rawValue
+        }), let versionID = target["id"] as? String,
+              ["PREPARE_FOR_SUBMISSION", "REJECTED", "METADATA_REJECTED", "DEVELOPER_REJECTED"].contains(
+                Self.attributes(target)["appStoreState"] as? String ?? "") else {
+            throw AppStoreScreenshotValidationError(issues: [L10n.text("Choose an existing editable App Store version for screenshot repair.")])
+        }
+        let localizations = try await pagedData(path: "/v1/appStoreVersions/\(versionID)/appStoreVersionLocalizations")
+        var ids: [String: String] = [:]
+        for localization in localizations {
+            if let locale = Self.attributes(localization)["locale"] as? String, let id = localization["id"] as? String {
+                ids[locale.lowercased()] = id
+            }
+        }
+        guard let primary = ids.keys.sorted().first else {
+            throw AppStoreConnectError.missingIdentifier("App Store localization")
+        }
+        // Include every existing locale, even if it has no local screenshot override.
+        let localized = ids.keys.sorted().flatMap { locale -> [AppStoreScreenshotAsset] in
+            let specific = selected.filter { $0.locale?.lowercased() == locale }
+            let fallback = selected.filter { $0.locale == nil }
+            let source = !specific.isEmpty ? specific : !fallback.isEmpty ? fallback : selected.filter { $0.locale == selected.first?.locale }
+            return source.map { AppStoreScreenshotAsset(url: $0.url, displayType: $0.displayType,
+                platform: $0.platform, locale: locale, deviceName: $0.deviceName,
+                automaticallyCaptured: $0.automaticallyCaptured) }
+        }
+        onOutput("\(platform.rawValue) \(version): \(displayType)\n")
+        try await uploadScreenshots(localized, localizationIDsByLocale: ids, primaryLocale: primary,
+            replaceExisting: true, onOutput: onOutput)
+    }
+
     func uploadScreenshots(
         _ screenshots: [AppStoreScreenshotAsset],
         localizationIDsByLocale: [String: String],
@@ -1746,6 +1801,12 @@ final class AppStoreConnectService {
         replaceExisting: Bool,
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws {
+        do {
+            try AppStoreScreenshotValidator.validateSet(screenshots, primaryLocale: primaryLocale)
+        } catch {
+            onOutput(error.localizedDescription + "\n")
+            throw error
+        }
         let primaryLocalizationID = localizationIDsByLocale[primaryLocale.lowercased()]
             ?? localizationIDsByLocale.values.first
         guard let primaryLocalizationID else {
@@ -1755,6 +1816,7 @@ final class AppStoreConnectService {
             screenshots,
             primaryLocale: primaryLocale
         )
+        try AppStoreScreenshotValidator.validateSet(completeScreenshots, primaryLocale: primaryLocale)
         let fallbackCount = completeScreenshots.count - screenshots.count
         if fallbackCount > 0 {
             onOutput(L10n.format(
@@ -1791,13 +1853,14 @@ final class AppStoreConnectService {
             }
             if !existingScreenshots.isEmpty,
                existingScreenshotsAreComplete,
-               try (!replaceExisting || Self.screenshotsMatch(
-                existingScreenshots, assets: Array(group.value.prefix(10))
-               )) {
+               !replaceExisting,
+               try Self.screenshotsMatch(existingScreenshots, assets: Array(group.value.prefix(10))) {
                 onOutput(L10n.format("Keeping %d existing screenshot(s) for %@.\n", existingScreenshots.count, displayType))
                 continue
             }
-            if replaceExisting || !existingScreenshotsAreComplete {
+            if replaceExisting, let setID = existing.set?["id"] as? String {
+                _ = try await request(method: "DELETE", path: "/v1/appScreenshotSets/\(setID)")
+            } else if !existingScreenshots.isEmpty {
                 for screenshot in existingScreenshots {
                     guard let screenshotID = screenshot["id"] as? String else { continue }
                     _ = try await request(
@@ -1815,7 +1878,7 @@ final class AppStoreConnectService {
             }
 
             let screenshotSetID: String
-            if let existingSet = existing.set,
+            if !replaceExisting, let existingSet = existing.set,
                let id = existingSet["id"] as? String {
                 screenshotSetID = id
             } else {
@@ -3902,6 +3965,7 @@ final class AppStoreConnectService {
         screenshotSetID: String,
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws {
+        try AppStoreScreenshotValidator.validate(screenshot)
         let fileData = try Data(contentsOf: screenshot.url)
         let reserved = try await request(
             method: "POST",

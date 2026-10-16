@@ -921,9 +921,15 @@ final class AppStorePublishingService {
             screenshotSimulatorUDIDs: screenshotSimulatorUDIDs,
             eventHandler: eventHandler
         )
-        if preview.screenshots.isEmpty {
-            eventHandler(.output(L10n.text("No valid local or automatically captured screenshot is available; existing App Store Connect screenshots will be preserved.\n")))
+        guard !preview.screenshots.isEmpty, preview.blockingIssues.isEmpty else {
+            let issues = preview.blockingIssues.isEmpty ? [L10n.text("No screenshot content became ready.")] : preview.blockingIssues
+            eventHandler(.output(issues.joined(separator: "\n") + "\n"))
+            throw AppStoreScreenshotValidationError(issues: issues)
         }
+        let primaryLocale = try AppStorePublishingManifest.load(from: project.folderURL)?
+            .publication(for: project.appStorePlatform)?.locale ?? "en-US"
+        do { try AppStoreScreenshotValidator.validateSet(preview.screenshots, primaryLocale: primaryLocale) }
+        catch { eventHandler(.output(error.localizedDescription + "\n")); throw error }
         var counts: [String: Int] = [:]
         return preview.screenshots.filter { screenshot in
             let key = "\(screenshot.locale?.lowercased() ?? "primary")|\(screenshot.displayType)"
@@ -964,13 +970,13 @@ final class AppStorePublishingService {
         deviceName: String? = nil,
         automaticallyCaptured: Bool = false
     ) -> AppStoreScreenshotAsset? {
-        guard ["png", "jpg", "jpeg"].contains(url.pathExtension.lowercased()),
-              let dimensions = imageDimensions(at: url),
-              let displayType = Self.screenshotDisplayType(
+        guard ["png", "jpg", "jpeg"].contains(url.pathExtension.lowercased()) else { return nil }
+        let dimensions = imageDimensions(at: url) ?? (width: 0, height: 0)
+        let displayType = Self.screenshotDisplayType(
                 width: dimensions.width,
                 height: dimensions.height,
                 platform: platformHint ?? Self.platformHint(from: url.path)
-              ) else { return nil }
+              ) ?? "UNSUPPORTED"
         return AppStoreScreenshotAsset(
             url: url,
             displayType: displayType,
@@ -1040,8 +1046,16 @@ final class AppStorePublishingService {
         configuredPaths: [String],
         screenshotSimulatorUDIDs: [String: String] = [:],
         onUpdate: ScreenshotPreviewHandler? = nil,
-        eventHandler: EventHandler? = nil
+        eventHandler: EventHandler? = nil,
+        regenerate: Bool = false
     ) async throws -> AppStoreScreenshotPreview {
+        if regenerate {
+            let directory = screenshotCacheDirectory(for: project, screenshotSimulatorUDIDs: screenshotSimulatorUDIDs)
+            if fileManager.fileExists(atPath: directory.path) { try fileManager.removeItem(at: directory) }
+        }
+        let publication = try AppStorePublishingManifest.load(from: project.folderURL)?
+            .publication(for: project.appStorePlatform)
+        let captureOptions = publication?.screenshotCapture ?? [:]
         if project.isMacOSApplication {
             return try await prepareMacScreenshotPreview(project: project, configuredPaths: configuredPaths)
         }
@@ -1049,13 +1063,17 @@ final class AppStorePublishingService {
         let screenshotConfiguration = Self.screenshotBuildConfiguration(
             availableConfigurations: project.availableConfigurations,
             selectedConfiguration: project.configuration,
-            requiresDebug: !screenshotFixtureArguments.isEmpty || !screenshotSimulatorUDIDs.isEmpty
+            requiresDebug: !screenshotFixtureArguments.isEmpty || !screenshotSimulatorUDIDs.isEmpty || !captureOptions.isEmpty
         )
         var screenshots = localScreenshotAssets(
             project: project,
             configuredPaths: configuredPaths,
             screenshotSimulatorUDIDs: screenshotSimulatorUDIDs
         )
+        try AppStoreScreenshotValidator.validateSet(screenshots, primaryLocale: publication?.locale ?? "en-US")
+        for asset in screenshots {
+            try AppStoreScreenshotValidator.validate(asset, readyText: captureOptions[asset.platform.rawValue]?.readyText)
+        }
         if !screenshots.isEmpty {
             eventHandler?(.output(L10n.format(
                 "Found %d valid local or cached screenshot(s).\n",
@@ -1209,9 +1227,11 @@ final class AppStorePublishingService {
                     platform: platform,
                     simulator: simulator,
                     application: application,
-                    launchArguments: usesPreparedSimulator.contains(platform)
-                        ? []
-                        : screenshotFixtureArguments,
+                    launchArguments: captureOptions[platform.rawValue]?.launchArguments
+                        ?? (usesPreparedSimulator.contains(platform) ? [] : screenshotFixtureArguments),
+                    captureOptions: captureOptions[platform.rawValue] ?? .init(),
+                    preservePreparedScreen: usesPreparedSimulator.contains(platform)
+                        && captureOptions[platform.rawValue]?.launchArguments.isEmpty != false,
                     screenshotSimulatorUDIDs: screenshotSimulatorUDIDs,
                     eventHandler: eventHandler
                 )
@@ -1243,12 +1263,20 @@ final class AppStorePublishingService {
         return preview()
     }
 
+    static func screenshotLaunchArguments(udid: String, bundleIdentifier: String,
+        launchArguments: [String], preservePreparedScreen: Bool) -> [String] {
+        ["simctl", "launch"] + (preservePreparedScreen ? [] : ["--terminate-running-process"])
+            + [udid, bundleIdentifier] + launchArguments
+    }
+
     private func captureScreenshot(
         project: ManagedProject,
         platform: AppStoreScreenshotPlatform,
         simulator: ScreenshotSimulatorDevice,
         application: SimulatorApplication,
         launchArguments: [String],
+        captureOptions: AppStoreScreenshotCaptureOptions,
+        preservePreparedScreen: Bool,
         screenshotSimulatorUDIDs: [String: String],
         eventHandler: EventHandler?
     ) async throws -> AppStoreScreenshotAsset {
@@ -1274,37 +1302,38 @@ final class AppStorePublishingService {
             executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
             arguments: ["simctl", "bootstatus", simulator.udid, "-b"]
         )
+        if !preservePreparedScreen {
+            _ = try await processRunner.runAndRequireSuccess(
+                executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                arguments: ["simctl", "install", simulator.udid, application.url.path]
+            )
+        }
         _ = try await processRunner.runAndRequireSuccess(
             executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
-            arguments: ["simctl", "install", simulator.udid, application.url.path]
+            arguments: Self.screenshotLaunchArguments(udid: simulator.udid,
+                bundleIdentifier: application.bundleIdentifier, launchArguments: launchArguments,
+                preservePreparedScreen: preservePreparedScreen)
         )
-        _ = try await processRunner.runAndRequireSuccess(
-            executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
-            arguments: [
-                "simctl", "launch", "--terminate-running-process",
-                simulator.udid, application.bundleIdentifier
-            ] + launchArguments
-        )
-        try await Task.sleep(for: .seconds(3))
         let screenshotURL = screenshotCacheDirectory(
             for: project,
             screenshotSimulatorUDIDs: screenshotSimulatorUDIDs
         ).appendingPathComponent(
             "\(Self.safeFilename(project.displayName))-\(platform.rawValue)-\(Self.safeFilename(simulator.name)).png"
         )
-        try? fileManager.removeItem(at: screenshotURL)
-        _ = try await processRunner.runAndRequireSuccess(
-            executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
-            arguments: ["simctl", "io", simulator.udid, "screenshot", screenshotURL.path]
-        )
-        guard let screenshot = screenshotAsset(
-            at: screenshotURL,
-            platformHint: platform,
-            deviceName: simulator.name,
-            automaticallyCaptured: true
-        ) else {
-            throw AppStorePublishingError.noScreenshots
-        }
+        eventHandler?(.output(L10n.format("Screenshot device: %@, %@, UDID %@\n",
+            platform.title, simulator.name, simulator.udid)))
+        let screenshot = try await AppStoreScreenshotCapture.waitForContent(options: captureOptions, capture: {
+            try? self.fileManager.removeItem(at: screenshotURL)
+            _ = try await self.processRunner.runAndRequireSuccess(
+                executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
+                arguments: ["simctl", "io", simulator.udid, "screenshot", screenshotURL.path]
+            )
+            guard let asset = self.screenshotAsset(at: screenshotURL, platformHint: platform,
+                deviceName: simulator.name, automaticallyCaptured: true) else {
+                throw AppStorePublishingError.noScreenshots
+            }
+            return asset
+        }, onOutput: { eventHandler?(.output($0)) })
         eventHandler?(.output(L10n.format(
             "Captured %@ screenshot on %@.\n",
             screenshot.displayType,

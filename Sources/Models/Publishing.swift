@@ -481,6 +481,7 @@ struct AppStorePublicationConfiguration: Codable, Equatable, Sendable {
     /// When absent, screenshot capture uses the deterministic fixture or newest
     /// compatible Simulator automatically.
     var screenshotSimulatorUDIDs: [String: String]? = nil
+    var screenshotCapture: [String: AppStoreScreenshotCaptureOptions]? = nil
     var reviewAttachmentPaths: [String]? = nil
     var replaceScreenshots: Bool? = nil
     var review: AppStoreReviewManifestConfiguration?

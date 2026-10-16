@@ -4,11 +4,11 @@ import ScreenCaptureKit
 /// Captures only the selected app's window, never the user's desktop or other apps.
 @MainActor
 final class MacStoreScreenshotService {
-    static func preview(project: ManagedProject, existing: [AppStoreScreenshotAsset], outputDirectory: URL) async throws -> AppStoreScreenshotPreview {
+    static func preview(project: ManagedProject, existing: [AppStoreScreenshotAsset], outputDirectory: URL, options: AppStoreScreenshotCaptureOptions = .init()) async throws -> AppStoreScreenshotPreview {
         let existing = existing.filter { $0.platform == .mac }
         if !existing.isEmpty { return result(existing, error: nil) }
         do {
-            let asset = try await capture(project: project, outputDirectory: outputDirectory)
+            let asset = try await capture(project: project, outputDirectory: outputDirectory, options: options)
             return result([asset], error: nil)
         } catch {
             return result([], error: error.localizedDescription)
@@ -18,11 +18,11 @@ final class MacStoreScreenshotService {
     private static func result(_ assets: [AppStoreScreenshotAsset], error: String?) -> AppStoreScreenshotPreview {
         AppStoreScreenshotPreview(devices: [AppStoreScreenshotCaptureDevice(
             platform: .mac, name: Host.current().localizedName ?? "Mac", runtime: ProcessInfo.processInfo.operatingSystemVersionString,
-            state: error.map { .failed($0) } ?? .ready
+            state: error.map { .failed($0) } ?? .captured
         )], screenshots: assets)
     }
 
-    private static func capture(project: ManagedProject, outputDirectory: URL) async throws -> AppStoreScreenshotAsset {
+    private static func capture(project: ManagedProject, outputDirectory: URL, options: AppStoreScreenshotCaptureOptions) async throws -> AppStoreScreenshotAsset {
         guard CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess() else {
             throw failure("Allow Screen Recording for Development Management, then retry screenshots.")
         }
@@ -46,6 +46,7 @@ final class MacStoreScreenshotService {
             return bundle.bundleIdentifier == project.bundleIdentifier
         }) else { throw failure("The Mac screenshot build did not contain the selected app.") }
         let launch = NSWorkspace.OpenConfiguration()
+        launch.arguments = options.launchArguments
         launch.activates = true
         launch.createsNewApplicationInstance = true
         let app = try await NSWorkspace.shared.openApplication(at: url, configuration: launch)
@@ -68,12 +69,18 @@ final class MacStoreScreenshotService {
         config.height = Int(window.frame.height * 2)
         config.showsCursor = false
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+        let metrics = try AppStoreScreenshotValidator.metrics(image)
+        guard !metrics.isNearUniform else {
+            throw AppStoreScreenshotValidationError(issues: [L10n.text("The Mac app window is blank. Prepare a demo content screen before capture.")])
+        }
         let png = try canvas(image)
         try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         let output = outputDirectory.appendingPathComponent("mac-window.png")
         try png.write(to: output, options: .atomic)
-        return AppStoreScreenshotAsset(url: output, displayType: "APP_DESKTOP", platform: .mac,
+        let asset = AppStoreScreenshotAsset(url: output, displayType: "APP_DESKTOP", platform: .mac,
                                        automaticallyCaptured: true)
+        try AppStoreScreenshotValidator.validate(asset, readyText: options.readyText)
+        return asset
     }
 
     private static func openMenuBarPanel(pid: pid_t) throws {
@@ -114,7 +121,13 @@ final class MacStoreScreenshotService {
 extension AppStorePublishingService {
     func prepareMacScreenshotPreview(project: ManagedProject, configuredPaths: [String]) async throws -> AppStoreScreenshotPreview {
         let assets = localScreenshotAssets(project: project, configuredPaths: configuredPaths)
-        return try await MacStoreScreenshotService.preview(project: project, existing: assets,
-            outputDirectory: screenshotCacheDirectory(for: project))
+        try AppStoreScreenshotValidator.validateSet(assets)
+        let options = try AppStorePublishingManifest.load(from: project.folderURL)?
+            .publication(for: project.appStorePlatform)?.screenshotCapture?["mac"] ?? .init()
+        for asset in assets { try AppStoreScreenshotValidator.validate(asset, readyText: options.readyText) }
+        let preview = try await MacStoreScreenshotService.preview(project: project, existing: assets,
+            outputDirectory: screenshotCacheDirectory(for: project), options: options)
+        try AppStoreScreenshotValidator.validateSet(preview.screenshots)
+        return preview
     }
 }
