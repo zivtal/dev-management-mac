@@ -136,6 +136,54 @@ final class AppStorePublishingService {
         configuration: PublishingConfiguration,
         eventHandler: @escaping EventHandler
     ) async throws -> PublishingResult {
+        try await xcodeGenPreparationService.prepare(project: project, onOutput: { eventHandler(.output($0)) })
+        let targets = try await AppStoreReleaseCoordinator.targets(project: project, configuration: configuration)
+        let manifest = try AppStorePublishingManifest.load(from: project.folderURL)
+        let history = AppStoreReleaseHistory()
+        var fingerprints: [String: AppStoreReleaseHistory.Fingerprint] = [:]
+        for target in targets {
+            do { try target.configuration.validateReleaseInputs() }
+            catch { throw AppStoreReleaseError.invalid("\(target.label): \(error.localizedDescription)") }
+            fingerprints[target.project.appStorePlatform.rawValue] = try history.fingerprint(project: target.project, manifest: manifest)
+        }
+        return try await AppStoreReleaseCoordinator.run(targets, output: { eventHandler(.output($0)) }) { target in
+            let fingerprint = fingerprints[target.project.appStorePlatform.rawValue]!
+            let previous = try history.previous(project: target.project, intent: configuration.intent)
+            if configuration.onlyChangedPlatforms, previous == fingerprint {
+                eventHandler(.output("\(target.label): unchanged since its successful release; skipped.\n"))
+                return PublishingResult(version: target.project.marketingVersion ?? "", buildNumber: target.project.buildNumber ?? "",
+                    intent: configuration.intent, reusedExistingBuild: true, deferredStorefrontSetup: false)
+            }
+            if let previous, previous != fingerprint {
+                let service = try AppStoreConnectService(issuerID: configuration.appStoreConnectIssuerID,
+                    keyID: configuration.appStoreConnectKeyID, privateKeyPEM: configuration.appStoreConnectPrivateKey,
+                    platform: target.project.appStorePlatform)
+                let appID = try await service.applicationID(bundleIdentifier: target.project.bundleIdentifier ?? "")
+                let existing = try await service.build(appID: appID, marketingVersion: target.project.marketingVersion ?? "",
+                                                       buildNumber: target.project.buildNumber ?? "")
+                if previous.sources != fingerprint.sources, existing != nil {
+                    throw AppStoreReleaseError.invalid("\(target.label): sources changed but this version/build is already uploaded. Bump the app version/build in its repository before publishing the changed binary.")
+                }
+                if previous.publication != fingerprint.publication, let existing,
+                   try await service.isBuildSubmitted(appID: appID, marketingVersion: target.project.marketingVersion ?? "", buildID: existing.id) {
+                    throw AppStoreReleaseError.invalid("\(target.label): the uploaded build is already in review or released. Changed metadata was not applied; prepare an editable version before publishing these changes.")
+                }
+            }
+            let result = try await self.publishPlatform(project: target.project, configuration: target.configuration, eventHandler: eventHandler)
+            if !result.reusedExistingBuild || previous?.sources == fingerprint.sources {
+                try history.save(fingerprint, project: target.project, intent: configuration.intent)
+            } else {
+                eventHandler(.output("No source baseline recorded for this reused build: its original source contents are not verified.\n"))
+            }
+            return result
+        }
+    }
+
+    private func publishPlatform(
+        project: ManagedProject,
+        configuration: PublishingConfiguration,
+        eventHandler: @escaping EventHandler
+    ) async throws -> PublishingResult {
         if let error = AppStoreCopyrightNormalizer.validationError(for: configuration.copyright) {
             throw error
         }
@@ -168,6 +216,9 @@ final class AppStorePublishingService {
             marketingVersion: localVersion,
             buildNumber: localBuildNumber
         )
+        if existingBuild == nil, project.appStorePlatform == .macOS {
+            try await appStoreConnect.validateNewMacBuildNumber(appID: appID, buildNumber: localBuildNumber)
+        }
         let checkpoint = try AppStorePublishingCheckpoint(identity: .init(
             project: project, issuerID: configuration.appStoreConnectIssuerID, appID: appID
         ), fileManager: fileManager)
@@ -422,7 +473,10 @@ final class AppStorePublishingService {
             )
             // Resolved before archiving: without a usable local distribution identity
             // the export can never succeed, and a Release archive is expensive.
-            let signingIdentity = try await distributionCertificateProvisioningService
+            let certificateService = project.isMacOSApplication
+                ? DistributionCertificateProvisioningService(purpose: .macApplication)
+                : distributionCertificateProvisioningService
+            let signingIdentity = try await certificateService
                 .prepareLocalIdentity(
                     teamID: signingTeamID,
                     issuerID: configuration.appStoreConnectIssuerID,
@@ -483,6 +537,11 @@ final class AppStorePublishingService {
                     "Interface orientations in %@ satisfy App Store Connect.\n", artifact.bundleIdentifier
                 )))
             }
+        }
+
+        if project.isMacOSApplication, let artifact {
+            try MacStoreArchiveValidation.validate(archive: artifact.archiveURL,
+                bundleIdentifier: bundleIdentifier, requirements: configuration.archiveRequirements)
         }
 
         // Another publisher may have uploaded this release while local work ran.
@@ -679,6 +738,11 @@ final class AppStorePublishingService {
             guard let versionID = publication.versionID else {
                 throw AppStoreConnectError.missingIdentifier("App Store version")
             }
+            let readiness = try await appStoreConnect.submissionReadiness(
+                versionID: versionID, expectedVersion: targetVersion, expectedBuildID: buildID,
+                requiredDemoVideoURL: configuration.review.demoVideoURL)
+            eventHandler(.output(readiness.text))
+            try readiness.requireReady()
             eventHandler(.phase(.submitting))
             try await appStoreConnect.submitForReview(
                 appID: publication.appID,
@@ -686,6 +750,8 @@ final class AppStorePublishingService {
                 additionalItems: subscriptionReviewItems,
                 intent: intent
             )
+            try await appStoreConnect.waitForSubmittedVersion(versionID: versionID, buildID: buildID,
+                onOutput: { eventHandler(.output($0)) })
             eventHandler(.output(L10n.text("The App Store version and configured subscriptions were submitted for review.\n")))
         } else if publication.deferredStorefrontSetup {
             eventHandler(.output(L10n.text("TestFlight setup completed. Locked storefront work remains deferred until the version in review is released or removed.\n")))

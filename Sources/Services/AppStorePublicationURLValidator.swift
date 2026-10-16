@@ -42,7 +42,8 @@ final class AppStorePublicationURLValidator {
             (L10n.text("marketing"), configuration.marketingURL),
             (L10n.text("Terms of Use"), configuration.termsURL),
             (L10n.text("privacy policy"), configuration.privacyPolicyURL),
-            (L10n.text("privacy choices"), configuration.privacyChoicesURL)
+            (L10n.text("privacy choices"), configuration.privacyChoicesURL),
+            (L10n.text("demo video"), configuration.review.demoVideoURL)
         ]
         var seen = Set<String>()
         return values.compactMap { label, rawValue in

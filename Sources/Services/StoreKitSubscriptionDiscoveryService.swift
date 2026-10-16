@@ -32,7 +32,8 @@ final class StoreKitSubscriptionDiscoveryService {
             + nestedManifestURLs.filter { !rootManifestSet.contains($0) }
         let manifest = try manifestURLs.first.map(loadManifest)
         let storeKitURLs = discoverFiles(withExtension: "storekit", in: project.folderURL)
-        let effectiveLocale = manifest?.publication?.locale?.nilIfEmpty ?? defaultLocale
+        let publication = try manifest?.publication(for: project.appStorePlatform)
+        let effectiveLocale = publication?.locale?.nilIfEmpty ?? defaultLocale
 
         var groups = try storeKitURLs.flatMap { try loadStoreKitConfiguration($0, defaultLocale: effectiveLocale) }
         if let manifestGroups = manifest?.subscriptions?.groups {
@@ -93,7 +94,7 @@ final class StoreKitSubscriptionDiscoveryService {
         let configuredIDs = Set(groups.flatMap(\.subscriptions).map(\.productID))
         let sourceProducts = discoverProductIdentifiers(in: project.folderURL)
         return AppStoreSubscriptionCatalog(
-            publication: manifest?.publication,
+            publication: publication,
             application: manifest?.application,
             compliance: manifest?.compliance,
             groups: groups,
@@ -111,7 +112,7 @@ final class StoreKitSubscriptionDiscoveryService {
                 AppStorePublishingManifest.self,
                 from: Data(contentsOf: url)
             )
-            guard manifest.schemaVersion == nil || manifest.schemaVersion == 1 else {
+            guard manifest.schemaVersion == nil || [1, 2].contains(manifest.schemaVersion ?? 1) else {
                 throw StoreKitSubscriptionDiscoveryError.invalidConfiguration(
                     url.lastPathComponent,
                     L10n.text("unsupported schema version")

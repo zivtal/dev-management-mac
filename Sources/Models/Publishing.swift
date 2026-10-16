@@ -290,6 +290,8 @@ struct AppStoreReviewConfiguration: Equatable, Sendable {
     let demoAccountRequired: Bool
     let demoAccountName: String?
     let demoAccountPassword: String?
+    var demoVideoURL: String? = nil
+    var demoVideoRequired: Bool = false
 }
 
 enum AppStoreManifestValue: Codable, Equatable, Sendable {
@@ -456,6 +458,8 @@ struct AppStoreReviewManifestConfiguration: Codable, Equatable, Sendable {
     var contactEmail: String?
     var notes: String?
     var demoAccountRequired: Bool?
+    var demoVideoURL: String? = nil
+    var demoVideoRequired: Bool? = nil
 }
 
 struct AppStorePublicationConfiguration: Codable, Equatable, Sendable {
@@ -491,6 +495,8 @@ struct AppStorePublishingManifest: Codable, Equatable, Sendable {
     var application: AppStoreApplicationConfiguration?
     var subscriptions: AppStoreSubscriptionsConfiguration?
     var compliance: AppStoreComplianceConfiguration? = nil
+    var platforms: [String: AppStorePlatformReleaseConfiguration]? = nil
+    var defaultPlatforms: [String]? = nil
 }
 
 struct AppStoreSubscriptionCatalog: Equatable, Sendable {
@@ -985,34 +991,37 @@ enum PublishingIntent: Equatable, Sendable {
 }
 
 struct PublishingConfiguration: Sendable {
-    let intent: PublishingIntent
-    let appStoreConnectIssuerID: String
-    let appStoreConnectKeyID: String
-    let appStoreConnectPrivateKey: String
-    let appStorePrivacyAppleID: String?
-    let appStorePrivacyTeamID: String?
-    let appStorePrivacyFastlaneSession: String?
-    let locale: String
-    let copyright: String
-    let supportURL: String
-    let marketingURL: String?
-    let termsURL: String?
-    let privacyPolicyURL: String?
-    let privacyChoicesURL: String?
-    let appName: String?
-    let subtitle: String?
-    let licenseAgreementText: String?
-    let review: AppStoreReviewConfiguration
-    let manualMetadata: AppStoreMetadata?
-    let manualLocalizations: [AppStoreLocalizedMetadata]
-    let screenshotPaths: [String]
-    let screenshotSimulatorUDIDs: [String: String]
-    let reviewAttachmentPaths: [String]
-    let replaceScreenshots: Bool
-    let releaseAutomatically: Bool
-    let replaceActiveReviewVersion: Bool
-    let testFlight: AppStoreTestFlightConfiguration?
+    var intent: PublishingIntent
+    var appStoreConnectIssuerID: String
+    var appStoreConnectKeyID: String
+    var appStoreConnectPrivateKey: String
+    var appStorePrivacyAppleID: String?
+    var appStorePrivacyTeamID: String?
+    var appStorePrivacyFastlaneSession: String?
+    var locale: String
+    var copyright: String
+    var supportURL: String
+    var marketingURL: String?
+    var termsURL: String?
+    var privacyPolicyURL: String?
+    var privacyChoicesURL: String?
+    var appName: String?
+    var subtitle: String?
+    var licenseAgreementText: String?
+    var review: AppStoreReviewConfiguration
+    var manualMetadata: AppStoreMetadata?
+    var manualLocalizations: [AppStoreLocalizedMetadata]
+    var screenshotPaths: [String]
+    var screenshotSimulatorUDIDs: [String: String]
+    var reviewAttachmentPaths: [String]
+    var replaceScreenshots: Bool
+    var releaseAutomatically: Bool
+    var replaceActiveReviewVersion: Bool
+    var testFlight: AppStoreTestFlightConfiguration?
     var usesNonExemptEncryption: Bool? = nil
+    var archiveRequirements: AppStoreArchiveRequirements? = nil
+    var selectedPlatforms: Set<AppStorePlatform>? = nil
+    var onlyChangedPlatforms: Bool = true
 }
 
 struct PublishingResult: Equatable, Sendable {
@@ -1021,6 +1030,7 @@ struct PublishingResult: Equatable, Sendable {
     let intent: PublishingIntent
     let reusedExistingBuild: Bool
     let deferredStorefrontSetup: Bool
+    var platformSummaries: [String] = []
 
     var submittedForReview: Bool {
         intent.submitsForReview

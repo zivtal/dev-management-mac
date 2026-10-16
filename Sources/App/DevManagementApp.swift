@@ -1,6 +1,19 @@
 import SwiftUI
 
 @main
+@MainActor
+struct DevManagementEntry {
+    static func main() {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if let command = arguments.first, PublishingCommand.commands.contains(command) {
+            Task { exit(await PublishingCommand.run(arguments)) }
+            dispatchMain()
+        } else {
+            DevManagementApp.main()
+        }
+    }
+}
+
 struct DevManagementApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
