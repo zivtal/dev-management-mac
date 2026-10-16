@@ -965,7 +965,8 @@ final class AppModel: ObservableObject {
         intent: PublishingIntent = .publish,
         releaseAutomatically releaseOverride: Bool? = nil,
         replaceActiveReviewVersion: Bool = false,
-        existingConfiguration: AppStoreConnectConfigurationSnapshot? = nil
+        existingConfiguration: AppStoreConnectConfigurationSnapshot? = nil,
+        selectedPlatforms: Set<AppStorePlatform>? = nil
     ) {
         guard !isGeneratingOfferCodes, !isPublishing(projectID: projectID) else {
             presentedError = L10n.text("This application already has a publication in progress.")
@@ -976,7 +977,17 @@ final class AppModel: ObservableObject {
             return
         }
         refreshProjectVersions()
-        guard let managedProject = projects.first(where: { $0.id == projectID }) else { return }
+        guard var managedProject = projects.first(where: { $0.id == projectID }) else { return }
+        if let platform = selectedPlatforms?.sorted(by: { $0.rawValue < $1.rawValue }).first {
+            do {
+                let manifest = try AppStorePublishingManifest.load(from: publishingSourceProject(for: managedProject).folderURL)
+                if let entry = manifest?.platforms?[platform.rawValue] {
+                    managedProject.scheme = entry.scheme
+                    managedProject.configuration = entry.configuration ?? "Release"
+                    managedProject.applicationPlatform = platform == .macOS ? .macOS : .iOS
+                }
+            } catch { presentedError = error.localizedDescription; return }
+        }
         let project = publishingSourceProject(for: managedProject)
         guard project.supportsAppStorePublishing else {
             presentedError = AppStorePublishingError.unsupportedProject.localizedDescription
@@ -1140,7 +1151,8 @@ final class AppModel: ObservableObject {
             releaseAutomatically: releaseAutomatically,
             replaceActiveReviewVersion: intent == .publish && replaceActiveReviewVersion,
             testFlight: testFlightConfiguration,
-            usesNonExemptEncryption: perAppConfiguration?.usesNonExemptEncryption
+            usesNonExemptEncryption: perAppConfiguration?.usesNonExemptEncryption,
+            selectedPlatforms: selectedPlatforms
         )
         beginPublishing(project: managedProject, configuration: publishingConfiguration)
     }
@@ -1217,7 +1229,9 @@ final class AppModel: ObservableObject {
                 refreshProjectVersions()
                 addActivity(
                     level: .success,
-                    title: result.submittedForReview
+                    title: !result.platformSummaries.isEmpty
+                        ? result.platformSummaries.joined(separator: "; ") + (result.submittedForReview ? " — " + L10n.text("Submitted for App Review") : " — TestFlight")
+                        : result.submittedForReview
                         ? L10n.format("%@ %@ (%@) was submitted for App Review", project.displayName, result.version, result.buildNumber)
                         : L10n.format("%@ %@ (%@) is available in TestFlight", project.displayName, result.version, result.buildNumber),
                     details: publishingLogs[project.id]?.output,
@@ -1268,11 +1282,15 @@ final class AppModel: ObservableObject {
     }
 
     func loadAppStoreConnectConfiguration(
-        projectID: UUID
+        projectID: UUID,
+        projectOverride: ManagedProject? = nil
     ) async throws -> AppStoreConnectConfigurationSnapshot {
-        guard let project = publishingSourceProject(id: projectID),
+        guard var project = projectOverride ?? publishingSourceProject(id: projectID),
               project.supportsAppStorePublishing else {
             throw AppStorePublishingError.unsupportedProject
+        }
+        if projectOverride != nil {
+            project = try await AppStoreReleaseCoordinator.resolve(project: project, platform: project.appStorePlatform)
         }
         guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
             throw AppStorePublishingError.missingBundleIdentifier

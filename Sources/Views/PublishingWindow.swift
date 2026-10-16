@@ -255,6 +255,7 @@ private struct PublishingWindowView: View {
     @State private var oneTimeCodeSaveURL: URL?
     @State private var releaseAutomaticallySelection = true
     @State private var pendingPublishingIntent = PublishingIntent.publish
+    @State private var releasePlatforms: Set<AppStorePlatform>? = nil
     @State private var showsPublicationStatus = false
     private let projectID: UUID
 
@@ -286,6 +287,7 @@ private struct PublishingWindowView: View {
                 .padding(-20)
             } else {
                 header
+                releasePlatformPicker
                 Divider()
                 if eligibleProjects.isEmpty {
                     ContentUnavailableView(
@@ -396,6 +398,20 @@ private struct PublishingWindowView: View {
             }
         }
         .task(id: configurationTaskID) {
+            if releasePlatforms == nil, let base = baseReleaseProject, let manifest = releaseManifest {
+                var changed = effectiveReleasePlatforms
+                let history = AppStoreReleaseHistory()
+                for platform in changed {
+                    var target = base
+                    target.applicationPlatform = platform == .macOS ? .macOS : .iOS
+                    target.scheme = manifest.platforms?[platform.rawValue]?.scheme ?? base.scheme
+                    if let previous = try? history.previous(project: target, intent: .publish),
+                       let current = try? history.fingerprint(project: target, manifest: manifest), previous == current {
+                        changed.remove(platform)
+                    }
+                }
+                releasePlatforms = changed
+            }
             await refreshSubscriptionSummary()
         }
         .task(id: appStoreConfigurationTaskID) {
@@ -424,7 +440,8 @@ private struct PublishingWindowView: View {
                     releaseAutomatically: releaseAutomatically,
                     replaceActiveReviewVersion: pendingPublishingIntent == .publish
                         && olderActiveReviewVersion != nil,
-                    existingConfiguration: currentAppStoreSnapshot
+                    existingConfiguration: currentAppStoreSnapshot,
+                    selectedPlatforms: effectiveReleasePlatforms
                 )
                 if model.isPublishing(projectID: projectID) {
                     PublishingLogWindowPresenter.shared.show(model: model, projectID: projectID)
@@ -432,7 +449,7 @@ private struct PublishingWindowView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(releaseConfirmationMessage)
+            Text(L10n.text("Platforms") + ": " + effectiveReleasePlatforms.map(\.title).sorted().joined(separator: ", ") + "\n\n" + releaseConfirmationMessage)
         }
         .confirmationDialog(
             Text("Generate production offer codes?"),
@@ -1579,9 +1596,56 @@ private struct PublishingWindowView: View {
             .map(model.publishingSourceProject(for:))
     }
 
-    private var selectedProject: ManagedProject? {
+    private var baseReleaseProject: ManagedProject? {
         guard let selectedProjectID else { return nil }
         return eligibleProjects.first(where: { $0.id == selectedProjectID })
+    }
+
+    private var releaseManifest: AppStorePublishingManifest? {
+        guard let project = baseReleaseProject else { return nil }
+        return try? AppStorePublishingManifest.load(from: project.folderURL)
+    }
+
+    private var availableReleasePlatforms: [AppStorePlatform] {
+        if let entries = releaseManifest?.platforms {
+            return entries.keys.compactMap(AppStorePlatform.init(rawValue:)).sorted { $0.rawValue < $1.rawValue }
+        }
+        return baseReleaseProject.map { [$0.appStorePlatform] } ?? []
+    }
+
+    private var effectiveReleasePlatforms: Set<AppStorePlatform> {
+        releasePlatforms ?? Set((releaseManifest?.defaultPlatforms?.compactMap(AppStorePlatform.init(rawValue:))) ?? availableReleasePlatforms)
+    }
+
+    private var selectedProject: ManagedProject? {
+        guard var project = baseReleaseProject else { return nil }
+        if let platform = effectiveReleasePlatforms.sorted(by: { $0.rawValue < $1.rawValue }).first,
+           let entry = releaseManifest?.platforms?[platform.rawValue] {
+            project.scheme = entry.scheme
+            project.configuration = entry.configuration ?? "Release"
+            project.applicationPlatform = platform == .macOS ? .macOS : .iOS
+        }
+        return project
+    }
+
+    private var releasePlatformPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Platforms").font(.headline)
+                ForEach(availableReleasePlatforms, id: \.rawValue) { platform in
+                    Toggle(platform.title, isOn: Binding(
+                        get: { effectiveReleasePlatforms.contains(platform) },
+                        set: { enabled in
+                            var selected = effectiveReleasePlatforms
+                            if enabled { selected.insert(platform) } else { selected.remove(platform) }
+                            releasePlatforms = selected
+                        }))
+                    .toggleStyle(.checkbox)
+                }
+            }
+            Text("Only changed platforms are published. Unchanged successful releases are skipped.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
     }
 
     private var releaseAutomatically: Bool {
@@ -1704,7 +1768,7 @@ private struct PublishingWindowView: View {
         appStoreConfiguration = .loading
         appRecordMissing = false
         do {
-            let snapshot = try await model.loadAppStoreConnectConfiguration(projectID: projectID)
+            let snapshot = try await model.loadAppStoreConnectConfiguration(projectID: projectID, projectOverride: selectedProject)
             appStoreConfiguration = .loaded(snapshot)
             loadCurrentSubscriptionPricesFromAppStore()
         } catch is CancellationError {
@@ -1794,7 +1858,7 @@ private struct PublishingWindowView: View {
     }
 
     private var configurationTaskID: String {
-        "\(selectedProjectID?.uuidString ?? "none")-\(configurationRevision)"
+        "\(selectedProjectID?.uuidString ?? "none")-\(configurationRevision)-\(effectiveReleasePlatforms.map(\.rawValue).sorted().joined())"
     }
 
     private var appStoreConfigurationTaskID: String {
@@ -2374,6 +2438,10 @@ private struct PublishingWindowView: View {
     }
 
     private func handleReleaseAction(_ project: ManagedProject, intent: PublishingIntent) {
+        guard !effectiveReleasePlatforms.isEmpty else {
+            model.presentedError = L10n.text("Select at least one platform to publish.")
+            return
+        }
         let report = intent == .publish
             ? releaseReadinessReport(for: project)
             : testFlightReadinessReport(for: project)
@@ -2845,6 +2913,8 @@ private struct PerAppPublishingConfigurationEditor: View {
     @State private var reviewPhone = ""
     @State private var reviewEmail = ""
     @State private var reviewNotes = ""
+    @State private var reviewDemoVideoURL = ""
+    @State private var reviewDemoVideoRequired = false
     @State private var demoAccountRequired = false
     @State private var releaseAutomatically = true
     @State private var usesNonExemptEncryption: Bool?
@@ -3642,6 +3712,8 @@ private struct PerAppPublishingConfigurationEditor: View {
                 validation: requiredReviewMessage(for: reviewEmail)
             )
             configurationTextEditor("Review notes", text: $reviewNotes, height: 100)
+            TextField("Hardware demo video URL", text: $reviewDemoVideoURL)
+            Toggle("Require a hardware demo video before submission", isOn: $reviewDemoVideoRequired)
             Toggle("A demo account is required", isOn: $demoAccountRequired)
             Text("Demo credentials are managed in Publishing Settings and stored only in Keychain.")
                 .font(.caption)
@@ -4021,7 +4093,7 @@ private struct PerAppPublishingConfigurationEditor: View {
     }
 
     private func loadFields(from manifest: AppStorePublishingManifest) {
-        let publication = manifest.publication ?? defaultPublicationConfiguration()
+        let publication = (try? manifest.publication(for: project.appStorePlatform)) ?? defaultPublicationConfiguration()
         let configuredLocale = publication.locale ?? "en-US"
         locale = AppStoreLocale.canonicalIdentifier(configuredLocale) ?? configuredLocale
         appName = publication.appName ?? ""
@@ -4073,6 +4145,8 @@ private struct PerAppPublishingConfigurationEditor: View {
         reviewPhone = publication.review?.contactPhone ?? ""
         reviewEmail = publication.review?.contactEmail ?? ""
         reviewNotes = publication.review?.notes ?? ""
+        reviewDemoVideoURL = publication.review?.demoVideoURL ?? ""
+        reviewDemoVideoRequired = publication.review?.demoVideoRequired ?? false
         demoAccountRequired = publication.review?.demoAccountRequired ?? false
         testFlightGroupName = publication.testFlight?.groupName ?? "Internal Testing"
         testFlightFeedbackEmail = publication.testFlight?.feedbackEmail
@@ -4150,6 +4224,7 @@ private struct PerAppPublishingConfigurationEditor: View {
                 whatsNew: whatsNew
             )
         ] + normalizedAdditionalLocalizations
+        let sharedPublication = manifest.publication
         manifest.publication = AppStorePublicationConfiguration(
             locale: normalizedLocale.nilIfEmpty,
             copyright: copyright.nilIfEmpty.map { AppStoreCopyrightNormalizer.normalized($0) },
@@ -4176,7 +4251,9 @@ private struct PerAppPublishingConfigurationEditor: View {
                 contactPhone: reviewPhone.nilIfEmpty,
                 contactEmail: reviewEmail.nilIfEmpty,
                 notes: reviewNotes.nilIfEmpty,
-                demoAccountRequired: demoAccountRequired
+                demoAccountRequired: demoAccountRequired,
+                demoVideoURL: reviewDemoVideoURL.nilIfEmpty,
+                demoVideoRequired: reviewDemoVideoRequired
             ),
             testFlight: AppStoreTestFlightConfiguration(
                 groupName: testFlightGroupName.nilIfEmpty,
@@ -4190,6 +4267,11 @@ private struct PerAppPublishingConfigurationEditor: View {
             usesNonExemptEncryption: usesNonExemptEncryption,
             encryptionEvidence: encryptionEvidence.isEmpty ? nil : encryptionEvidence
         )
+        if manifest.platforms?[project.appStorePlatform.rawValue] != nil, let publication = manifest.publication {
+            manifest.platforms?[project.appStorePlatform.rawValue]?.publication = try JSONDecoder().decode(
+                [String: AppStoreJSONValue].self, from: JSONEncoder().encode(publication))
+            manifest.publication = sharedPublication
+        }
         var application = manifest.application ?? AppStoreApplicationConfiguration(
             primaryCategory: nil,
             secondaryCategory: nil,
@@ -4493,8 +4575,11 @@ private struct PerAppPublishingConfigurationEditor: View {
     }
 
     private func validate(_ manifest: AppStorePublishingManifest) throws {
-        guard manifest.schemaVersion == nil || manifest.schemaVersion == 1 else {
-            throw ConfigurationEditorError.invalid(L10n.text("schemaVersion must be 1."))
+        var manifest = manifest
+        try manifest.validatePlatforms()
+        manifest.publication = try manifest.publication(for: project.appStorePlatform)
+        guard manifest.schemaVersion == nil || [1, 2].contains(manifest.schemaVersion ?? 1) else {
+            throw ConfigurationEditorError.invalid(L10n.text("schemaVersion must be 1 or 2."))
         }
         if let supportURL = manifest.publication?.supportURL?.nilIfEmpty {
             guard let url = URL(string: supportURL),

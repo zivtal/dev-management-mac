@@ -1550,3 +1550,19 @@
 "Product Personalization" = "Product Personalization";
 "App Functionality" = "App Functionality";
 "Other Purposes" = "Other Purposes";
+
+"Platforms" = "Platforms";
+
+"Only changed platforms are published. Unchanged successful releases are skipped." = "Only changed platforms are published. Unchanged successful releases are skipped.";
+
+"Select at least one platform to publish." = "Select at least one platform to publish.";
+
+"Hardware demo video URL" = "Hardware demo video URL";
+
+"Require a hardware demo video before submission" = "Require a hardware demo video before submission";
+
+"Submitted for App Review" = "Submitted for App Review";
+
+"schemaVersion must be 1 or 2." = "schemaVersion must be 1 or 2.";
+
+"demo video" = "demo video";
