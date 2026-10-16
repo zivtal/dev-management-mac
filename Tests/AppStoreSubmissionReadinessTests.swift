@@ -41,6 +41,23 @@ final class AppStoreSubmissionReadinessTests: XCTestCase {
         XCTAssertTrue(readiness.text.contains("[MISSING] Hardware demo video"))
     }
 
+    func testMissingOrBlankReviewNotesAreOptionalInSubmissionChecklist() async throws {
+        for notes in [nil, "", "  \n "] as [String?] {
+            let service = try completeService(notes: notes)
+            let readiness = try await service.submissionReadiness(versionID: "mac")
+            XCTAssertNoThrow(try readiness.requireReady(), readiness.text)
+            XCTAssertTrue(readiness.text.contains("[OPTIONAL] App Review: notes"))
+        }
+    }
+
+    func testBlankOptionalNotesStillBlockWhenHardwareVideoIsRequired() async throws {
+        let service = try completeService(notes: nil)
+        let readiness = try await service.submissionReadiness(versionID: "mac",
+            requiredDemoVideoURL: "https://example.com/demo")
+        XCTAssertThrowsError(try readiness.requireReady())
+        XCTAssertTrue(readiness.text.contains("[MISSING] Hardware demo video in review notes"))
+    }
+
     func testAuthenticationFailureIsNotReportedAsAnEmptyMacDraft() async throws {
         let service = try service { _ in throw URLError(.userAuthenticationRequired) }
         do { _ = try await service.doctor(appID: "app"); XCTFail("Authentication errors must propagate") }
@@ -86,7 +103,7 @@ final class AppStoreSubmissionReadinessTests: XCTestCase {
         ["id": "mac", "attributes": ["platform": "MAC_OS", "versionString": "1.0", "appStoreState": state,
                                       "copyright": "2026 Example", "releaseType": "MANUAL"]]
     }
-    private func completeService() throws -> AppStoreConnectService {
+    private func completeService(notes: String? = "Demo: https://example.com/demo") throws -> AppStoreConnectService {
         try service { request in
             XCTAssertEqual(request.httpMethod, "GET")
             switch request.url!.path {
@@ -101,7 +118,7 @@ final class AppStoreSubmissionReadinessTests: XCTestCase {
                 return ["data": [["attributes": ["assetDeliveryState": ["state": "COMPLETE"]]]]]
             case "/v1/appStoreVersions/mac/appStoreReviewDetail":
                 return ["data": ["attributes": ["contactFirstName": "Pat", "contactLastName": "Lee", "contactEmail": "pat@example.com",
-                                                "contactPhone": "123", "notes": "Demo: https://example.com/demo", "demoAccountRequired": false]]]
+                                                "contactPhone": "123", "notes": notes as Any? ?? NSNull(), "demoAccountRequired": false]]]
             default: XCTFail("Unexpected request \(request.url!)"); return [:]
             }
         }

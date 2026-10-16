@@ -168,7 +168,7 @@ extension PublishingConfiguration {
             }
         }
         for (name, value) in [("contactFirstName", review.contactFirstName), ("contactLastName", review.contactLastName),
-                              ("contactPhone", review.contactPhone), ("contactEmail", review.contactEmail), ("notes", review.notes)] {
+                              ("contactPhone", review.contactPhone), ("contactEmail", review.contactEmail)] {
             if value.nilIfEmpty == nil { missing.append("review.\(name)") }
         }
         if review.demoAccountRequired && (review.demoAccountName?.nilIfEmpty == nil || review.demoAccountPassword?.nilIfEmpty == nil) {

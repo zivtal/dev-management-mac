@@ -921,3 +921,15 @@ all three required families passed pixel/dimension/OCR validation. The output wa
 details. No screenshots were uploaded or review submissions changed during this
 verification. Development Management passed 516 unit tests; KeyPassX passed 119
 package tests including localization parity and the fixture unlock/lock regression.
+
+
+## Optional review notes (2.5.1)
+
+The release-input validator incorrectly required `review.notes`, even though the
+Publish overview did not. This stopped KeyPassX's TestFlight action before any
+archive or upload. The ASC submission checklist also imposed the same incorrect
+requirement. Both now allow missing, empty, or whitespace-only notes, consistent
+with [Apple's App Store review details documentation](https://developer.apple.com/documentation/appstoreconnectapi/app-store-review-details).
+Review contacts remain required, as do demo credentials when sign-in is required.
+Configured hardware demo videos are still required before review submission and
+must appear in the submitted notes. No placeholder review text is generated.

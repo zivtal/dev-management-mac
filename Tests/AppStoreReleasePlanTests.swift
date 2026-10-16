@@ -85,6 +85,43 @@ final class AppStoreReleasePlanTests: XCTestCase {
         XCTAssertThrowsError(try configuration().applying(.init(review: .init(demoVideoURL: "file:///secret"))))
     }
 
+    func testEmptyReviewNotesAllowTestFlightAndPublishWithOtherwiseCompleteInputs() throws {
+        for intent in [PublishingIntent.testFlight, .publish] {
+            var config = completeConfiguration()
+            config.intent = intent
+            for notes in ["", "  \n "] {
+                let resolved = try config.applying(.init(review: .init(notes: notes)))
+                XCTAssertNoThrow(try resolved.validateReleaseInputs(), "Optional notes must not block \(intent)")
+            }
+        }
+    }
+
+    func testOptionalNotesDoNotMakeReviewContactsOrDemoCredentialsOptional() throws {
+        let config = completeConfiguration()
+        let noContact = try config.applying(.init(review: .init(contactEmail: "")))
+        XCTAssertThrowsError(try noContact.validateReleaseInputs()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("review.contactEmail"))
+            XCTAssertFalse(error.localizedDescription.contains("review.notes"))
+        }
+        let needsLogin = try config.applying(.init(review: .init(demoAccountRequired: true)))
+        XCTAssertThrowsError(try needsLogin.validateReleaseInputs()) { error in
+            XCTAssertTrue(error.localizedDescription.contains("review demo account"))
+        }
+        XCTAssertThrowsError(try config.applying(.init(review: .init(demoVideoRequired: true))))
+        let withVideo = try config.applying(.init(review: .init(
+            demoVideoURL: "https://example.com/demo", demoVideoRequired: true)))
+        XCTAssertNoThrow(try withVideo.validateReleaseInputs())
+        XCTAssertTrue(withVideo.review.notes.contains("https://example.com/demo"))
+    }
+
+    private func completeConfiguration() -> PublishingConfiguration {
+        var config = configuration()
+        config.privacyPolicyURL = "https://example.com/privacy"
+        config.manualMetadata = .init(description: "Password manager", keywords: "passwords,vault",
+            promotionalText: "", whatsNew: "")
+        return config
+    }
+
     func testMacArchiveAndExportUseDedicatedInstallerAndNeverIOSOnlyCertificate() {
         XCTAssertFalse(DistributionCertificatePurpose.macApplication.acceptedTypes.contains("IOS_DISTRIBUTION"))
         XCTAssertEqual(DistributionCertificatePurpose.macApplication.namePrefixes, ["Apple Distribution:"])

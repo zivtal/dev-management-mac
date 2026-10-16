@@ -80,9 +80,11 @@ extension AppStoreConnectService {
         checks.append(.init(name: platform == .macOS ? "Processed APP_DESKTOP screenshots" : "Processed screenshots", passed: hasScreenshots))
         let review = try await optionalReadinessResource("/v1/appStoreVersions/\(versionID)/appStoreReviewDetail")
         let details = review?["attributes"] as? [String: Any] ?? [:]
-        for key in ["contactFirstName", "contactLastName", "contactEmail", "contactPhone", "notes"] {
+        for key in ["contactFirstName", "contactLastName", "contactEmail", "contactPhone"] {
             checks.append(.init(name: "App Review: \(key)", passed: Self.hasText(details, key)))
         }
+        // Notes are optional in ASC; a configured hardware demo remains a separate required check.
+        checks.append(.init(name: "App Review: notes", passed: Self.hasText(details, "notes"), required: false))
         checks.append(.init(name: "App Review: sign-in declaration", passed: details["demoAccountRequired"] is Bool))
         if details["demoAccountRequired"] as? Bool == true {
             // Only report presence; never print reviewer credentials.
