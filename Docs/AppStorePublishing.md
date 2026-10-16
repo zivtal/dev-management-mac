@@ -472,10 +472,13 @@ the release workflow. Publish always submits for App Review; the TestFlight
 action is the explicit upload-only path. The window also remains open when
 another application or Development Management window receives focus.
 
-For a first release, the footer shows only **Upload to TestFlight** until Apple
-has processed the exact local version and build. The App Store action then
-appears as **Submit for Review**. Existing released apps continue to show the
-normal update action.
+The footer always offers **Publish** as the primary action, including the first
+release before any build exists in TestFlight. It uploads, waits for processing,
+attaches the build, and submits for review in one run. An already processed
+matching build changes the label to **Submit for Review** and is reused without
+another archive or upload. Existing released apps show the normal update action.
+**Upload to TestFlight** remains a separate action for intentionally stopping
+before App Review.
 
 When App Store Connect reports an older app version in an active review state,
 the release action is labeled **Update** and identifies that version. The final
@@ -907,9 +910,9 @@ This command regenerates previews, builds with scheme workflow actions removed,
 prints validated file paths, and exits nonzero if any required family fails.
 It does not require ASC credentials or change the managed app's version.
 
-After reopening Publish, inspect all previews and use **Upload to TestFlight**
-for a new version/build, then **Submit for Review** when that matching build is
-processed. Normal publishing replaces different remote screenshot content and
+After reopening Publish, inspect all previews and choose **Publish** for the full
+upload-and-submit workflow. Choose **Upload to TestFlight** only when you want to
+stop before review. Normal publishing replaces different remote screenshot content and
 reuses an already uploaded matching build. To repair a rejected older version
 without a build upload, use **Replace screenshots on existing version**, verify
 that the pictured UI matches that version, then resubmit it in App Store Connect.
@@ -933,3 +936,18 @@ with [Apple's App Store review details documentation](https://developer.apple.co
 Review contacts remain required, as do demo credentials when sign-in is required.
 Configured hardware demo videos are still required before review submission and
 must appear in the submitted notes. No placeholder review text is generated.
+
+
+## First-release workflow and completion display (2.5.2)
+
+The first-release UI previously hid Publish until a matching TestFlight build
+existed, forcing two runs even though the publishing service already supported
+uploading, processing, and submitting in one run. That gate is removed. Publish
+still waits for Apple's processing and verifies the submitted version's state;
+a TestFlight-only run never silently submits for review.
+
+A successful TestFlight-only run now has a TestFlight-specific heading, marks
+App Store setup complete unless it was actually deferred, and marks Review as
+skipped. The finished progress label says **Completed** instead of looking stuck
+at step 4 of 5. **Continue to App Review…** returns to the publishing overview for
+review and confirmation; it does not submit automatically.

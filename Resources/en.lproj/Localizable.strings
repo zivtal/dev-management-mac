@@ -1085,7 +1085,6 @@
 "Use subscription default" = "Use subscription default";
 "Enable Family Sharing for all subscriptions" = "Enable Family Sharing for all subscriptions";
 "Apple applies Family Sharing per subscription. This default updates every product below; each product can still be adjusted individually. Enabling it may be effectively one-way after subscribers exist." = "Apple applies Family Sharing per subscription. This default updates every product below; each product can still be adjusted individually. Enabling it may be effectively one-way after subscribers exist.";
-"For the first release, upload this build to TestFlight first. Submit for Review appears after Apple finishes processing the matching build." = "For the first release, upload this build to TestFlight first. Submit for Review appears after Apple finishes processing the matching build.";
 "Generate and review the App Privacy answers before publishing." = "Generate and review the App Privacy answers before publishing.";
 "Categories, rights, pricing, age rating, and the published App Privacy answers are saved." = "Categories, rights, pricing, age rating, and the published App Privacy answers are saved.";
 "App declarations need attention" = "App declarations need attention";
@@ -1601,3 +1600,9 @@
 "Regenerating invalid cached screenshot: %@\n" = "Regenerating invalid cached screenshot: %@\n";
 
 "Simulator installation was interrupted by appconduit; retrying without removing app data.\n" = "Simulator installation was interrupted by appconduit; retrying without removing app data.\n";
+
+"Publish uploads the build, waits for Apple to process it, and submits it for App Review in one run. Upload to TestFlight stops before review." = "Publish uploads the build, waits for Apple to process it, and submits it for App Review in one run. Upload to TestFlight stops before review.";
+
+"Completed" = "Completed";
+
+"Continue to App Review…" = "Continue to App Review…";

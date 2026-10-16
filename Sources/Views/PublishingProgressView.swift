@@ -240,7 +240,7 @@ struct PublishingProgressView: View {
                 Text("Release progress")
                     .font(.headline)
                 Spacer()
-                Text(L10n.format(
+                Text(log.state == .succeeded ? L10n.text("Completed") : L10n.format(
                     "Step %d of %d",
                     currentStage.rawValue + 1,
                     PublishingJourneyStage.allCases.count
@@ -381,6 +381,9 @@ struct PublishingProgressView: View {
             case .inProgress:
                 Button("Cancel Publication", role: .destructive, action: onCancel)
             case .succeeded:
+                if log.result?.intent == .testFlight, log.result?.deferredStorefrontSetup == false {
+                    Button("Continue to App Review…", action: onBackToReview)
+                }
                 Button("Done", action: onDone)
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
@@ -422,7 +425,8 @@ struct PublishingProgressView: View {
     private var statusTitle: String {
         switch log.state {
         case .inProgress: L10n.text("Publishing is underway")
-        case .succeeded: L10n.text("Your release is on its way")
+        case .succeeded: L10n.text(log.result?.submittedForReview == true
+            ? "Your release is on its way" : "TestFlight upload completed successfully")
         case .failed: L10n.text("Publishing needs attention")
         case .cancelled: L10n.text("Publishing was canceled")
         }
@@ -502,12 +506,12 @@ struct PublishingProgressView: View {
     }
 
     private func visualState(for stage: PublishingJourneyStage) -> StageVisualState {
-        if log.state == .succeeded,
-           log.result?.intent == .testFlight,
-           stage == .configure || stage == .review {
-            return StageVisualState(symbol: "minus.circle.fill", color: .secondary, isCurrent: false)
+        if log.state == .succeeded, let result = log.result {
+            return result.completed(stage)
+                ? StageVisualState(symbol: "checkmark.circle.fill", color: .green, isCurrent: false)
+                : StageVisualState(symbol: "minus.circle.fill", color: .secondary, isCurrent: false)
         }
-        if log.state == .succeeded || stage.rawValue < currentStage.rawValue {
+        if stage.rawValue < currentStage.rawValue {
             return StageVisualState(symbol: "checkmark.circle.fill", color: .green, isCurrent: false)
         }
         if stage == currentStage {

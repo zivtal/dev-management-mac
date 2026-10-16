@@ -386,9 +386,10 @@ subscription.
 
 Base-territory controls use Apple's complete live territory catalog. Subscription
 defaults also include a Family Sharing switch that updates every product while
-retaining individual product controls. On a first release, Publish shows only the
-TestFlight action until the matching build has finished processing; only then is
-Submit for Review shown. Redeem Codes, live Installation Log, and Publishing Log
+retaining individual product controls. Publish is available on the first release
+and uploads, waits for processing, and submits for review in one run. An existing
+matching TestFlight build is reused by Submit for Review. Upload to TestFlight
+remains an explicit action that stops before review. Redeem Codes, live Installation Log, and Publishing Log
 panels float above ordinary windows while they are open. Both live logs include
 runtime, copyable command output, and automatic scrolling.
 

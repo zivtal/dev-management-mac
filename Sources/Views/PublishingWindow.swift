@@ -1143,13 +1143,11 @@ private struct PublishingWindowView: View {
             Text("Both actions synchronize the complete App Store and TestFlight setup. Publish additionally submits the app version and subscription versions together for App Review; Upload to TestFlight stops immediately before submission.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            if !showsAppStoreReleaseAction {
-                Label(
-                    "For the first release, upload this build to TestFlight first. Submit for Review appears after Apple finishes processing the matching build.",
-                    systemImage: "airplane.circle"
-                )
-                .foregroundStyle(.blue)
-            }
+            Label(
+                "Publish uploads the build, waits for Apple to process it, and submits it for App Review in one run. Upload to TestFlight stops before review.",
+                systemImage: "paperplane.circle"
+            )
+            .foregroundStyle(.blue)
             if let build = matchingTestFlightBuild {
                 Label(
                     L10n.format("TestFlight already has version %@ (%@). Publish will reuse it without another archive or upload.", build.version, build.buildNumber),
@@ -1603,46 +1601,31 @@ private struct PublishingWindowView: View {
                 PublishingWindowPresenter.shared.close(projectID: project.id)
             }
             if selectedAction == .release {
-                if showsAppStoreReleaseAction {
-                    Button {
-                        handleReleaseAction(project, intent: .testFlight)
-                    } label: {
-                        Label("Upload to TestFlight", systemImage: "airplane")
-                    }
-                    .disabled(
-                        model.isPublishing(projectID: project.id)
-                            || model.isInstalling(projectID: project.id)
-                            || model.isGeneratingOfferCodes
-                    )
-                    Button {
-                        handleReleaseAction(project, intent: .publish)
-                    } label: {
-                        Label(
-                            publishButtonTitle,
-                            systemImage: "paperplane.fill"
-                        )
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(
-                        model.isPublishing(projectID: project.id)
-                            || model.isInstalling(projectID: project.id)
-                            || model.isGeneratingOfferCodes
-                    )
-                } else {
-                    Button {
-                        handleReleaseAction(project, intent: .testFlight)
-                    } label: {
-                        Label("Upload to TestFlight", systemImage: "airplane")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(
-                        model.isPublishing(projectID: project.id)
-                            || model.isInstalling(projectID: project.id)
-                            || model.isGeneratingOfferCodes
+                Button {
+                    handleReleaseAction(project, intent: .testFlight)
+                } label: {
+                    Label("Upload to TestFlight", systemImage: "airplane")
+                }
+                .disabled(
+                    model.isPublishing(projectID: project.id)
+                        || model.isInstalling(projectID: project.id)
+                        || model.isGeneratingOfferCodes
+                )
+                Button {
+                    handleReleaseAction(project, intent: .publish)
+                } label: {
+                    Label(
+                        publishButtonTitle,
+                        systemImage: "paperplane.fill"
                     )
                 }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(
+                    model.isPublishing(projectID: project.id)
+                        || model.isInstalling(projectID: project.id)
+                        || model.isGeneratingOfferCodes
+                )
             }
         }
     }
@@ -2658,14 +2641,6 @@ private struct PublishingWindowView: View {
               let version = currentAppStoreSnapshot?.version,
               version.versionString == projectVersion else { return false }
         return version.isUnderReview
-    }
-
-    private var showsAppStoreReleaseAction: Bool {
-        guard let snapshot = currentAppStoreSnapshot else { return false }
-        return AppStoreReleaseActionPolicy.showsAppStoreAction(
-            hasReleasedVersion: snapshot.hasReadyForDistributionVersion,
-            hasMatchingTestFlightBuild: matchingTestFlightBuild != nil
-        )
     }
 
     private var olderActiveReviewVersion: AppStoreConnectVersionReferenceSnapshot? {

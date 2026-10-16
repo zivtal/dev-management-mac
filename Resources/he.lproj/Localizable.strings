@@ -1085,7 +1085,6 @@
 "Use subscription default" = "שימוש בברירת המחדל של המינוי";
 "Enable Family Sharing for all subscriptions" = "הפעלת שיתוף משפחתי לכל המינויים";
 "Apple applies Family Sharing per subscription. This default updates every product below; each product can still be adjusted individually. Enabling it may be effectively one-way after subscribers exist." = "Apple מחילה שיתוף משפחתי על כל מוצר מינוי בנפרד. ברירת מחדל זו מעדכנת את כל המוצרים שלמטה, ועדיין ניתן לשנות כל מוצר בנפרד. לאחר שיש מנויים, ההפעלה עשויה להיות בלתי הפיכה בפועל.";
-"For the first release, upload this build to TestFlight first. Submit for Review appears after Apple finishes processing the matching build." = "בגרסה הראשונה יש להעלות תחילה את הבנייה ל־TestFlight. האפשרות לשליחה לבדיקה תופיע לאחר ש־Apple תסיים לעבד את הבנייה התואמת.";
 "Generate and review the App Privacy answers before publishing." = "יש ליצור ולבדוק את תשובות פרטיות היישום לפני הפרסום.";
 "Categories, rights, pricing, age rating, and the published App Privacy answers are saved." = "הקטגוריות, הזכויות, התמחור, דירוג הגיל ותשובות פרטיות היישום שפורסמו שמורים.";
 "App declarations need attention" = "הצהרות היישום דורשות טיפול";
@@ -1601,3 +1600,9 @@
 "Regenerating invalid cached screenshot: %@\n" = "צילום מסך לא תקין במטמון נוצר מחדש: %@\n";
 
 "Simulator installation was interrupted by appconduit; retrying without removing app data.\n" = "התקנת הסימולטור הופסקה על ידי appconduit; ניסיון חוזר ללא הסרת נתוני היישום.\n";
+
+"Publish uploads the build, waits for Apple to process it, and submits it for App Review in one run. Upload to TestFlight stops before review." = "פרסום מעלה את הבנייה, ממתין לעיבוד של Apple ושולח אותה לבדיקת App Review בריצה אחת. העלאה ל־TestFlight נעצרת לפני הבדיקה.";
+
+"Completed" = "הושלם";
+
+"Continue to App Review…" = "המשך לבדיקת App Review…";

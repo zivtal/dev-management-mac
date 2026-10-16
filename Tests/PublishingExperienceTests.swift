@@ -122,19 +122,25 @@ final class PublishingExperienceTests: XCTestCase {
         ))
     }
 
-    func testFirstReleaseShowsAppStoreActionOnlyAfterMatchingTestFlightBuild() {
-        XCTAssertFalse(AppStoreReleaseActionPolicy.showsAppStoreAction(
-            hasReleasedVersion: false,
-            hasMatchingTestFlightBuild: false
-        ))
-        XCTAssertTrue(AppStoreReleaseActionPolicy.showsAppStoreAction(
-            hasReleasedVersion: false,
-            hasMatchingTestFlightBuild: true
-        ))
-        XCTAssertTrue(AppStoreReleaseActionPolicy.showsAppStoreAction(
-            hasReleasedVersion: true,
-            hasMatchingTestFlightBuild: false
-        ))
+    func testSuccessfulTestFlightMarksStoreSetupCompleteButNotReview() {
+        let result = PublishingResult(version: "1.0", buildNumber: "1", intent: .testFlight,
+            reusedExistingBuild: false, deferredStorefrontSetup: false)
+        XCTAssertTrue(result.completed(.configure))
+        XCTAssertTrue(result.completed(.testFlight))
+        XCTAssertFalse(result.completed(.review))
+        let deferred = PublishingResult(version: "1.0", buildNumber: "1", intent: .testFlight,
+            reusedExistingBuild: false, deferredStorefrontSetup: true)
+        XCTAssertFalse(deferred.completed(.configure))
+        XCTAssertFalse(deferred.completed(.review))
+        XCTAssertTrue(deferred.completed(.testFlight))
+    }
+
+    func testSuccessfulPublishCompletesEveryStageWithNewOrReusedBuild() {
+        for reused in [false, true] {
+            let result = PublishingResult(version: "1.0", buildNumber: "1", intent: .publish,
+                reusedExistingBuild: reused, deferredStorefrontSetup: false)
+            XCTAssertTrue(PublishingJourneyStage.allCases.allSatisfy(result.completed))
+        }
     }
 
     func testPrivacyConfigurationRequiresTheAppropriateReviewBeforeSaving() {

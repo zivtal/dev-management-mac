@@ -126,12 +126,14 @@ enum TestFlightReadinessPolicy {
     }
 }
 
-enum AppStoreReleaseActionPolicy {
-    static func showsAppStoreAction(
-        hasReleasedVersion: Bool,
-        hasMatchingTestFlightBuild: Bool
-    ) -> Bool {
-        hasReleasedVersion || hasMatchingTestFlightBuild
+extension PublishingResult {
+    /// The upload-only action still completes storefront setup unless ASC explicitly deferred it.
+    func completed(_ stage: PublishingJourneyStage) -> Bool {
+        switch stage {
+        case .configure: !deferredStorefrontSetup
+        case .review: submittedForReview
+        case .prepare, .build, .testFlight: true
+        }
     }
 }
 
