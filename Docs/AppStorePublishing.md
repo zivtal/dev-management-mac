@@ -555,3 +555,147 @@ default unless the publisher explicitly changes it in App Store Connect.
 Publish does not fabricate legal answers, accept agreements, grant team roles,
 reply to App Review messages, or create missing public support and privacy
 websites.
+
+## Platform selection, changed releases, and diagnostics
+
+Publishing schema version 2 declares each platform explicitly. The Publish window
+shows platform checkboxes and defaults to `defaultPlatforms` (or all configured
+platforms when omitted). Selecting only macOS never archives, uploads, attaches,
+or submits an iOS version. A failed selected platform stops the run and reports
+completed platforms; it cannot produce an overall success. Release work is
+sequential, and Apple may retain an earlier successful platform if a later one fails.
+
+```json
+{
+  "schemaVersion": 2,
+  "defaultPlatforms": ["MAC_OS"],
+  "publication": {
+    "locale": "en-US",
+    "copyright": "2026 Example",
+    "supportURL": "https://example.com/support",
+    "privacyPolicyURL": "https://example.com/privacy",
+    "metadata": {
+      "description": "Shared app description",
+      "keywords": "router,wifi",
+      "promotionalText": "",
+      "whatsNew": "Reviewed release notes"
+    },
+    "review": {
+      "contactFirstName": "Pat",
+      "contactLastName": "Lee",
+      "contactEmail": "review@example.com",
+      "contactPhone": "+1 555 0100",
+      "demoAccountRequired": false,
+      "notes": "Hardware setup and review instructions.",
+      "demoVideoRequired": true,
+      "demoVideoURL": "https://example.com/hardware-demo"
+    }
+  },
+  "platforms": {
+    "IOS": {
+      "scheme": "ExampleIOS",
+      "sourcePaths": ["Apps/iOS", "Apps/Shared", "Sources", "project.yml"]
+    },
+    "MAC_OS": {
+      "scheme": "ExampleMacStore",
+      "configuration": "Release",
+      "sourcePaths": ["Apps/Mac", "Apps/Shared", "Sources", "Config/Mac-Info.plist", "Config/MacStore.entitlements", "project.yml"],
+      "archiveRequirements": {
+        "networkClient": true,
+        "keychainAccessGroups": ["TEAMID.app.example.credentials"],
+        "encryptionDeclarationInInfoPlist": true
+      },
+      "publication": {
+        "metadata": { "description": "Mac-specific description" },
+        "localizations": [],
+        "screenshotPaths": ["AppStore/MacScreenshots"],
+        "releaseAutomatically": false
+      }
+    }
+  }
+}
+```
+
+This is a release-fields example, not a replacement for an app's existing privacy,
+age-rating, commercial, or subscription declarations. Keep those declarations.
+Shared `publication` fields are inherited; platform objects merge recursively and
+arrays replace shared arrays. If using `localizations`, override those listings
+rather than `metadata`, or set `localizations: []` to use the metadata fallback.
+The form editor saves listing/review edits to the displayed platform in schema 2;
+Advanced JSON exposes schemes, source paths, defaults, and platform overrides.
+Legacy schema 1 remains a single selected scheme.
+
+Successful platform releases record source and effective publication fingerprints
+in `~/Library/Application Support/DevManagement/ReleaseHistory`. Unchanged platforms
+are deselected on opening Publish and skipped again when executing. `sourcePaths`
+contains project-relative files/directories, including shared sources/resources and
+build configuration that affects that platform. A shared version-only file may be
+excluded so bumping one shared counter does not republish an unchanged platform.
+Without explicit paths the whole repository is scanned conservatively (excluding
+build outputs, generated Xcode containers, and documentation). A new installation,
+a missing receipt, or a reused build with unverifiable original sources has no
+trusted baseline: the selected platform remains eligible, rather than being silently
+skipped. Source changes with an already-uploaded version/build fail with an explicit
+version-bump instruction. Publishing itself never increments versions.
+
+All targets resolve their own Release build settings before publishing. Native Mac
+archives use `generic/platform=macOS`, explicit application and installer identities,
+Mac App Store profiles, and `.pkg` export. Before submission the tool rereads Apple's
+version, build/prerelease version, listing, processed screenshots, and review details,
+prints a checklist, and aborts if required fields are missing. Promotional text and
+marketing URL are optional. Mac screenshots must use `APP_DESKTOP`. The submit step
+then polls the actual version/build until Apple confirms a review/release state.
+A sent request without a confirmed state is not reported as successful publication.
+App Sandbox is validated from the signed archive; app-specific network, Keychain,
+and Info.plist encryption requirements are opt-in assertions, never automatic edits.
+
+Run these commands directly through the installed app executable:
+
+```sh
+"/Applications/Development Management.app/Contents/MacOS/Development Management" doctor --app-id 6822605869
+"/Applications/Development Management.app/Contents/MacOS/Development Management" status --app-id 6822605869 --platform MAC_OS
+"/Applications/Development Management.app/Contents/MacOS/Development Management" dry-run --project /path/to/app --platform MAC_OS --app-id 6822605869
+```
+
+Doctor/status query both platforms by default and report builds, version states,
+and missing fields. Dry-run resolves the existing Xcode schemes and release plan;
+with `--app-id` it also queries the selected platforms. These commands do not launch
+monitoring, archive, upload, submit, change versions, or mutate ASC. Dry-run requires
+an already generated Xcode project; regenerate a stale project separately. Credentials
+come from the default Publishing settings and Keychain, or explicit `--issuer-id`,
+`--key-id`, and `--private-key-path` arguments. Secrets are never printed. API/config
+failures exit nonzero; doctor missing-field findings are reported as diagnostics.
+
+## SlateWifi audit (2026-10-16)
+
+The saved October 14 run selected `SlateWiFiIOS` 1.0.10 (11). The old tool executed
+only that scheme and had no multi-platform configuration, coordinator, source
+receipts, doctor, or dry run. Mac archive/export/profile/installer signing, upload,
+platform-filtered processing, metadata/review reconciliation, screenshots (reservation,
+checksum commit, processing), and review-submission endpoints already existed. They
+were never invoked for the Mac platform. Build/upload subprocess failures already
+propagated; the incident was omitted work, not a swallowed Mac upload error.
+
+A live read-only doctor query confirmed app 6822605869 had zero Mac TestFlight builds,
+macOS 1.0 in PREPARE_FOR_SUBMISSION, no attached build or processed desktop screenshots,
+and missing copyright, listing text/support URL, and App Review contacts/notes/sign-in
+answer. `SlateWiFiMacStore` has Sandbox, network client, and the same credentials
+Keychain group as iOS. Its Mac Info.plist lacks `ITSAppUsesNonExemptEncryption`; the
+existing publishing manifest supplies an explicit ASC encryption declaration.
+The existing hardware review notes had no demonstration URL. A real accessible
+hardware demo must be supplied; the tool cannot manufacture review evidence.
+
+Apple does not allow deleting an app platform once a build has been uploaded.
+Leaving the rejected iOS record in ASC does not require publishing it during a
+Mac-only release. The platform selector and Mac-only default control future work.
+
+The audit also found the shared certificate picker accepted legacy iPhone-only
+Distribution certificates on the Mac path. Mac application signing now selects
+Apple Distribution exclusively; installer signing remains separate. The installed
+Xcode 27.0.5 uploader's own `--help` confirms `.pkg` support and the modern
+`--upload-package <file>` / `--validate-app <file>` syntax without a platform flag.
+The old `-t macos` syntax belongs to legacy altool; it is not added to this uploader.
+
+References: [Apple platform deletion rules](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-platforms/),
+[build platform filters](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-builds),
+and [Mac screenshot sizes](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/).
