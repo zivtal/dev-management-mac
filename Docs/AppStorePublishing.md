@@ -976,3 +976,13 @@ Its Debug preview uses `-AppStoreScreenshotFixture` and requires `Email` on scre
 Choose **Publish**, not **Upload to TestFlight**, to continue through review.
 A draft named 1.0 is updated to the source marketing version when the Mac release
 is prepared; publishing does not rewrite source version numbers to match a draft.
+
+### Empty draft versions and source readiness
+
+A platform's `PREPARE_FOR_SUBMISSION` version with no attached build does not
+set a minimum source version. For example, a newly added Mac draft named `1.0`
+can be prepared as source version `0.1.40 (41)` without changing the source.
+The readiness check still blocks older source versions when the selected version
+has a build, is in review or released, or when that platform has a newer approved
+or active review version. The existing version setup updates the reusable draft's
+version string during Publish.

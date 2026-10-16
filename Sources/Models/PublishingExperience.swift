@@ -209,6 +209,28 @@ extension AppStoreConnectConfigurationSnapshot {
 }
 
 enum AppStoreVersionComparison {
+    /// An unbuilt Prepare for Submission draft is an editable label, not a released artifact.
+    /// Check the platform's approved/active versions separately so a draft cannot hide them.
+    static func blockingVersion(
+        localVersion: String, localBuild: String?,
+        selectedVersion: AppStoreConnectVersionSnapshot?,
+        latestApprovedVersion: AppStoreConnectVersionReferenceSnapshot?,
+        activeReviewVersion: AppStoreConnectVersionReferenceSnapshot?
+    ) -> (versionString: String, buildNumber: String?)? {
+        if let remote = selectedVersion,
+           !(remote.state == "PREPARE_FOR_SUBMISSION" && remote.buildNumber == nil),
+           localArtifactIsOlder(localVersion: localVersion, localBuild: localBuild,
+                                remoteVersion: remote.versionString, remoteBuild: remote.buildNumber) {
+            return (remote.versionString, remote.buildNumber)
+        }
+        for remote in [latestApprovedVersion, activeReviewVersion].compactMap({ $0 }) {
+            if compare(localVersion, remote.versionString) == .orderedAscending {
+                return (remote.versionString, nil)
+            }
+        }
+        return nil
+    }
+
     static func localArtifactIsOlder(
         localVersion: String,
         localBuild: String?,

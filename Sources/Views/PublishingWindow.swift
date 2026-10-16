@@ -2017,12 +2017,12 @@ private struct PublishingWindowView: View {
                 state: .blocked
             )
         }
-        if let remote = currentAppStoreSnapshot?.version,
-           AppStoreVersionComparison.localArtifactIsOlder(
+        if let remote = AppStoreVersionComparison.blockingVersion(
             localVersion: localVersion,
             localBuild: localBuild,
-            remoteVersion: remote.versionString,
-            remoteBuild: remote.buildNumber
+            selectedVersion: currentAppStoreSnapshot?.version,
+            latestApprovedVersion: currentAppStoreSnapshot?.latestApprovedVersion,
+            activeReviewVersion: currentAppStoreSnapshot?.activeReviewVersion
            ) {
             return PublishingReadinessItem(
                 id: "source",

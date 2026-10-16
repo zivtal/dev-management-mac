@@ -107,6 +107,59 @@ final class PublishingExperienceTests: XCTestCase {
         ))
     }
 
+    func testUnbuiltMacDraftDoesNotBlockSourceVersionBelowPlaceholder() {
+        XCTAssertNil(AppStoreVersionComparison.blockingVersion(
+            localVersion: "0.1.40", localBuild: "41",
+            selectedVersion: sourceVersion("1.0", state: "PREPARE_FOR_SUBMISSION"),
+            latestApprovedVersion: nil, activeReviewVersion: nil))
+    }
+
+    func testDraftWithAttachedBuildStillBlocksOlderSourceVersion() {
+        let blocker = AppStoreVersionComparison.blockingVersion(
+            localVersion: "0.1.40", localBuild: "41",
+            selectedVersion: sourceVersion("1.0", state: "PREPARE_FOR_SUBMISSION", build: "42"),
+            latestApprovedVersion: nil, activeReviewVersion: nil)
+        XCTAssertEqual(blocker?.versionString, "1.0")
+        XCTAssertEqual(blocker?.buildNumber, "42")
+    }
+
+    func testUnbuiltDraftDoesNotHideNewerApprovedOrActiveRelease() {
+        let remote = AppStoreConnectVersionReferenceSnapshot(id: "remote", versionString: "0.2", state: "READY_FOR_DISTRIBUTION")
+        for approved in [true, false] {
+            let blocker = AppStoreVersionComparison.blockingVersion(
+                localVersion: "0.1.40", localBuild: "41",
+                selectedVersion: sourceVersion("1.0", state: "PREPARE_FOR_SUBMISSION"),
+                latestApprovedVersion: approved ? remote : nil,
+                activeReviewVersion: approved ? nil : .init(id: "review", versionString: "0.2", state: "WAITING_FOR_REVIEW"))
+            XCTAssertEqual(blocker?.versionString, "0.2")
+        }
+        XCTAssertNil(AppStoreVersionComparison.blockingVersion(
+            localVersion: "0.3", localBuild: "50",
+            selectedVersion: sourceVersion("1.0", state: "PREPARE_FOR_SUBMISSION"),
+            latestApprovedVersion: remote, activeReviewVersion: nil))
+    }
+
+    func testMissingBuildOnlyExemptsPrepareForSubmissionState() {
+        for state in ["WAITING_FOR_REVIEW", "IN_REVIEW", "READY_FOR_DISTRIBUTION", "REJECTED", "UNKNOWN"] {
+            XCTAssertNotNil(AppStoreVersionComparison.blockingVersion(
+                localVersion: "0.1.40", localBuild: "41",
+                selectedVersion: sourceVersion("1.0", state: state),
+                latestApprovedVersion: nil, activeReviewVersion: nil), state)
+        }
+    }
+
+    func testReadinessStillRejectsOlderBuildOfSameVersion() {
+        XCTAssertEqual(AppStoreVersionComparison.blockingVersion(
+            localVersion: "0.1.40", localBuild: "40",
+            selectedVersion: sourceVersion("0.1.40", state: "PREPARE_FOR_SUBMISSION", build: "41"),
+            latestApprovedVersion: nil, activeReviewVersion: nil)?.buildNumber, "41")
+    }
+
+    private func sourceVersion(_ version: String, state: String, build: String? = nil) -> AppStoreConnectVersionSnapshot {
+        .init(versionString: version, state: state, buildNumber: build, releaseType: nil,
+              copyright: nil, earliestReleaseDate: nil, localizations: [], review: nil)
+    }
+
     func testOlderBuildOfSameMarketingVersionIsDetected() {
         XCTAssertTrue(AppStoreVersionComparison.localArtifactIsOlder(
             localVersion: "1.9.8",
