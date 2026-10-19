@@ -1,14 +1,66 @@
 import Foundation
 
+/// The application that shows a booted simulator's screen. Xcode 26 and
+/// earlier ship Simulator.app inside the developer directory and accept the
+/// device to show as a launch argument. Xcode 27 removed Simulator.app: its
+/// Device Hub lives beside Xcode's other bundled applications, lists every
+/// booted simulator, and takes no device argument.
+enum SimulatorUserInterface: Equatable {
+    case simulator(URL)
+    case deviceHub(URL)
+
+    static func locate(
+        developerDirectory: URL,
+        applicationExists: (URL) -> Bool
+    ) -> SimulatorUserInterface? {
+        let simulator = developerDirectory
+            .appendingPathComponent("Applications", isDirectory: true)
+            .appendingPathComponent("Simulator.app", isDirectory: true)
+        if applicationExists(simulator) {
+            return .simulator(simulator)
+        }
+        // <Xcode.app>/Contents/Developer -> <Xcode.app>/Contents/Applications
+        let deviceHub = developerDirectory
+            .deletingLastPathComponent()
+            .appendingPathComponent("Applications", isDirectory: true)
+            .appendingPathComponent("DeviceHub.app", isDirectory: true)
+        if applicationExists(deviceHub) {
+            return .deviceHub(deviceHub)
+        }
+        return nil
+    }
+
+    /// Arguments for `/usr/bin/open`.
+    func openArguments(udid: String) -> [String] {
+        switch self {
+        case .simulator(let url):
+            return [url.path, "--args", "-CurrentDeviceUDID", udid]
+        case .deviceHub(let url):
+            return [url.path]
+        }
+    }
+}
+
 final class SimulatorService: Sendable {
     private let processRunner: any ProcessRunning
+    private let applicationExists: @Sendable (URL) -> Bool
 
     private static let xcrunURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+    private static let xcodeSelectURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
     private static let openURL = URL(fileURLWithPath: "/usr/bin/open")
     private static let pkillURL = URL(fileURLWithPath: "/usr/bin/pkill")
+    private static let defaultDeveloperDirectory = URL(
+        fileURLWithPath: "/Applications/Xcode.app/Contents/Developer", isDirectory: true
+    )
 
-    init(processRunner: any ProcessRunning = ProcessRunner()) {
+    init(
+        processRunner: any ProcessRunning = ProcessRunner(),
+        applicationExists: @escaping @Sendable (URL) -> Bool = { url in
+            FileManager.default.fileExists(atPath: url.path)
+        }
+    ) {
         self.processRunner = processRunner
+        self.applicationExists = applicationExists
     }
 
     func availableDevices() async throws -> [SimulatorDevice] {
@@ -33,13 +85,47 @@ final class SimulatorService: Sendable {
         )
     }
 
-    /// Brings the Simulator application forward for the booted device.
-    /// Failures are ignored; simctl keeps working without the UI frontmost.
-    func openSimulatorApplication(udid: String) async {
-        _ = try? await run(
-            executable: Self.openURL,
-            arguments: ["-a", "Simulator", "--args", "-CurrentDeviceUDID", udid]
-        )
+    /// Brings the simulator user interface forward for the booted device and
+    /// returns a description of the failure when it could not be opened.
+    /// simctl keeps working without the UI, so the caller only reports it.
+    func openSimulatorApplication(udid: String) async -> String? {
+        let developerDirectory = await selectedDeveloperDirectory()
+        guard let userInterface = SimulatorUserInterface.locate(
+            developerDirectory: developerDirectory,
+            applicationExists: applicationExists
+        ) else {
+            return L10n.format(
+                "Neither Simulator.app nor Device Hub was found in %@.",
+                developerDirectory.deletingLastPathComponent().deletingLastPathComponent().path
+            )
+        }
+        do {
+            let result = try await run(
+                executable: Self.openURL,
+                arguments: userInterface.openArguments(udid: udid)
+            )
+            guard result.terminationStatus == 0 else {
+                let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                return output.isEmpty
+                    ? L10n.format("The open command failed (code %d).", result.terminationStatus)
+                    : output
+            }
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// The developer directory of the selected Xcode, falling back to the
+    /// standard installation when xcode-select cannot answer.
+    private func selectedDeveloperDirectory() async -> URL {
+        guard let result = try? await run(executable: Self.xcodeSelectURL, arguments: ["-p"]),
+              result.terminationStatus == 0 else {
+            return Self.defaultDeveloperDirectory
+        }
+        let path = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return Self.defaultDeveloperDirectory }
+        return URL(fileURLWithPath: path, isDirectory: true)
     }
 
     func install(udid: String, applicationURL: URL) async throws {

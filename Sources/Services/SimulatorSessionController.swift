@@ -313,7 +313,12 @@ final class SimulatorSessionController: ObservableObject {
             try await simulatorService.boot(udid: device.udid)
         }
         try await simulatorService.waitUntilBooted(udid: device.udid)
-        await simulatorService.openSimulatorApplication(udid: device.udid)
+        if let failure = await simulatorService.openSimulatorApplication(udid: device.udid) {
+            appendOutput(L10n.format(
+                "Could not open the simulator window; the app still runs headless: %@\n",
+                failure
+            ))
+        }
         appendOutput(L10n.format("Using Simulator %@ (%@).\n", device.name, device.udid))
         try await applyLocationIfNeeded(settings: settings, changed: settings.usesLocation)
         if reinstallOnly, buildProduct != nil {

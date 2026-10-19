@@ -1298,6 +1298,9 @@
 "A change arrived during the build; refreshing again.\n" = "A change arrived during the build; refreshing again.\n";
 "Booting %@…" = "Booting %@…";
 "Using Simulator %@ (%@).\n" = "Using Simulator %@ (%@).\n";
+"Neither Simulator.app nor Device Hub was found in %@." = "Neither Simulator.app nor Device Hub was found in %@.";
+"The open command failed (code %d)." = "The open command failed (code %d).";
+"Could not open the simulator window; the app still runs headless: %@\n" = "Could not open the simulator window; the app still runs headless: %@\n";
 "Building %@ (refresh %d)…" = "Building %@ (refresh %d)…";
 "Installing %@…" = "Installing %@…";
 "Launching %@…" = "Launching %@…";

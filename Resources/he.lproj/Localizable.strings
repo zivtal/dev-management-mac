@@ -1298,6 +1298,9 @@
 "A change arrived during the build; refreshing again.\n" = "שינוי התקבל במהלך הבנייה; מרענן שוב.\n";
 "Booting %@…" = "מפעיל את %@…";
 "Using Simulator %@ (%@).\n" = "משתמש בסימולטור %@ (%@).\n";
+"Neither Simulator.app nor Device Hub was found in %@." = "לא נמצאו Simulator.app או Device Hub ב-%@.";
+"The open command failed (code %d)." = "הפקודה open נכשלה (קוד %d).";
+"Could not open the simulator window; the app still runs headless: %@\n" = "לא ניתן לפתוח את חלון הסימולטור; האפליקציה עדיין רצה ללא תצוגה: %@\n";
 "Building %@ (refresh %d)…" = "בונה את %@ (רענון %d)…";
 "Installing %@…" = "מתקין את %@…";
 "Launching %@…" = "מפעיל את %@…";
