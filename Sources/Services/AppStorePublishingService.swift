@@ -898,15 +898,31 @@ final class AppStorePublishingService {
             return screenshotAsset(at: url, platformHint: project.isMacOSApplication ? .mac : nil).map { [$0] } ?? []
         }
         screenshots.append(contentsOf: discoverProjectScreenshots(project: project))
-        screenshots.append(contentsOf: screenshotAssets(in: screenshotCacheDirectory(
+        let cached = screenshotAssets(in: screenshotCacheDirectory(
             for: project,
             screenshotSimulatorUDIDs: screenshotSimulatorUDIDs
-        )))
-        var seenPaths: Set<String> = []
-        return screenshots.filter {
+        ))
+        return Self.orderedScreenshotAssets(supplied: screenshots, cached: cached).filter {
             ($0.platform == .mac) == project.isMacOSApplication
-                && seenPaths.insert($0.url.standardizedFileURL.path).inserted
         }
+    }
+
+    /// Supplied files keep a path order (`01-vault.png` before `02-entry.png`) so every publish sends
+    /// the same App Store order. Cached automatic captures only fill device families that have no
+    /// supplied file, so an earlier single capture never joins a curated set.
+    static func orderedScreenshotAssets(
+        supplied: [AppStoreScreenshotAsset],
+        cached: [AppStoreScreenshotAsset]
+    ) -> [AppStoreScreenshotAsset] {
+        var seenPaths: Set<String> = []
+        let ordered = supplied
+            .filter { seenPaths.insert($0.url.standardizedFileURL.path).inserted }
+            .sorted { $0.url.path.localizedStandardCompare($1.url.path) == .orderedAscending }
+        let suppliedPlatforms = Set(ordered.map(\.platform))
+        let fallback = cached.filter {
+            !suppliedPlatforms.contains($0.platform) && seenPaths.insert($0.url.standardizedFileURL.path).inserted
+        }
+        return ordered + fallback
     }
 
     private func collectScreenshots(

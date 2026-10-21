@@ -3382,6 +3382,34 @@ final class AppStorePublishingTests: XCTestCase {
             bundleIdentifier: "com.example.app"
         )
     }
+
+    func testSuppliedScreenshotsKeepPathOrderAndReplaceCachedCapturesOfTheSameFamily() {
+        func asset(_ path: String, _ displayType: String, cached: Bool = false) -> AppStoreScreenshotAsset {
+            AppStoreScreenshotAsset(url: URL(fileURLWithPath: path), displayType: displayType, automaticallyCaptured: cached)
+        }
+        let supplied = [
+            asset("/repo/Screenshots/en-US/iPad-13/10-settings.png", "APP_IPAD_PRO_3GEN_129"),
+            asset("/repo/Screenshots/en-US/iPad-13/02-entry.png", "APP_IPAD_PRO_3GEN_129"),
+            asset("/repo/Screenshots/en-US/iPad-13/01-vault.png", "APP_IPAD_PRO_3GEN_129"),
+            asset("/repo/Screenshots/en-US/iPad-13/01-vault.png", "APP_IPAD_PRO_3GEN_129"), // discovered twice
+            asset("/repo/Screenshots/en-US/iPhone-69/01-vault.png", "APP_IPHONE_67"),
+        ]
+        let cached = [
+            asset("/cache/KeyPassX-iPad-iPad-Pro-13-inch-M5-.png", "APP_IPAD_PRO_3GEN_129", cached: true),
+            asset("/cache/KeyPassX-appleWatch-Apple-Watch-Ultra-4-49mm-.png", "APP_WATCH_ULTRA", cached: true),
+        ]
+
+        let ordered = AppStorePublishingService.orderedScreenshotAssets(supplied: supplied, cached: cached)
+
+        XCTAssertEqual(ordered.map(\.url.lastPathComponent), [
+            "01-vault.png", "02-entry.png", "10-settings.png", "01-vault.png",
+            "KeyPassX-appleWatch-Apple-Watch-Ultra-4-49mm-.png",
+        ])
+        XCTAssertEqual(ordered.map(\.platform), [.iPad, .iPad, .iPad, .iPhone, .appleWatch])
+        XCTAssertFalse(ordered.contains { $0.automaticallyCaptured && $0.platform == .iPad },
+                       "a stale cached iPad capture must not join a supplied iPad set")
+        XCTAssertEqual(AppStorePublishingService.orderedScreenshotAssets(supplied: [], cached: cached), cached)
+    }
 }
 
 private extension AppStorePublishingTests {
