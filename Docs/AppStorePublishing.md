@@ -1025,3 +1025,27 @@ Required content text (`readyText`) now gates only automatic captures. Supplied
 files still pass pixel, dimension, duplicate, and known-empty-screen checks, but a
 curated set (vault, generator, settings…) is not rejected because one screen
 lacks the capture phrase.
+
+## Command-line screenshot repair and resubmission (2.5.9)
+
+Three commands reach App Store Connect for a project resolved by its bundle
+identifier, using the saved issuer, key, and Keychain private key:
+
+```sh
+DM="/Applications/Development Management.app/Contents/MacOS/Development Management"
+"$DM" app-status --project /path/to/app --platform IOS
+"$DM" replace-screenshots --project /path/to/app --platform IOS --version 0.1.39 \
+  --display-types APP_IPAD_PRO_3GEN_129,APP_IPHONE_67
+"$DM" resubmit --project /path/to/app --platform IOS --version 0.1.39
+```
+
+`publish --project PATH --platform IOS` runs the Publish workflow itself from the
+manifest and saved credentials (archive, export, upload, metadata, screenshots,
+review details, attach, submit), printing each phase. `app-status` is read-only. `replace-screenshots` runs the same validated preview
+as Publish (supplied files first, cached captures for the rest), then deletes and
+recreates only the named display types' sets on an editable version, in every
+localization, with locale-specific files where supplied. `resubmit` checks the
+version's submission readiness and creates or completes a review submission for
+it with the build already attached; it never archives, uploads, or changes
+metadata. App Review's Resolution Center messages have no public API endpoint,
+so replies are still written in App Store Connect.

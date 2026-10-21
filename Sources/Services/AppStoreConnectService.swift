@@ -1764,14 +1764,7 @@ final class AppStoreConnectService {
         }
         try AppStoreScreenshotValidator.validateSet(selected)
         let appID = try await findApplication(bundleIdentifier: bundleIdentifier)
-        let versions = try await pagedData(path: "/v1/apps/\(appID)/appStoreVersions",
-            query: ["filter[platform]": platform.rawValue, "filter[versionString]": version])
-        guard let target = versions.first(where: {
-            Self.attributes($0)["versionString"] as? String == version
-                && Self.attributes($0)["platform"] as? String == platform.rawValue
-        }), let versionID = target["id"] as? String,
-              ["PREPARE_FOR_SUBMISSION", "REJECTED", "METADATA_REJECTED", "DEVELOPER_REJECTED"].contains(
-                Self.attributes(target)["appStoreState"] as? String ?? "") else {
+        guard let versionID = try await editableVersionID(appID: appID, version: version) else {
             throw AppStoreScreenshotValidationError(issues: [L10n.text("Choose an existing editable App Store version for screenshot repair.")])
         }
         let localizations = try await pagedData(path: "/v1/appStoreVersions/\(versionID)/appStoreVersionLocalizations")
@@ -2618,6 +2611,20 @@ final class AppStoreConnectService {
         }
         let signature = try privateKey.signature(for: signingData)
         return "\(signingInput).\(base64URL(signature.rawRepresentation))"
+    }
+
+    /// The version's identifier when it can still be edited and resubmitted on this platform
+    /// (preparing, rejected, metadata rejected, or developer rejected); nil otherwise.
+    func editableVersionID(appID: String, version: String) async throws -> String? {
+        let versions = try await pagedData(path: "/v1/apps/\(appID)/appStoreVersions",
+            query: ["filter[platform]": platform.rawValue, "filter[versionString]": version])
+        guard let target = versions.first(where: {
+            Self.attributes($0)["versionString"] as? String == version
+                && Self.attributes($0)["platform"] as? String == platform.rawValue
+        }), let versionID = target["id"] as? String,
+              ["PREPARE_FOR_SUBMISSION", "REJECTED", "METADATA_REJECTED", "DEVELOPER_REJECTED"].contains(
+                Self.attributes(target)["appStoreState"] as? String ?? "") else { return nil }
+        return versionID
     }
 
     private func findApplication(bundleIdentifier: String) async throws -> String {
