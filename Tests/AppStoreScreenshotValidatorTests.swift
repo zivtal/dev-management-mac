@@ -159,6 +159,18 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: supplied.url.path))
     }
 
+    func testReadyTextGatesAutomaticCapturesOnly() throws {
+        let plain = try asset()
+        let supplied = AppStoreScreenshotAsset(url: plain.url, displayType: plain.displayType, platform: .iPad)
+        let captured = AppStoreScreenshotAsset(url: plain.url, displayType: plain.displayType, platform: .iPad,
+                                               automaticallyCaptured: true)
+        let options = ["iPad": AppStoreScreenshotCaptureOptions(readyText: "Email")]
+        XCTAssertEqual(try AppStoreScreenshotRecovery.validatedAssets([supplied],
+            cacheDirectory: URL(fileURLWithPath: "/different-cache"), options: options, primaryLocale: "en-US"), [supplied])
+        XCTAssertThrowsError(try AppStoreScreenshotRecovery.validatedAssets([captured],
+            cacheDirectory: URL(fileURLWithPath: "/different-cache"), options: options, primaryLocale: "en-US"))
+    }
+
     func testSimulatorInstallRetriesAppconduitRaceAndStopsAtLimit() async throws {
         let transient = ProcessRunnerError.commandFailed(executable: "xcrun", status: 24,
             output: "IXErrorDomain: Uninstall requested error")

@@ -9,7 +9,10 @@ enum AppStoreScreenshotRecovery {
         var valid: [AppStoreScreenshotAsset] = []
         for asset in assets {
             do {
-                try AppStoreScreenshotValidator.validate(asset, readyText: options[asset.platform.rawValue]?.readyText)
+                // Required content text describes when an automatic capture is ready; supplied files
+                // are curated screens that need not all show the same phrase.
+                try AppStoreScreenshotValidator.validate(asset,
+                    readyText: asset.automaticallyCaptured ? options[asset.platform.rawValue]?.readyText : nil)
                 valid.append(asset)
             } catch {
                 guard asset.url.deletingLastPathComponent().standardizedFileURL == cacheDirectory.standardizedFileURL else {

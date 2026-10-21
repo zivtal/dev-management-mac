@@ -1020,3 +1020,8 @@ generator, search, settings, autofill). Its manifest sets `replaceScreenshots`
 to `true`, so each publish deletes and recreates the matching display sets
 instead of keeping or appending. Watch continues to use the automatic fixture
 capture. No upload happens outside Publish or the repair action.
+
+Required content text (`readyText`) now gates only automatic captures. Supplied
+files still pass pixel, dimension, duplicate, and known-empty-screen checks, but a
+curated set (vault, generator, settings…) is not rejected because one screen
+lacks the capture phrase.
