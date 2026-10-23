@@ -74,7 +74,7 @@ final class MacStoreScreenshotService {
         return try await AppStoreScreenshotCapture.waitForContent(options: options) {
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
             let metrics = try AppStoreScreenshotValidator.metrics(image)
-            guard !metrics.isNearUniform else {
+            guard !metrics.isNearUniform(for: .mac) else {
                 throw AppStoreScreenshotValidationError(issues: [L10n.text("The Mac app window is blank. Prepare a demo content screen before capture.")])
             }
             try canvas(image).write(to: output, options: .atomic)

@@ -36,8 +36,18 @@ enum AppStoreScreenshotValidator {
         let whiteFraction: Double
         let dominantFraction: Double
         let digest: String
-        var isNearUniform: Bool {
-            variance < 4 || blackFraction >= 0.95 || whiteFraction >= 0.95 || dominantFraction >= 0.95
+        var isNearUniform: Bool { isNearUniform(for: .iPhone) }
+
+        /// watchOS screens are a black canvas with sparse text and glyphs, so a real content
+        /// screen is often more than 95% black. A launch frame that shows only the clock and the
+        /// loading indicator stays below 1% content.
+        static func uniformFractionLimit(for platform: AppStoreScreenshotPlatform) -> Double {
+            platform == .appleWatch ? 0.99 : 0.95
+        }
+
+        func isNearUniform(for platform: AppStoreScreenshotPlatform) -> Bool {
+            let limit = Self.uniformFractionLimit(for: platform)
+            return variance < 4 || blackFraction >= limit || whiteFraction >= limit || dominantFraction >= limit
         }
     }
 
@@ -84,7 +94,7 @@ enum AppStoreScreenshotValidator {
             throw fail(L10n.format("Invalid dimensions: %d × %d.", image.width, image.height))
         }
         let values = try metrics(image)
-        guard !values.isNearUniform else {
+        guard !values.isNearUniform(for: asset.platform) else {
             throw fail(L10n.format("Blank or near-uniform image (mean %.2f, variance %.2f, dominant color %.2f%%).",
                 values.mean, values.variance, values.dominantFraction * 100))
         }

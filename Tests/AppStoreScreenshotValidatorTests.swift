@@ -56,6 +56,48 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
         XCTAssertTrue(metrics.isNearUniform)
     }
 
+    /// watchOS screens are a black canvas with sparse text; the real Ultra capture was 96% black.
+    private func watchAsset(contentPixels: Int, width: Int = 422, height: Int = 514,
+                            displayType: String = "APP_WATCH_ULTRA") throws -> AppStoreScreenshotAsset {
+        let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(gray: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        let bandWidth = min(width - 20, max(1, contentPixels / 20))
+        context.fill(CGRect(x: 10, y: height / 2, width: bandWidth, height: 20))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
+        files.append(url)
+        let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil)!
+        CGImageDestinationAddImage(destination, context.makeImage()!, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return AppStoreScreenshotAsset(url: url, displayType: displayType)
+    }
+
+    func testWatchScreenWithSparseTextOnBlackCanvasIsValid() throws {
+        let metrics = try AppStoreScreenshotValidator.validate(watchAsset(contentPixels: 8_000))
+        XCTAssertGreaterThan(metrics.blackFraction, 0.95)
+        XCTAssertLessThan(metrics.blackFraction, 0.99)
+        XCTAssertFalse(metrics.isNearUniform(for: .appleWatch))
+        XCTAssertTrue(metrics.isNearUniform(for: .iPhone))
+    }
+
+    func testWatchLaunchFrameWithOnlyClockIsStillBlank() throws {
+        XCTAssertThrowsError(try AppStoreScreenshotValidator.validate(watchAsset(contentPixels: 800))) { error in
+            XCTAssertTrue(error.localizedDescription.contains("APP_WATCH_ULTRA"))
+            XCTAssertTrue(error.localizedDescription.contains("variance"))
+        }
+        XCTAssertThrowsError(try AppStoreScreenshotValidator.validate(watchAsset(contentPixels: 0)))
+    }
+
+    func testPhoneAndPadKeepTheStrictUniformThreshold() throws {
+        let pad = try watchAsset(contentPixels: 220_000, width: 2064, height: 2752, displayType: "APP_IPAD_PRO_3GEN_129")
+        XCTAssertThrowsError(try AppStoreScreenshotValidator.validate(pad)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("variance"))
+        }
+    }
+
     func testValidContentHasLuminanceVariation() throws {
         let metrics = try AppStoreScreenshotValidator.validate(asset())
         XCTAssertGreaterThan(metrics.variance, 4)
