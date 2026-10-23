@@ -1621,3 +1621,15 @@
 " (preserved for existing subscribers)" = " (preserved for existing subscribers)";
 "  %d other territory price(s) not shown.\n" = "  %d other territory price(s) not shown.\n";
 "No subscription products are defined in a local .storekit file or app-store-publishing.json." = "No subscription products are defined in a local .storekit file or app-store-publishing.json.";
+
+/* Publish window price-only update */
+"Apply Prices Now" = "Apply Prices Now";
+"Save the prices and schedule them in App Store Connect now. No build, upload, or review submission." = "Save the prices and schedule them in App Store Connect now. No build, upload, or review submission.";
+"Current prices are loaded from App Store Connect. Save keeps changes in app-store-publishing.json for the next Publish. Apply Prices Now schedules them in App Store Connect immediately, without a build, upload, or review submission; a changed active price starts the next day, and Apple’s nearest valid price point is used when an exact value is unavailable." = "Current prices are loaded from App Store Connect. Save keeps changes in app-store-publishing.json for the next Publish. Apply Prices Now schedules them in App Store Connect immediately, without a build, upload, or review submission; a changed active price starts the next day, and Apple’s nearest valid price point is used when an exact value is unavailable.";
+"Prices were applied in App Store Connect. No build, upload, or review submission was made.\n%@" = "Prices were applied in App Store Connect. No build, upload, or review submission was made.\n%@";
+"%@: no price in %@" = "%@: no price in %@";
+" from %@" = " from %@";
+"Updating subscription prices for %@" = "Updating subscription prices for %@";
+"Products: %@" = "Products: %@";
+"Updated %d subscription price schedule(s) in App Store Connect" = "Updated %d subscription price schedule(s) in App Store Connect";
+"Subscription price update failed for %@" = "Subscription price update failed for %@";

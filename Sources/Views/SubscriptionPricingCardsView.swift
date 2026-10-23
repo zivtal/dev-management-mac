@@ -77,8 +77,10 @@ struct SubscriptionPricingCardsView: View {
     let territoryIDs: [String]
     let hasChanges: Bool
     let isSaving: Bool
+    let isApplying: Bool
     let saveStatus: SubscriptionPriceSaveStatus?
     let onSave: () -> Void
+    let onApply: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -92,7 +94,7 @@ struct SubscriptionPricingCardsView: View {
                 }
             }
 
-            Text("Current prices are loaded from App Store Connect. Changes are saved when you publish, and Apple’s nearest valid price point is used when an exact value is unavailable.")
+            Text("Current prices are loaded from App Store Connect. Save keeps changes in app-store-publishing.json for the next Publish. Apply Prices Now schedules them in App Store Connect immediately, without a build, upload, or review submission; a changed active price starts the next day, and Apple’s nearest valid price point is used when an exact value is unavailable.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -104,6 +106,18 @@ struct SubscriptionPricingCardsView: View {
             HStack {
                 Spacer()
                 Button {
+                    onApply()
+                } label: {
+                    if isApplying {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Apply Prices Now", systemImage: "arrow.up.circle")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSaving || isApplying || hasInvalidPrice)
+                .help("Save the prices and schedule them in App Store Connect now. No build, upload, or review submission.")
+                Button {
                     onSave()
                 } label: {
                     if isSaving {
@@ -113,7 +127,7 @@ struct SubscriptionPricingCardsView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!hasChanges || isSaving || hasInvalidPrice)
+                .disabled(!hasChanges || isSaving || isApplying || hasInvalidPrice)
             }
         }
         .padding(.top, 6)

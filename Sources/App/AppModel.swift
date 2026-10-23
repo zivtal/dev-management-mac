@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     @Published private var selectedInstallationLogProjectID: UUID?
     @Published private var selectedPublishingLogProjectID: UUID?
     @Published private(set) var isGeneratingOfferCodes = false
+    @Published private(set) var isUpdatingSubscriptionPrices = false
     @Published private(set) var hasOpenAIAPIKey = false
     @Published private(set) var hasAppStoreConnectPrivateKey = false
     @Published private(set) var appStoreConnectPrivateKeyProfileIDs: Set<UUID> = []
@@ -66,7 +67,7 @@ final class AppModel: ObservableObject {
 
     var hasActiveWork: Bool {
         !installationProgresses.isEmpty || !publishingProgresses.isEmpty || isGeneratingOfferCodes
-            || isRepairingSigningKeychain
+            || isUpdatingSubscriptionPrices || isRepairingSigningKeychain
     }
 
     func repairSigningKeychain() async throws -> URL? {
@@ -1323,6 +1324,69 @@ final class AppModel: ObservableObject {
             preferredVersion: project.marketingVersion,
             preferredBuildNumber: project.buildNumber
         )
+    }
+
+    /// Applies the manifest's subscription prices to the existing App Store Connect products.
+    /// The same work as the `update-subscription-prices` command: no archive, upload, version,
+    /// localization, or review submission.
+    func updateSubscriptionPrices(
+        projectID: UUID,
+        projectOverride: ManagedProject? = nil
+    ) async throws -> SubscriptionPriceUpdateResult {
+        guard !hasActiveWork else { throw AppStorePublishingError.busy }
+        guard var project = projectOverride ?? publishingSourceProject(id: projectID),
+              project.supportsAppStorePublishing else {
+            throw AppStorePublishingError.unsupportedProject
+        }
+        if projectOverride != nil {
+            project = try await AppStoreReleaseCoordinator.resolve(project: project, platform: project.appStorePlatform)
+        }
+        guard let bundleIdentifier = project.bundleIdentifier?.nilIfEmpty else {
+            throw AppStorePublishingError.missingBundleIdentifier
+        }
+        let credential = try appStoreConnectCredentialMaterial(for: project)
+        let catalog = try StoreKitSubscriptionDiscoveryService().discover(
+            project: project,
+            defaultLocale: preferences.appStoreLocale?.nilIfEmpty ?? "en-US"
+        )
+        isUpdatingSubscriptionPrices = true
+        defer { isUpdatingSubscriptionPrices = false }
+        addActivity(
+            level: .info,
+            title: L10n.format("Updating subscription prices for %@", project.displayName),
+            details: L10n.format("Products: %@", catalog.groups.flatMap(\.subscriptions).map(\.productID).joined(separator: ", ")),
+            projectID: project.id
+        )
+        let output = SubscriptionPriceUpdateOutput()
+        do {
+            let service = try AppStoreConnectService(
+                issuerID: credential.issuerID,
+                keyID: credential.keyID,
+                privateKeyPEM: credential.privateKey, platform: project.appStorePlatform
+            )
+            let appID = try await service.applicationID(bundleIdentifier: bundleIdentifier)
+            let reports = try await service.updateSubscriptionPrices(
+                appID: appID,
+                catalog: catalog,
+                onOutput: { output.append($0) }
+            )
+            let result = SubscriptionPriceUpdateResult(reports: reports, output: output.text)
+            addActivity(
+                level: .success,
+                title: L10n.format("Updated %d subscription price schedule(s) in App Store Connect", reports.count),
+                details: output.text,
+                projectID: project.id
+            )
+            return result
+        } catch {
+            addActivity(
+                level: .error,
+                title: L10n.format("Subscription price update failed for %@", project.displayName),
+                details: output.text + error.localizedDescription,
+                projectID: project.id
+            )
+            throw error
+        }
     }
 
     func generateAppStoreMetadataDraft(
@@ -2670,5 +2734,23 @@ final class AppModel: ObservableObject {
     private static func trimmedError(_ text: String, limit: Int = 30_000) -> String {
         guard text.count > limit else { return text }
         return "…\n" + String(text.suffix(limit))
+    }
+}
+
+/// Collects service output from any thread for the Activity log.
+final class SubscriptionPriceUpdateOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffer = ""
+
+    func append(_ text: String) {
+        lock.lock()
+        buffer += text
+        lock.unlock()
+    }
+
+    var text: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return buffer
     }
 }

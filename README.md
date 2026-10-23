@@ -68,7 +68,8 @@ configurable number of days.
 - Update-aware App Store releases that can replace an older version already in
   review after the replacement archive succeeds, while blocking duplicate
   version/build uploads.
-- Command-line `subscription-prices` and `update-subscription-prices` actions that
+- Price-only subscription updates: **Apply Prices Now** in the Publish window and
+  the command-line `subscription-prices` and `update-subscription-prices` actions
   read or apply the manifest's subscription prices to existing App Store Connect
   products without a build, upload, or review submission.
 - A default App Store Connect API plus named additional credential profiles,

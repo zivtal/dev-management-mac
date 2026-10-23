@@ -36,6 +36,32 @@ final class AppStoreReleasePlanTests: XCTestCase {
         XCTAssertTrue(PublishingCommand.projectConnectCommands.contains("update-subscription-prices"))
     }
 
+    func testPriceUpdateSummaryPrefersTheUpcomingBaseTerritoryPrice() throws {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        let today = try XCTUnwrap(formatter.date(from: "2026-10-23"))
+        let monthly = AppStoreConnectSubscriptionPriceReport(
+            productID: "com.example.monthly", subscriptionID: "m",
+            prices: [
+                .init(territory: "ISR", price: "9.9", currency: "ILS", startDate: nil, endDate: nil, preserved: false),
+                .init(territory: "ISR", price: "1.9", currency: "ILS", startDate: "2026-10-24", endDate: nil, preserved: false),
+                .init(territory: "USA", price: "0.49", currency: "USD", startDate: "2026-10-24", endDate: nil, preserved: false)
+            ]
+        )
+        let yearly = AppStoreConnectSubscriptionPriceReport(
+            productID: "com.example.yearly", subscriptionID: "y",
+            prices: [.init(territory: "USA", price: "4.99", currency: "USD", startDate: nil, endDate: nil, preserved: false)]
+        )
+        let summary = SubscriptionPriceUpdateResult.summary(
+            reports: [monthly, yearly],
+            baseTerritories: ["com.example.monthly": "ISR"],
+            referenceDate: today
+        )
+        XCTAssertEqual(summary, "com.example.monthly: 1.9 ILS (ISR) from 2026-10-24\ncom.example.yearly: 4.99 USD (USA)")
+        XCTAssertEqual(monthly.effectivePrice(in: "ISR", referenceDate: today.addingTimeInterval(3 * 86_400))?.price, "1.9")
+        XCTAssertNil(monthly.effectivePrice(in: "FRA", referenceDate: today))
+    }
+
     func testPriceReportTextShowsRequestedTerritoriesAndCountsTheRest() {
         let report = AppStoreConnectSubscriptionPriceReport(
             productID: "com.example.monthly",

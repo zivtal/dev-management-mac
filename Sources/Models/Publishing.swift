@@ -774,6 +774,51 @@ struct AppStoreConnectSubscriptionPriceReport: Equatable, Sendable {
     let productID: String
     let subscriptionID: String
     let prices: [AppStoreConnectSubscriptionPriceSnapshot]
+
+    /// The price that will apply next in `territory`: the earliest future schedule, else the active one.
+    func effectivePrice(
+        in territory: String,
+        referenceDate: Date = Date()
+    ) -> AppStoreConnectSubscriptionPriceSnapshot? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let components = calendar.dateComponents([.year, .month, .day], from: referenceDate)
+        let today = String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+        let territoryPrices = prices.filter { $0.territory.caseInsensitiveCompare(territory) == .orderedSame }
+        if let upcoming = territoryPrices
+            .filter({ ($0.startDate ?? "") > today })
+            .min(by: { ($0.startDate ?? "") < ($1.startDate ?? "") }) {
+            return upcoming
+        }
+        return territoryPrices
+            .filter { ($0.startDate ?? "") <= today && (($0.endDate ?? "") == "" || ($0.endDate ?? "") >= today) }
+            .max { ($0.startDate ?? "") < ($1.startDate ?? "") }
+    }
+}
+
+/// Outcome of a price-only App Store Connect update, as shown in the Publish window and Activity.
+struct SubscriptionPriceUpdateResult: Equatable, Sendable {
+    let reports: [AppStoreConnectSubscriptionPriceReport]
+    let output: String
+
+    /// One line per product with the price that applies next in its base territory.
+    static func summary(
+        reports: [AppStoreConnectSubscriptionPriceReport],
+        baseTerritories: [String: String],
+        referenceDate: Date = Date()
+    ) -> String {
+        reports.map { report in
+            let territory = baseTerritories[report.productID]?.nilIfEmpty ?? "USA"
+            guard let price = report.effectivePrice(in: territory, referenceDate: referenceDate) else {
+                return L10n.format("%@: no price in %@", report.productID, territory)
+            }
+            var text = "\(report.productID): \(price.price)"
+            if let currency = price.currency?.nilIfEmpty { text += " \(currency)" }
+            text += " (\(territory))"
+            if let start = price.startDate?.nilIfEmpty { text += L10n.format(" from %@", start) }
+            return text
+        }.joined(separator: "\n")
+    }
 }
 
 struct AppStoreConnectOfferSnapshot: Equatable, Sendable, Identifiable {

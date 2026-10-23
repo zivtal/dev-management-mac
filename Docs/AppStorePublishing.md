@@ -1062,6 +1062,13 @@ DM="/Applications/Development Management.app/Contents/MacOS/Development Manageme
 "$DM" update-subscription-prices --project /path/to/app --platform IOS
 ```
 
+The Publish window's **Subscriptions** cards offer the same price-only path as
+**Apply Prices Now** (2.6.1). It saves the edited base prices and territories to
+`app-store-publishing.json`, runs the price update with the app's selected
+credential profile, shows the price that applies next in each base territory, and
+reloads the App Store Connect snapshot. **Save Subscription Prices** still only
+writes the file for the next Publish.
+
 `subscription-prices` is read-only and prints each manifest product's live
 schedule in the base territory, every `territoryPrices` territory, and any
 `--territories` passed; other territories are only counted. `update-subscription-prices`

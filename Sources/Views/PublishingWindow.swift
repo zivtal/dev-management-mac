@@ -230,6 +230,7 @@ private struct PublishingWindowView: View {
     @State private var savedSubscriptionBaseTerritories: [String: String] = [:]
     @State private var subscriptionPriceSaveStatus: SubscriptionPriceSaveStatus?
     @State private var isSavingSubscriptionPrices = false
+    @State private var isApplyingSubscriptionPrices = false
     @ObservedObject private var appleSession = AppleWebSession.shared
     @State private var showsAppleAccount = false
     @State private var showsAppCreation = false
@@ -1129,8 +1130,10 @@ private struct PublishingWindowView: View {
                     hasChanges: subscriptionPriceDrafts != savedSubscriptionPrices
                         || subscriptionBaseTerritoryDrafts != savedSubscriptionBaseTerritories,
                     isSaving: isSavingSubscriptionPrices,
+                    isApplying: isApplyingSubscriptionPrices,
                     saveStatus: subscriptionPriceSaveStatus,
-                    onSave: saveSubscriptionPrices
+                    onSave: saveSubscriptionPrices,
+                    onApply: { Task { await applySubscriptionPrices() } }
                 )
             }
             Text("For a first publication, local .storekit files and app-store-publishing.json are reconciled with App Store Connect. If an older version is already published, these resources are preserved and only the new version is uploaded and submitted.")
@@ -2553,6 +2556,30 @@ private struct PublishingWindowView: View {
 
     private func saveSubscriptionPrices() {
         _ = persistSubscriptionPrices()
+    }
+
+    /// Price-only path: save the drafts to the manifest, then schedule them in App Store Connect.
+    private func applySubscriptionPrices() async {
+        guard let projectID = selectedProjectID, !isApplyingSubscriptionPrices else { return }
+        guard saveSubscriptionPricesForPublishing() else { return }
+        isApplyingSubscriptionPrices = true
+        defer { isApplyingSubscriptionPrices = false }
+        subscriptionPriceSaveStatus = nil
+        do {
+            let result = try await model.updateSubscriptionPrices(projectID: projectID, projectOverride: selectedProject)
+            let summary = SubscriptionPriceUpdateResult.summary(
+                reports: result.reports,
+                baseTerritories: savedSubscriptionBaseTerritories
+            )
+            subscriptionPriceSaveStatus = .success(
+                L10n.format("Prices were applied in App Store Connect. No build, upload, or review submission was made.\n%@", summary)
+            )
+            await refreshAppStoreConfiguration()
+        } catch is CancellationError {
+            return
+        } catch {
+            subscriptionPriceSaveStatus = .failure(error.localizedDescription)
+        }
     }
 
     private func saveSubscriptionPricesForPublishing() -> Bool {

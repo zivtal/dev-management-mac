@@ -1621,3 +1621,15 @@
 " (preserved for existing subscribers)" = " (נשמר למנויים קיימים)";
 "  %d other territory price(s) not shown.\n" = "  %d מחירי טריטוריות נוספים אינם מוצגים.\n";
 "No subscription products are defined in a local .storekit file or app-store-publishing.json." = "לא הוגדרו מוצרי מינוי בקובץ ‎.storekit מקומי או ב־app-store-publishing.json.";
+
+/* Publish window price-only update */
+"Apply Prices Now" = "החלת המחירים כעת";
+"Save the prices and schedule them in App Store Connect now. No build, upload, or review submission." = "שמירת המחירים ותזמונם ב־App Store Connect כעת. ללא בנייה, העלאה או הגשה לבדיקה.";
+"Current prices are loaded from App Store Connect. Save keeps changes in app-store-publishing.json for the next Publish. Apply Prices Now schedules them in App Store Connect immediately, without a build, upload, or review submission; a changed active price starts the next day, and Apple’s nearest valid price point is used when an exact value is unavailable." = "המחירים הנוכחיים נטענים מ־App Store Connect. שמירה שומרת את השינויים ב־app-store-publishing.json לפרסום הבא. החלת המחירים כעת מתזמנת אותם ב־App Store Connect מיד, ללא בנייה, העלאה או הגשה לבדיקה; מחיר פעיל שהשתנה נכנס לתוקף למחרת, ונעשה שימוש בנקודת המחיר התקפה הקרובה ביותר של Apple כאשר אין ערך מדויק.";
+"Prices were applied in App Store Connect. No build, upload, or review submission was made.\n%@" = "המחירים הוחלו ב־App Store Connect. לא בוצעו בנייה, העלאה או הגשה לבדיקה.\n%@";
+"%@: no price in %@" = "%@: אין מחיר ב־%@";
+" from %@" = " החל מ־%@";
+"Updating subscription prices for %@" = "מעדכן מחירי מינויים עבור %@";
+"Products: %@" = "מוצרים: %@";
+"Updated %d subscription price schedule(s) in App Store Connect" = "עודכנו %d לוחות מחירי מינוי ב־App Store Connect";
+"Subscription price update failed for %@" = "עדכון מחירי המינויים נכשל עבור %@";
