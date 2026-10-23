@@ -2264,8 +2264,7 @@ private struct PublishingWindowView: View {
             return PublishingReadinessItem(id: "screenshots", title: L10n.text("Screenshots need attention"),
                 detail: issues.joined(separator: "\n"), state: .blocked)
         }
-        if screenshotWorkInProgress || preview.screenshotPreview.devices.isEmpty
-            || preview.screenshotPreview.devices.contains(where: { $0.state == .capturing || $0.state == .ready }) {
+        if screenshotWorkInProgress || preview.screenshotPreview.isStillValidating {
             return PublishingReadinessItem(id: "screenshots", title: L10n.text("Screenshots"),
                 detail: L10n.text("Validating screenshot content…"), state: .checking)
         }

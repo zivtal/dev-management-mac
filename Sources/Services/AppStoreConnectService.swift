@@ -100,6 +100,13 @@ struct AppStoreScreenshotPreview: Equatable, Sendable {
     let screenshots: [AppStoreScreenshotAsset]
     var validationIssues: [String] = []
 
+    /// True while screenshot sources are still being detected or captured.
+    /// `.ready` means a Simulator is prepared to capture at publish time, which is
+    /// a settled answer rather than work in progress, so it never keeps this true.
+    var isStillValidating: Bool {
+        devices.isEmpty || devices.contains { $0.state == .capturing }
+    }
+
     var blockingIssues: [String] {
         if !validationIssues.isEmpty {
             var seen: Set<String> = []

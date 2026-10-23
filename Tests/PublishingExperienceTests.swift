@@ -30,6 +30,23 @@ final class PublishingExperienceTests: XCTestCase {
         XCTAssertEqual(preview.blockingIssues, ["phone failed", "ipad failed"])
     }
 
+    func testScreenshotPreviewWithReadySimulatorsIsNotStillValidating() {
+        let ready = AppStoreScreenshotPreview(devices: [
+            AppStoreScreenshotCaptureDevice(platform: .iPhone, name: "iPhone 17", runtime: "iOS 26", state: .ready),
+            AppStoreScreenshotCaptureDevice(platform: .iPad, name: "iPad Pro", runtime: "iPadOS 26", state: .provided)
+        ], screenshots: [])
+        XCTAssertFalse(ready.isStillValidating,
+            "A simulator that is ready to capture is a settled state, not an in-progress check")
+
+        let capturing = AppStoreScreenshotPreview(devices: [
+            AppStoreScreenshotCaptureDevice(platform: .iPhone, name: "iPhone 17", runtime: "iOS 26", state: .capturing)
+        ], screenshots: [])
+        XCTAssertTrue(capturing.isStillValidating)
+
+        XCTAssertTrue(AppStoreScreenshotPreview(devices: [], screenshots: []).isStillValidating,
+            "No devices means the preview has not finished detecting screenshot sources")
+    }
+
     func testPublishingActionsHaveExplicitReviewBehavior() {
         XCTAssertTrue(PublishingIntent.publish.submitsForReview)
         XCTAssertFalse(PublishingIntent.testFlight.submitsForReview)
