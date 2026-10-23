@@ -1609,3 +1609,15 @@
 "Completed" = "הושלם";
 
 "Continue to App Review…" = "המשך לבדיקת App Review…";
+
+/* Command-line subscription prices */
+"%@: current App Store Connect subscription prices.\n" = "%@: מחירי המינויים הנוכחיים ב־App Store Connect.\n";
+"Prices after the update:\n" = "המחירים לאחר העדכון:\n";
+"Updated %d subscription price schedule(s) on %@ from app-store-publishing.json. No build, upload, or review submission was made.\n" = "עודכנו %d לוחות מחירי מינוי עבור %@ מתוך app-store-publishing.json. לא בוצעו בנייה, העלאה או הגשה לבדיקה.\n";
+"Subscription %@:\n" = "מינוי %@:\n";
+"  No prices are scheduled in the requested territories.\n" = "  לא מתוזמנים מחירים בטריטוריות המבוקשות.\n";
+" (from %@)" = " (החל מ־%@)";
+" (until %@)" = " (עד %@)";
+" (preserved for existing subscribers)" = " (נשמר למנויים קיימים)";
+"  %d other territory price(s) not shown.\n" = "  %d מחירי טריטוריות נוספים אינם מוצגים.\n";
+"No subscription products are defined in a local .storekit file or app-store-publishing.json." = "לא הוגדרו מוצרי מינוי בקובץ ‎.storekit מקומי או ב־app-store-publishing.json.";

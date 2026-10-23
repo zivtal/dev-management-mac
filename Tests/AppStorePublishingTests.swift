@@ -3476,6 +3476,106 @@ private extension AppStorePublishingTests {
         )
     }
 
+    func testUpdateSubscriptionPricesSchedulesOnlyPricesForExistingProducts() async throws {
+        var scheduledPricePoints: [String] = []
+        var scheduledStartDates: [String?] = []
+        var priceReads = 0
+        let service = try appStoreConnectTestService { request in
+            switch (request.httpMethod ?? "", request.url?.path ?? "") {
+            case ("GET", "/v1/apps/app-id/subscriptionGroups"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": [[
+                    "type": "subscriptionGroups", "id": "group-id", "attributes": ["referenceName": "Premium"]
+                ]]])
+            case ("GET", "/v1/subscriptionGroups/group-id/subscriptions"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": [[
+                    "type": "subscriptions", "id": "sub-id", "attributes": ["productId": "com.example.monthly"]
+                ]]])
+            case ("GET", "/v1/subscriptions/sub-id/pricePoints"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": [
+                    ["type": "subscriptionPricePoints", "id": "isr-1.9", "attributes": ["customerPrice": "1.9"]],
+                    ["type": "subscriptionPricePoints", "id": "isr-9.9", "attributes": ["customerPrice": "9.9"]]
+                ]])
+            case ("GET", "/v1/subscriptions/sub-id/prices"):
+                priceReads += 1
+                let price: [String: Any] = [
+                    "type": "subscriptionPrices", "id": "existing-price",
+                    "attributes": ["preserved": false],
+                    "relationships": [
+                        "subscriptionPricePoint": ["data": ["type": "subscriptionPricePoints", "id": "isr-9.9"]],
+                        "territory": ["data": ["type": "territories", "id": "ISR"]]
+                    ]
+                ]
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: [
+                    "data": [price],
+                    "included": [
+                        ["type": "subscriptionPricePoints", "id": "isr-9.9", "attributes": ["customerPrice": "9.9"]],
+                        ["type": "territories", "id": "ISR", "attributes": ["currency": "ILS"]]
+                    ]
+                ])
+            case ("POST", "/v1/subscriptionPrices"):
+                let body = try JSONSerialization.jsonObject(with: try Self.requestBodyData(request)) as? [String: Any]
+                let data = body?["data"] as? [String: Any]
+                let relationships = data?["relationships"] as? [String: Any]
+                let point = relationships?["subscriptionPricePoint"] as? [String: Any]
+                scheduledPricePoints.append((point?["data"] as? [String: Any])?["id"] as? String ?? "")
+                scheduledStartDates.append((data?["attributes"] as? [String: Any])?["startDate"] as? String)
+                return try Self.appStoreConnectResponse(for: request, status: 201,
+                    json: ["data": ["type": "subscriptionPrices", "id": "scheduled"]])
+            default:
+                XCTFail("Unexpected App Store Connect request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
+                return try Self.appStoreConnectResponse(for: request, status: 500, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+
+        let catalog = AppStoreSubscriptionCatalog(
+            publication: nil, application: nil, compliance: nil,
+            groups: [AppStoreSubscriptionGroupDefinition(
+                referenceName: "Premium", localizations: [],
+                subscriptions: [AppStoreSubscriptionDefinition(
+                    referenceName: "Monthly", productID: "com.example.monthly", period: "ONE_MONTH",
+                    basePrice: "1.90", baseTerritory: "ISR", availableInAllTerritories: false
+                )]
+            )],
+            detectedProductIDs: ["com.example.monthly"], sourceFiles: [],
+            projectDirectory: FileManager.default.temporaryDirectory
+        )
+
+        let before = try await service.subscriptionPriceReports(appID: "app-id", productIDs: ["com.example.monthly"])
+        XCTAssertEqual(before.map(\.productID), ["com.example.monthly"])
+        XCTAssertEqual(before.first?.prices.map(\.price), ["9.9"])
+        XCTAssertEqual(before.first?.prices.first?.currency, "ILS")
+
+        let reports = try await service.updateSubscriptionPrices(appID: "app-id", catalog: catalog, onOutput: { _ in })
+
+        // Only the ISR price is scheduled, from tomorrow because a price already exists; no
+        // group, version, localization, availability, or review-screenshot request was made.
+        XCTAssertEqual(scheduledPricePoints, ["isr-1.9"])
+        XCTAssertEqual(scheduledStartDates.count, 1)
+        XCTAssertNotNil(scheduledStartDates.first ?? nil)
+        XCTAssertEqual(reports.map(\.subscriptionID), ["sub-id"])
+        XCTAssertEqual(priceReads, 3)
+        XCTAssertFalse(AppStoreConnectURLProtocolStub.requests.contains {
+            ($0.url?.path ?? "").contains("/versions") || ($0.url?.path ?? "").contains("subscriptionAvailabilit")
+        })
+    }
+
+    func testUpdateSubscriptionPricesRejectsAnEmptyCatalog() async throws {
+        let service = try appStoreConnectTestService { request in
+            XCTFail("Unexpected request \(request.url?.path ?? "")")
+            return try Self.appStoreConnectResponse(for: request, status: 500, json: [:])
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        let catalog = AppStoreSubscriptionCatalog(
+            publication: nil, application: nil, compliance: nil, groups: [], detectedProductIDs: [],
+            sourceFiles: [], projectDirectory: FileManager.default.temporaryDirectory)
+        do {
+            _ = try await service.updateSubscriptionPrices(appID: "app-id", catalog: catalog, onOutput: { _ in })
+            XCTFail("Expected missingSubscriptionDefinitions")
+        } catch AppStoreConnectError.missingSubscriptionDefinitions {
+        }
+    }
+
     static func appStoreConnectResponse(
         for request: URLRequest,
         status: Int,

@@ -29,6 +29,37 @@ final class AppStoreReleasePlanTests: XCTestCase {
         XCTAssertEqual(try PublishingCommand.parsePlatforms("MAC_OS"), [.macOS])
     }
 
+    func testSubscriptionPriceCommandsResolveProjectsByBundleIdentifier() {
+        XCTAssertTrue(PublishingCommand.commands.contains("subscription-prices"))
+        XCTAssertTrue(PublishingCommand.commands.contains("update-subscription-prices"))
+        XCTAssertTrue(PublishingCommand.projectConnectCommands.contains("subscription-prices"))
+        XCTAssertTrue(PublishingCommand.projectConnectCommands.contains("update-subscription-prices"))
+    }
+
+    func testPriceReportTextShowsRequestedTerritoriesAndCountsTheRest() {
+        let report = AppStoreConnectSubscriptionPriceReport(
+            productID: "com.example.monthly",
+            subscriptionID: "sub",
+            prices: [
+                .init(territory: "DEU", price: "2.49", currency: "EUR", startDate: nil, endDate: nil, preserved: false),
+                .init(territory: "ISR", price: "9.90", currency: "ILS", startDate: nil, endDate: "2026-10-23", preserved: false),
+                .init(territory: "ISR", price: "1.90", currency: "ILS", startDate: "2026-10-24", endDate: nil, preserved: false),
+                .init(territory: "USA", price: "2.99", currency: "USD", startDate: nil, endDate: nil, preserved: true)
+            ]
+        )
+        let text = PublishingCommand.priceReportText([report], territories: ["ISR", "USA"])
+        XCTAssertEqual(text, """
+        Subscription com.example.monthly:
+          ISR: 9.90 ILS (until 2026-10-23)
+          ISR: 1.90 ILS (from 2026-10-24)
+          USA: 2.99 USD (preserved for existing subscribers)
+          1 other territory price(s) not shown.
+
+        """)
+        XCTAssertTrue(PublishingCommand.priceReportText([report], territories: ["FRA"])
+            .contains("No prices are scheduled in the requested territories."))
+    }
+
     func testSchemeResolutionUsesMacVersionInsteadOfSavedIOSVersion() throws {
         let json = #"[{"buildSettings":{"PRODUCT_TYPE":"com.apple.product-type.application","WRAPPER_EXTENSION":"app","SUPPORTED_PLATFORMS":"macosx","SDKROOT":"macosx","PRODUCT_BUNDLE_IDENTIFIER":"com.example.mac","DEVELOPMENT_TEAM":"TEAM","MARKETING_VERSION":"2.3","CURRENT_PROJECT_VERSION":"42"}}]"#
         let resolved = try AppStoreReleaseCoordinator.resolvedProject(project(), buildSettings: json, platform: .macOS)

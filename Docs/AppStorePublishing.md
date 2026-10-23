@@ -1049,3 +1049,28 @@ version's submission readiness and creates or completes a review submission for
 it with the build already attached; it never archives, uploads, or changes
 metadata. App Review's Resolution Center messages have no public API endpoint,
 so replies are still written in App Store Connect.
+
+## Command-line subscription price updates (2.6.0)
+
+Two commands change or inspect only subscription prices, for a project resolved
+by its bundle identifier with the saved credentials. Neither archives, uploads,
+creates versions or localizations, touches review assets, or submits anything:
+
+```sh
+DM="/Applications/Development Management.app/Contents/MacOS/Development Management"
+"$DM" subscription-prices --project /path/to/app --platform IOS --territories ISR,USA
+"$DM" update-subscription-prices --project /path/to/app --platform IOS
+```
+
+`subscription-prices` is read-only and prints each manifest product's live
+schedule in the base territory, every `territoryPrices` territory, and any
+`--territories` passed; other territories are only counted. `update-subscription-prices`
+prints the same report, then applies `basePrice`, `baseTerritory`, and
+`territoryPrices` from `app-store-publishing.json` (or the `.storekit` file) to
+the products that already exist in App Store Connect, using the same nearest
+price-point and append-only scheduling rules as Publish: a changed active price
+starts the next day, and `availableInAllTerritories: true` applies Apple's
+equalized point in every territory. A product missing from App Store Connect
+fails the run; create it with Publish first. Apple does not require App Review
+for a price change to an approved subscription, so the app build and version are
+left exactly as they are.

@@ -1609,3 +1609,15 @@
 "Completed" = "Completed";
 
 "Continue to App Review…" = "Continue to App Review…";
+
+/* Command-line subscription prices */
+"%@: current App Store Connect subscription prices.\n" = "%@: current App Store Connect subscription prices.\n";
+"Prices after the update:\n" = "Prices after the update:\n";
+"Updated %d subscription price schedule(s) on %@ from app-store-publishing.json. No build, upload, or review submission was made.\n" = "Updated %d subscription price schedule(s) on %@ from app-store-publishing.json. No build, upload, or review submission was made.\n";
+"Subscription %@:\n" = "Subscription %@:\n";
+"  No prices are scheduled in the requested territories.\n" = "  No prices are scheduled in the requested territories.\n";
+" (from %@)" = " (from %@)";
+" (until %@)" = " (until %@)";
+" (preserved for existing subscribers)" = " (preserved for existing subscribers)";
+"  %d other territory price(s) not shown.\n" = "  %d other territory price(s) not shown.\n";
+"No subscription products are defined in a local .storekit file or app-store-publishing.json." = "No subscription products are defined in a local .storekit file or app-store-publishing.json.";

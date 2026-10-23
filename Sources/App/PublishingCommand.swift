@@ -2,9 +2,10 @@ import Foundation
 
 /// Invoked directly through the app executable; no menu bar or monitoring. Screenshot capture builds locally; it never writes to ASC.
 enum PublishingCommand {
-    static let commands = ["doctor", "status", "dry-run", "capture-screenshots", "app-status", "replace-screenshots", "resubmit", "publish"]
+    static let commands = ["doctor", "status", "dry-run", "capture-screenshots", "app-status", "replace-screenshots", "resubmit", "publish",
+                           "subscription-prices", "update-subscription-prices"]
     /// Commands that talk to App Store Connect for a project resolved by its bundle identifier.
-    static let projectConnectCommands = ["app-status", "replace-screenshots", "resubmit"]
+    static let projectConnectCommands = ["app-status", "replace-screenshots", "resubmit", "subscription-prices", "update-subscription-prices"]
 
     @MainActor static func run(_ arguments: [String]) async -> Int32 {
         do {
@@ -14,7 +15,7 @@ enum PublishingCommand {
             while index < arguments.count {
                 let key = arguments[index]
                 guard ["--app-id", "--project", "--platform", "--issuer-id", "--key-id", "--private-key-path",
-                       "--version", "--display-types"].contains(key),
+                       "--version", "--display-types", "--territories"].contains(key),
                       index + 1 < arguments.count, options[key] == nil else { throw AppStoreReleaseError.invalid(usage) }
                 options[key] = arguments[index + 1]; index += 2
             }
@@ -107,6 +108,29 @@ enum PublishingCommand {
                         print(try await service.doctor(appID: appID))
                         continue
                     }
+                    if command == "subscription-prices" || command == "update-subscription-prices" {
+                        // Prices only: the manifest's base/territory prices are applied to the existing
+                        // products. No archive, upload, version, localization, or review submission.
+                        let catalog = try StoreKitSubscriptionDiscoveryService().discover(
+                            project: target.project, defaultLocale: config.locale)
+                        let definitions = catalog.groups.flatMap(\.subscriptions)
+                        guard !definitions.isEmpty else { throw AppStoreConnectError.missingSubscriptionDefinitions }
+                        var territories = Set(definitions.compactMap { $0.baseTerritory?.nilIfEmpty?.uppercased() })
+                        territories.formUnion(definitions.flatMap { ($0.territoryPrices ?? [:]).keys.map { $0.uppercased() } })
+                        territories.formUnion((options["--territories"] ?? "").split(separator: ",").map { $0.uppercased() })
+                        if territories.isEmpty { territories = ["USA"] }
+                        let before = try await service.subscriptionPriceReports(appID: appID, productIDs: definitions.map(\.productID))
+                        print(L10n.format("%@: current App Store Connect subscription prices.\n", target.label), terminator: "")
+                        print(priceReportText(before, territories: territories), terminator: "")
+                        guard command == "update-subscription-prices" else { continue }
+                        let after = try await service.updateSubscriptionPrices(appID: appID, catalog: catalog,
+                            onOutput: { print($0, terminator: "") })
+                        print(L10n.text("Prices after the update:\n"), terminator: "")
+                        print(priceReportText(after, territories: territories), terminator: "")
+                        print(L10n.format("Updated %d subscription price schedule(s) on %@ from app-store-publishing.json. No build, upload, or review submission was made.\n",
+                            after.count, target.label), terminator: "")
+                        continue
+                    }
                     guard let version = options["--version"] else { throw AppStoreReleaseError.invalid(usage) }
                     if command == "replace-screenshots" {
                         let displayTypes = (options["--display-types"] ?? "").split(separator: ",").map(String.init)
@@ -160,6 +184,29 @@ enum PublishingCommand {
         }
     }
 
+    /// Lists each product's schedule in the requested territories; other territories are counted only.
+    static func priceReportText(_ reports: [AppStoreConnectSubscriptionPriceReport], territories: Set<String>) -> String {
+        var text = ""
+        for report in reports {
+            text += L10n.format("Subscription %@:\n", report.productID)
+            let shown = report.prices.filter { territories.contains($0.territory.uppercased()) }
+            if shown.isEmpty {
+                text += L10n.text("  No prices are scheduled in the requested territories.\n")
+            }
+            for price in shown {
+                var line = "  \(price.territory): \(price.price)"
+                if let currency = price.currency?.nilIfEmpty { line += " \(currency)" }
+                if let start = price.startDate?.nilIfEmpty { line += L10n.format(" (from %@)", start) }
+                if let end = price.endDate?.nilIfEmpty { line += L10n.format(" (until %@)", end) }
+                if price.preserved { line += L10n.text(" (preserved for existing subscribers)") }
+                text += line + "\n"
+            }
+            let hidden = report.prices.count - shown.count
+            if hidden > 0 { text += L10n.format("  %d other territory price(s) not shown.\n", hidden) }
+        }
+        return text
+    }
+
     static func parsePlatforms(_ value: String?) throws -> Set<AppStorePlatform>? {
         guard let value else { return nil }
         let names = value.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
@@ -177,7 +224,11 @@ enum PublishingCommand {
            Development Management replace-screenshots --project PATH --version X.Y.Z --display-types APP_IPAD_PRO_3GEN_129,APP_IPHONE_67 [--platform IOS]
            Development Management resubmit --project PATH --version X.Y.Z [--platform IOS]
            Development Management publish --project PATH [--platform IOS]
-    app-status reports builds and versions by bundle identifier. replace-screenshots deletes and recreates the
+           Development Management subscription-prices --project PATH [--platform IOS] [--territories ISR,USA]
+           Development Management update-subscription-prices --project PATH [--platform IOS] [--territories ISR,USA]
+    subscription-prices prints the live price schedules of the manifest's products. update-subscription-prices
+    applies the manifest's basePrice/territoryPrices to the existing products without archiving, uploading,
+    changing versions or localizations, or submitting for review. app-status reports builds and versions by bundle identifier. replace-screenshots deletes and recreates the
     display types' sets on an editable (rejected or preparing) version from the validated local screenshots.
     resubmit sends that version, with its attached build, to App Review again. publish runs the full
     archive → upload → metadata/screenshots → submit workflow from the manifest, like the Publish button. Replies in the Resolution

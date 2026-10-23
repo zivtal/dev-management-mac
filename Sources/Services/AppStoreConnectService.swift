@@ -182,6 +182,7 @@ enum AppStoreConnectError: LocalizedError {
     case missingSubscriptionPrice(String)
     case missingSubscriptionReviewScreenshot(String)
     case subscriptionNotFound(String)
+    case missingSubscriptionDefinitions
     case offerCodeReferenceNameConflict(String)
     case offerCodeTerritoriesUnavailable(String)
     case offerCodesRequireReadyApp
@@ -213,6 +214,8 @@ enum AppStoreConnectError: LocalizedError {
             return L10n.format("Subscription %@ needs a paywall review screenshot. Add a subscription screenshot to the project or set reviewScreenshot in app-store-publishing.json.", productID)
         case .subscriptionNotFound(let productID):
             return L10n.format("Subscription %@ does not exist in App Store Connect. Publish the app and subscription before generating production offer codes.", productID)
+        case .missingSubscriptionDefinitions:
+            return L10n.text("No subscription products are defined in a local .storekit file or app-store-publishing.json.")
         case .offerCodeReferenceNameConflict(let referenceName):
             return L10n.format("Offer %@ already exists with different terms. Offer terms cannot be edited; choose a new reference name.", referenceName)
         case .offerCodeTerritoriesUnavailable(let productID):
@@ -1573,6 +1576,59 @@ final class AppStoreConnectService {
             )
         }
         return reviewItems
+    }
+
+    /// Live price schedules for existing subscription products. Read-only.
+    func subscriptionPriceReports(
+        appID: String,
+        productIDs: [String]
+    ) async throws -> [AppStoreConnectSubscriptionPriceReport] {
+        var reports: [AppStoreConnectSubscriptionPriceReport] = []
+        for productID in productIDs {
+            try Task.checkCancellation()
+            let subscriptionID = try await findSubscription(appID: appID, productID: productID)
+            reports.append(AppStoreConnectSubscriptionPriceReport(
+                productID: productID,
+                subscriptionID: subscriptionID,
+                prices: try await subscriptionPrices(subscriptionID: subscriptionID)
+            ))
+        }
+        return reports
+    }
+
+    /// Applies only the catalog's base and territory prices to subscriptions that already
+    /// exist in App Store Connect. Groups, versions, localizations, availability, and review
+    /// assets are untouched, so no build, upload, or review submission is involved.
+    func updateSubscriptionPrices(
+        appID: String,
+        catalog: AppStoreSubscriptionCatalog,
+        onOutput: @escaping @Sendable (String) -> Void
+    ) async throws -> [AppStoreConnectSubscriptionPriceReport] {
+        let definitions = catalog.groups.flatMap(\.subscriptions)
+        guard !definitions.isEmpty else { throw AppStoreConnectError.missingSubscriptionDefinitions }
+        var reports: [AppStoreConnectSubscriptionPriceReport] = []
+        for definition in definitions {
+            try Task.checkCancellation()
+            guard let basePrice = definition.basePrice?.nilIfEmpty else {
+                throw AppStoreConnectError.missingSubscriptionPrice(definition.productID)
+            }
+            let subscriptionID = try await findSubscription(appID: appID, productID: definition.productID)
+            try await reconcileSubscriptionPrices(
+                subscriptionID: subscriptionID,
+                productID: definition.productID,
+                basePrice: basePrice,
+                baseTerritory: definition.baseTerritory?.nilIfEmpty ?? "USA",
+                territoryPrices: definition.territoryPrices ?? [:],
+                allTerritories: definition.availableInAllTerritories == true,
+                onOutput: onOutput
+            )
+            reports.append(AppStoreConnectSubscriptionPriceReport(
+                productID: definition.productID,
+                subscriptionID: subscriptionID,
+                prices: try await subscriptionPrices(subscriptionID: subscriptionID)
+            ))
+        }
+        return reports
     }
 
     func generateSubscriptionOfferCodes(

@@ -769,6 +769,13 @@ struct AppStoreConnectSubscriptionPriceSnapshot: Equatable, Sendable, Identifiab
     let preserved: Bool
 }
 
+/// One subscription's live App Store Connect price schedule, keyed by product identifier.
+struct AppStoreConnectSubscriptionPriceReport: Equatable, Sendable {
+    let productID: String
+    let subscriptionID: String
+    let prices: [AppStoreConnectSubscriptionPriceSnapshot]
+}
+
 struct AppStoreConnectOfferSnapshot: Equatable, Sendable, Identifiable {
     let id: String
     let name: String
