@@ -1160,6 +1160,7 @@
 "The requested App Store name %@ is unavailable for %@. Keeping the existing name %@ and continuing.\n" = "The requested App Store name %@ is unavailable for %@. Keeping the existing name %@ and continuing.\n";
 "No README release section or Git changes could be found after approved version %@." = "No README release section or Git changes could be found after approved version %@.";
 "Git changes after approved version %@ (%@)" = "Git changes after approved version %@ (%@)";
+"Git changes after version %@, the last committed version before approved version %@ (%@)" = "Git changes after version %@, the last committed version before approved version %@ (%@)";
 "Generate What’s New with OpenAI" = "Generate What’s New with OpenAI";
 "Generating What’s New…" = "Generating What’s New…";
 "Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced." = "Uses the latest approved App Store version as the baseline and summarizes customer-visible changes since then. Only What’s New text is replaced.";

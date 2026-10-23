@@ -75,6 +75,66 @@ final class AppStoreReleaseNotesEvidenceTests: XCTestCase {
         }
     }
 
+    func testUncommittedApprovedVersionFallsBackToBoundingCommittedVersions() async throws {
+        // Build-time version bumps that were never committed leave the approved
+        // version absent from history: 1.0.0 was committed, 1.0.1 and 1.0.2 were
+        // built and submitted from the working tree, and 1.0.3 was committed next.
+        let fixture = try await Repository()
+        defer { fixture.remove() }
+        try fixture.write("Version.xcconfig", "MARKETING_VERSION = 1.0.0\n")
+        try fixture.write("Rates.swift", "struct Rates {}\n")
+        try await fixture.commit("Last commit before the approved build")
+        let lowerBound = try await fixture.git(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        try fixture.write("Version.xcconfig", "MARKETING_VERSION = 1.0.3\n")
+        try fixture.write("install.sh", "echo bump\n")
+        try await fixture.commit("Add opt-in install version bump")
+        let upperBound = try await fixture.git(["rev-parse", "HEAD"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        try fixture.write("Version.xcconfig", "MARKETING_VERSION = 1.0.4\n")
+        try fixture.write("Chat.swift", "struct NewAIChat {}\n")
+        try await fixture.commit("Introduce AI chat")
+
+        let result = try await fixture.evidence(previousVersion: "1.0.2")
+        let evidence = try XCTUnwrap(result)
+
+        XCTAssertEqual(evidence.source, .git)
+        XCTAssertTrue(evidence.content.contains("Git baseline: \(lowerBound)"), evidence.content)
+        XCTAssertTrue(evidence.content.contains("1.0.2 was never committed"), evidence.content)
+        XCTAssertTrue(evidence.content.contains("1.0.0 at \(lowerBound)"), evidence.content)
+        XCTAssertTrue(evidence.content.contains("1.0.3 at \(upperBound)"), evidence.content)
+        XCTAssertTrue(evidence.content.contains("Introduce AI chat"))
+        XCTAssertTrue(evidence.content.contains("Add opt-in install version bump"))
+        XCTAssertFalse(evidence.content.contains("Last commit before the approved build"))
+        XCTAssertTrue(evidence.sourceDescription.contains("1.0.0"))
+        XCTAssertTrue(evidence.sourceDescription.contains("1.0.2"))
+    }
+
+    func testApprovedVersionNewerThanEveryCommittedVersionStillRequiresABaseline() async throws {
+        let fixture = try await Repository()
+        defer { fixture.remove() }
+        try fixture.write("Version.xcconfig", "MARKETING_VERSION = 0.9.0\n")
+        try await fixture.commit("Old release")
+        try fixture.write("Version.xcconfig", "MARKETING_VERSION = 0.9.5\n")
+        try await fixture.commit("Newest committed version is still older than the approved one")
+
+        do {
+            _ = try await fixture.evidence(previousVersion: "1.0.0")
+            XCTFail("Without a later committed version the interval is unknown")
+        } catch OpenAIStoreMetadataError.missingReleaseBaseline(let version) {
+            XCTAssertEqual(version, "1.0.0")
+        }
+    }
+
+    func testDeclaredMarketingVersionExtraction() {
+        XCTAssertEqual(AppStoreReleaseNotesEvidenceService.declaredMarketingVersion(in: "MARKETING_VERSION = 2.3.8\nCURRENT_PROJECT_VERSION = 139\n"), "2.3.8")
+        XCTAssertEqual(AppStoreReleaseNotesEvidenceService.declaredMarketingVersion(in: "    MARKETING_VERSION: \"1.0.0\"\n"), "1.0.0")
+        XCTAssertEqual(AppStoreReleaseNotesEvidenceService.declaredMarketingVersion(in: "<key>CFBundleShortVersionString</key>\n\t<string>1.2</string>"), "1.2")
+        XCTAssertNil(AppStoreReleaseNotesEvidenceService.declaredMarketingVersion(in: "MARKETING_VERSION = $(VERSION)\n"))
+        XCTAssertNil(AppStoreReleaseNotesEvidenceService.declaredMarketingVersion(in: "<key>CFBundleShortVersionString</key>\n<string>$(MARKETING_VERSION)</string>"))
+        XCTAssertTrue(AppStoreReleaseNotesEvidenceService.isVersion("1.0.2", olderThan: "1.0.10"))
+        XCTAssertFalse(AppStoreReleaseNotesEvidenceService.isVersion("2.0", olderThan: "1.9.9"))
+        XCTAssertFalse(AppStoreReleaseNotesEvidenceService.isVersion("1.0", olderThan: "1.0.0"))
+    }
+
     func testVersionDeclarationsRequireAnExactMarketingVersion() {
         for contents in [
             "MARKETING_VERSION = 1.0.0;",
@@ -124,7 +184,7 @@ final class AppStoreReleaseNotesEvidenceTests: XCTestCase {
             ])
         }
 
-        func evidence() async throws -> AppStoreReleaseNotesEvidence? {
+        func evidence(previousVersion: String = "1.0.0") async throws -> AppStoreReleaseNotesEvidence? {
             let project = ManagedProject(
                 id: UUID(), displayName: "Example", folderPath: root.path,
                 containerPath: root.appendingPathComponent("Example.xcodeproj").path,
@@ -133,7 +193,7 @@ final class AppStoreReleaseNotesEvidenceTests: XCTestCase {
                 isEnabled: true, marketingVersion: "1.0.1", buildNumber: "2"
             )
             return try await AppStoreReleaseNotesEvidenceService().evidence(
-                project: project, previousVersion: "1.0.0", currentVersion: "1.0.1"
+                project: project, previousVersion: previousVersion, currentVersion: "1.0.1"
             )
         }
     }

@@ -137,13 +137,14 @@ final class AppStoreReleaseNotesEvidenceService {
             .trimmingCharacters(in: .whitespacesAndNewlines) == "true" else {
             return nil
         }
-        guard let baseline = await baselineReference(
+        guard let resolved = await baselineReference(
             previousVersion: previousVersion,
             projectDirectory: projectDirectory
         ) else {
             // Recent commits cannot establish what changed since an approved release.
             throw OpenAIStoreMetadataError.missingReleaseBaseline(previousVersion)
         }
+        let baseline = resolved.reference
 
         // Keep the entire interval, oldest first, without per-commit stats drowning
         // out the commit that introduced a feature before its subsequent fixes.
@@ -159,7 +160,7 @@ final class AppStoreReleaseNotesEvidenceService {
         let content = """
         Previous approved App Store version: \(previousVersion)
         Git baseline: \(baseline)
-        Comparison: approved baseline through HEAD and the current tracked working tree.
+        \(resolved.disclosure.map { "Baseline note: \($0)\n" } ?? "")Comparison: approved baseline through HEAD and the current tracked working tree.
         A = added since approval, M = modified, D = removed. Newly added features take priority over later refinements.
 
         --- Commit history across the full release interval (oldest first) ---
@@ -177,9 +178,7 @@ final class AppStoreReleaseNotesEvidenceService {
         guard !history.isEmpty || !changes.isEmpty || !status.isEmpty else { return nil }
         return AppStoreReleaseNotesEvidence(
             source: .git,
-            sourceDescription: L10n.format(
-                "Git changes after approved version %@ (%@)", previousVersion, baseline
-            ),
+            sourceDescription: resolved.sourceDescription,
             content: content
         )
     }
@@ -218,10 +217,29 @@ final class AppStoreReleaseNotesEvidenceService {
         return String(text.prefix(half)) + marker + String(text.suffix(half))
     }
 
+    /// A Git reference that ends the approved release, plus how it was chosen.
+    private struct ReleaseBaseline {
+        let reference: String
+        let sourceDescription: String
+        /// Set when the approved version itself was never committed and the
+        /// baseline is the nearest committed version before it.
+        let disclosure: String?
+
+        static func exact(_ reference: String, previousVersion: String) -> ReleaseBaseline {
+            ReleaseBaseline(
+                reference: reference,
+                sourceDescription: L10n.format(
+                    "Git changes after approved version %@ (%@)", previousVersion, reference
+                ),
+                disclosure: nil
+            )
+        }
+    }
+
     private func baselineReference(
         previousVersion: String,
         projectDirectory: URL
-    ) async -> String? {
+    ) async -> ReleaseBaseline? {
         let tags = await git(["tag", "--list"], in: projectDirectory)?
             .components(separatedBy: .newlines).filter { !$0.isEmpty } ?? []
         let matchingTags = tags.filter { tag in
@@ -239,7 +257,7 @@ final class AppStoreReleaseNotesEvidenceService {
             if await gitCommandSucceeded([
                 "merge-base", "--is-ancestor", "refs/tags/\(tag)", "HEAD"
             ], in: projectDirectory) {
-                return tag
+                return .exact(tag, previousVersion: previousVersion)
             }
         }
 
@@ -270,18 +288,91 @@ final class AppStoreReleaseNotesEvidenceService {
             for commit in commits {
                 if let contents = await git(["show", "\(commit):\(path)"], in: projectDirectory),
                    Self.containsMarketingVersion(previousVersion, in: contents) {
-                    return commit
+                    return .exact(commit, previousVersion: previousVersion)
                 }
                 // A delivery commit can bump the version and add a new feature
                 // together. Its parent is the final snapshot of the approved version.
                 if let contents = await git(["show", "\(commit)^:\(path)"], in: projectDirectory),
-                   Self.containsMarketingVersion(previousVersion, in: contents) {
-                    return await git(["rev-parse", "\(commit)^"], in: projectDirectory)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                   Self.containsMarketingVersion(previousVersion, in: contents),
+                   let parent = await git(["rev-parse", "\(commit)^"], in: projectDirectory)?
+                       .trimmingCharacters(in: .whitespacesAndNewlines) {
+                    return .exact(parent, previousVersion: previousVersion)
                 }
             }
         }
+
+        // Build-time version bumps that were never committed leave the approved
+        // version absent from history. The last committed version before it is
+        // still a real end of the approved release interval, as long as a later
+        // committed version proves the approved build fell between the two.
+        for path in paths {
+            guard let bounds = await boundingCommittedVersions(
+                around: previousVersion, path: path, in: projectDirectory
+            ) else { continue }
+            return ReleaseBaseline(
+                reference: bounds.lower.commit,
+                sourceDescription: L10n.format(
+                    "Git changes after version %@, the last committed version before approved version %@ (%@)",
+                    bounds.lower.version, previousVersion, bounds.lower.commit
+                ),
+                disclosure: "Approved version \(previousVersion) was never committed to this repository. "
+                    + "The baseline is the last committed version before it, \(bounds.lower.version) at \(bounds.lower.commit); "
+                    + "the next committed version is \(bounds.upper.version) at \(bounds.upper.commit). "
+                    + "Changes between those two commits may already have shipped in version \(previousVersion), "
+                    + "so verify them against the saved App Store text before announcing them as new."
+            )
+        }
         return nil
+    }
+
+    private typealias CommittedVersion = (version: String, commit: String)
+
+    /// Walks the first-parent history of one version file, newest first, and
+    /// returns the last committed version older than `version` together with
+    /// the committed version that immediately followed it.
+    private func boundingCommittedVersions(
+        around version: String,
+        path: String,
+        in directory: URL
+    ) async -> (lower: CommittedVersion, upper: CommittedVersion)? {
+        let commits = await git(["log", "--first-parent", "--format=%H", "HEAD", "--", path], in: directory)?
+            .split(whereSeparator: \.isNewline).map(String.init) ?? []
+        var newer: CommittedVersion?
+        for commit in commits.prefix(500) {
+            guard let contents = await git(["show", "\(commit):\(path)"], in: directory),
+                  let declared = Self.declaredMarketingVersion(in: contents) else { continue }
+            if Self.isVersion(declared, olderThan: version) {
+                // Without a later committed version the interval has no known end.
+                guard let newer else { return nil }
+                return (lower: (declared, commit), upper: newer)
+            }
+            newer = (declared, commit)
+        }
+        return nil
+    }
+
+    static func declaredMarketingVersion(in contents: String) -> String? {
+        let number = "([0-9]+(?:\\.[0-9]+)*)"
+        let patterns = [
+            "(?m)^\\s*MARKETING_VERSION\\s*[=:]\\s*[\\\"']?\(number)[\\\"']?\\s*(?:;|//[^\\n]*|#[^\\n]*)?$",
+            "<key>CFBundleShortVersionString</key>\\s*<string>\(number)</string>"
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: contents, range: NSRange(contents.startIndex..., in: contents)),
+                  let range = Range(match.range(at: 1), in: contents) else { continue }
+            return String(contents[range])
+        }
+        return nil
+    }
+
+    static func isVersion(_ lhs: String, olderThan rhs: String) -> Bool {
+        var left = lhs.split(separator: ".").map { Int($0) ?? 0 }
+        var right = rhs.split(separator: ".").map { Int($0) ?? 0 }
+        let width = max(left.count, right.count)
+        left += Array(repeating: 0, count: width - left.count)
+        right += Array(repeating: 0, count: width - right.count)
+        return left.lexicographicallyPrecedes(right)
     }
 
     static func containsMarketingVersion(_ version: String, in contents: String) -> Bool {
