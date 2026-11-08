@@ -345,6 +345,9 @@
 "No app-store-publishing.json application overrides were found; existing app-level settings are preserved.\n" = "No app-store-publishing.json application overrides were found; existing app-level settings are preserved.\n";
 "Updated the app content-rights declaration.\n" = "Updated the app content-rights declaration.\n";
 "Updated the App Store categories.\n" = "Updated the App Store categories.\n";
+"The App Store categories already match the manifest.\n" = "The App Store categories already match the manifest.\n";
+"App Store Connect has locked the app information while a version is in review; keeping the existing categories (%@).\n" = "App Store Connect has locked the app information while a version is in review; keeping the existing categories (%@).\n";
+"App Store Connect has locked the app information while a version is in review; keeping the existing age-rating declaration.\n" = "App Store Connect has locked the app information while a version is in review; keeping the existing age-rating declaration.\n";
 "Updated the age-rating declaration.\n" = "Updated the age-rating declaration.\n";
 "No StoreKit subscriptions were detected in the app project.\n" = "No StoreKit subscriptions were detected in the app project.\n";
 "Using existing subscription group %@.\n" = "Using existing subscription group %@.\n";

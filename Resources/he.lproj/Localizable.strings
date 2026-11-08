@@ -345,6 +345,9 @@
 "No app-store-publishing.json application overrides were found; existing app-level settings are preserved.\n" = "לא נמצאו דריסות לאפליקציה ב־app-store-publishing.json; ההגדרות הקיימות יישמרו.\n";
 "Updated the app content-rights declaration.\n" = "הצהרת זכויות התוכן של האפליקציה עודכנה.\n";
 "Updated the App Store categories.\n" = "קטגוריות ה־App Store עודכנו.\n";
+"The App Store categories already match the manifest.\n" = "קטגוריות ה־App Store כבר תואמות למניפסט.\n";
+"App Store Connect has locked the app information while a version is in review; keeping the existing categories (%@).\n" = "App Store Connect נעל את פרטי האפליקציה בזמן שגרסה נמצאת בבדיקה; הקטגוריות הקיימות נשמרות (%@).\n";
+"App Store Connect has locked the app information while a version is in review; keeping the existing age-rating declaration.\n" = "App Store Connect נעל את פרטי האפליקציה בזמן שגרסה נמצאת בבדיקה; הצהרת דירוג הגיל הקיימת נשמרת.\n";
 "Updated the age-rating declaration.\n" = "הצהרת דירוג הגיל עודכנה.\n";
 "No StoreKit subscriptions were detected in the app project.\n" = "לא זוהו מינויי StoreKit בפרויקט האפליקציה.\n";
 "Using existing subscription group %@.\n" = "משתמש בקבוצת המינויים הקיימת %@.\n";

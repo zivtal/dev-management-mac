@@ -1329,30 +1329,39 @@ final class AppStoreConnectService {
             guard let info, let infoID = info["id"] as? String else {
                 throw AppStoreConnectError.missingIdentifier("app information")
             }
+            // The app record is shared by every platform. Once one platform's version is in review
+            // the record is locked, so compare the live categories first and only write a change.
             var relationships: [String: Any] = [:]
-            if let category = configuration.primaryCategory?.nilIfEmpty {
-                relationships["primaryCategory"] = [
-                    "data": ["type": "appCategories", "id": category.uppercased()]
-                ]
+            var changes: [String] = []
+            let wanted: [(relationship: String, value: String?)] = [
+                ("primaryCategory", configuration.primaryCategory?.nilIfEmpty?.uppercased()),
+                ("secondaryCategory", configuration.secondaryCategory?.nilIfEmpty?.uppercased())
+            ]
+            for (relationship, value) in wanted {
+                guard let value else { continue }
+                let current = try await optionalResourceID(path: "/v1/appInfos/\(infoID)/\(relationship)")
+                guard current != value else { continue }
+                relationships[relationship] = ["data": ["type": "appCategories", "id": value]]
+                changes.append("\(current ?? "none") → \(value)")
             }
-            if let category = configuration.secondaryCategory?.nilIfEmpty {
-                relationships["secondaryCategory"] = [
-                    "data": ["type": "appCategories", "id": category.uppercased()]
-                ]
-            }
-            if !relationships.isEmpty {
-                _ = try await updateResourceIfNeeded(
-                    path: "/v1/appInfos/\(infoID)",
-                    body: [
-                        "data": [
-                            "type": "appInfos",
-                            "id": infoID,
-                            "relationships": relationships
-                        ]
-                    ],
-                    existing: info
-                )
-                onOutput(L10n.text("Updated the App Store categories.\n"))
+            if relationships.isEmpty {
+                if wanted.contains(where: { $0.value != nil }) {
+                    onOutput(L10n.text("The App Store categories already match the manifest.\n"))
+                }
+            } else {
+                do {
+                    _ = try await request(
+                        method: "PATCH",
+                        path: "/v1/appInfos/\(infoID)",
+                        body: ["data": ["type": "appInfos", "id": infoID, "relationships": relationships]]
+                    )
+                    onOutput(L10n.text("Updated the App Store categories.\n"))
+                } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 {
+                    onOutput(L10n.format(
+                        "App Store Connect has locked the app information while a version is in review; keeping the existing categories (%@).\n",
+                        changes.joined(separator: ", ")
+                    ))
+                }
             }
             if let ageRating = configuration.ageRating, !ageRating.isEmpty {
                 let response = try await request(
@@ -1360,18 +1369,22 @@ final class AppStoreConnectService {
                     path: "/v1/appInfos/\(infoID)/ageRatingDeclaration"
                 )
                 let ageRatingID = try Self.identifier(in: response, named: "age rating declaration")
-                _ = try await updateResourceIfNeeded(
-                    path: "/v1/ageRatingDeclarations/\(ageRatingID)",
-                    body: [
-                        "data": [
-                            "type": "ageRatingDeclarations",
-                            "id": ageRatingID,
-                            "attributes": ageRating.mapValues(\.jsonObject)
-                        ]
-                    ],
-                    existing: response["data"] as? [String: Any]
-                )
-                onOutput(L10n.text("Updated the age-rating declaration.\n"))
+                do {
+                    _ = try await updateResourceIfNeeded(
+                        path: "/v1/ageRatingDeclarations/\(ageRatingID)",
+                        body: [
+                            "data": [
+                                "type": "ageRatingDeclarations",
+                                "id": ageRatingID,
+                                "attributes": ageRating.mapValues(\.jsonObject)
+                            ]
+                        ],
+                        existing: response["data"] as? [String: Any]
+                    )
+                    onOutput(L10n.text("Updated the age-rating declaration.\n"))
+                } catch AppStoreConnectError.requestFailed(let status, _) where status == 409 {
+                    onOutput(L10n.text("App Store Connect has locked the app information while a version is in review; keeping the existing age-rating declaration.\n"))
+                }
             }
         }
 

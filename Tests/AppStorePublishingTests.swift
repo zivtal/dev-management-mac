@@ -759,6 +759,57 @@ final class AppStorePublishingTests: XCTestCase {
         XCTAssertEqual(AppStoreConnectURLProtocolStub.requests.filter { $0.httpMethod == "POST" }.map { $0.url?.path }, ["/v2/appAvailabilities", "/v1/appPriceSchedules"])
     }
 
+    func testMatchingCategoriesAreNotWrittenWhileTheSharedAppRecordIsInReview() async throws {
+        // After the iOS version was submitted, the app record shared with macOS is locked; rewriting
+        // identical categories would be rejected with HTTP 409.
+        let service = try appStoreConnectTestService { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/apps/app-id/appInfos"):
+                return try Self.appStoreConnectResponse(for: request, status: 200,
+                    json: ["data": [["type": "appInfos", "id": "info-id", "attributes": ["state": "WAITING_FOR_REVIEW"]]]])
+            case ("GET", "/v1/appInfos/info-id/primaryCategory"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": ["type": "appCategories", "id": "UTILITIES"]])
+            case ("GET", "/v1/appInfos/info-id/secondaryCategory"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": NSNull()])
+            case ("PATCH", "/v1/appInfos/info-id"):
+                XCTFail("Categories that already match must not be rewritten")
+                return try Self.appStoreConnectResponse(for: request, status: 409, json: ["errors": [["detail": "A relationship value is not acceptable for the current resource state."]]])
+            default:
+                XCTFail("Unexpected request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
+                return try Self.appStoreConnectResponse(for: request, status: 400, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        var output = ""
+        try await service.configureFirstPublication(appID: "app-id",
+            configuration: AppStoreApplicationConfiguration(primaryCategory: "utilities"), onOutput: { output += $0 })
+        XCTAssertTrue(output.contains("categories"), output)
+    }
+
+    func testLockedCategoriesWhileInReviewAreReportedInsteadOfFailingTheRelease() async throws {
+        let service = try appStoreConnectTestService { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/v1/apps/app-id/appInfos"):
+                return try Self.appStoreConnectResponse(for: request, status: 200,
+                    json: ["data": [["type": "appInfos", "id": "info-id", "attributes": ["state": "WAITING_FOR_REVIEW"]]]])
+            case ("GET", "/v1/appInfos/info-id/primaryCategory"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": ["type": "appCategories", "id": "TRAVEL"]])
+            case ("GET", "/v1/appInfos/info-id/secondaryCategory"):
+                return try Self.appStoreConnectResponse(for: request, status: 200, json: ["data": NSNull()])
+            case ("PATCH", "/v1/appInfos/info-id"):
+                return try Self.appStoreConnectResponse(for: request, status: 409, json: ["errors": [["detail": "A relationship value is not acceptable for the current resource state."]]])
+            default:
+                XCTFail("Unexpected request: \(request.httpMethod ?? "") \(request.url?.path ?? "")")
+                return try Self.appStoreConnectResponse(for: request, status: 400, json: [:])
+            }
+        }
+        defer { AppStoreConnectURLProtocolStub.requestHandler = nil }
+        var output = ""
+        try await service.configureFirstPublication(appID: "app-id",
+            configuration: AppStoreApplicationConfiguration(primaryCategory: "UTILITIES"), onOutput: { output += $0 })
+        XCTAssertTrue(output.contains("UTILITIES") && output.contains("TRAVEL"), output)
+    }
+
     func testInitialCommercialSetupPreservesExistingAvailabilityAndPricing() async throws {
         let service = try appStoreConnectTestService { request in
             XCTAssertEqual(request.httpMethod, "GET")
