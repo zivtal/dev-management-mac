@@ -1887,6 +1887,7 @@ final class AppStoreConnectService {
         let grouped = Dictionary(grouping: completeScreenshots) { screenshot in
             "\(screenshot.locale?.lowercased() ?? primaryLocale.lowercased())|\(screenshot.displayType)"
         }
+        var plannedSets: [PlannedScreenshotSet] = []
         for group in grouped.sorted(by: { $0.key < $1.key }) {
             try Task.checkCancellation()
             let sample = group.value[0]
@@ -1960,12 +1961,9 @@ final class AppStoreConnectService {
                 screenshotSetID = try Self.identifier(in: created, named: "screenshot set")
             }
 
-            try await uploadScreenshotBatch(
-                Array(group.value.prefix(10)),
-                screenshotSetID: screenshotSetID,
-                onOutput: onOutput
-            )
+            plannedSets.append(PlannedScreenshotSet(id: screenshotSetID, screenshots: Array(group.value.prefix(10))))
         }
+        try await uploadScreenshotSets(plannedSets, onOutput: onOutput)
     }
 
     static func screenshotSetContents(
@@ -4032,17 +4030,26 @@ final class AppStoreConnectService {
         return try Self.identifier(in: created, named: "localization")
     }
 
-    /// App Store Connect processes screenshots asynchronously and the time it takes varies from
-    /// seconds to many minutes. Every screenshot of a set is sent first, then the whole set is polled
-    /// together; anything that never reaches COMPLETE is deleted and sent again.
+    /// App Store Connect processes screenshots asynchronously. Most finish within a minute, but
+    /// individual jobs are sometimes dropped and never leave UPLOAD_COMPLETE. Every screenshot of
+    /// every set is sent first, then all sets are polled together; once nothing has changed state
+    /// for the stall window, whatever is still pending is deleted and sent again. The stall window
+    /// grows with each attempt so a uniformly slow App Store Connect still gets enough patience.
     var screenshotProcessingPollInterval: Duration = .seconds(5)
     var screenshotProcessingTimeout: Duration = .seconds(600)
+    var screenshotProcessingStallWindow: Duration = .seconds(120)
     var screenshotProcessingSleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     static let screenshotUploadAttempts = 3
+
+    struct PlannedScreenshotSet {
+        let id: String
+        let screenshots: [AppStoreScreenshotAsset]
+    }
 
     private struct PendingScreenshot {
         let id: String
         let asset: AppStoreScreenshotAsset
+        let setIndex: Int
         let position: Int
         var fileName: String { asset.url.lastPathComponent }
     }
@@ -4053,39 +4060,49 @@ final class AppStoreConnectService {
         var description: String {
             errors.isEmpty ? state : "\(state): \(errors.joined(separator: "; "))"
         }
+        var isSettled: Bool { state == "COMPLETE" || state == "FAILED" }
     }
 
-    private func uploadScreenshotBatch(
-        _ screenshots: [AppStoreScreenshotAsset],
-        screenshotSetID: String,
+    private func uploadScreenshotSets(
+        _ sets: [PlannedScreenshotSet],
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws {
-        for screenshot in screenshots {
-            try AppStoreScreenshotValidator.validate(screenshot)
+        for set in sets {
+            for screenshot in set.screenshots {
+                try AppStoreScreenshotValidator.validate(screenshot)
+            }
         }
-        var orderedIDs: [String?] = Array(repeating: nil, count: screenshots.count)
-        var remaining = Array(screenshots.indices)
-        var reordered = false
+        var orderedIDs: [[String?]] = sets.map { Array(repeating: nil, count: $0.screenshots.count) }
+        var remaining: [(setIndex: Int, position: Int)] = sets.indices.flatMap { setIndex in
+            sets[setIndex].screenshots.indices.map { (setIndex: setIndex, position: $0) }
+        }
+        var reorderedSets = Set<Int>()
+        guard !remaining.isEmpty else { return }
         for attempt in 1...Self.screenshotUploadAttempts {
             var pending: [PendingScreenshot] = []
-            for position in remaining {
+            for slot in remaining {
                 try Task.checkCancellation()
-                let id = try await reserveAndUploadScreenshot(screenshots[position], screenshotSetID: screenshotSetID)
-                pending.append(PendingScreenshot(id: id, asset: screenshots[position], position: position))
+                let asset = sets[slot.setIndex].screenshots[slot.position]
+                let id = try await reserveAndUploadScreenshot(asset, screenshotSetID: sets[slot.setIndex].id)
+                pending.append(PendingScreenshot(id: id, asset: asset, setIndex: slot.setIndex, position: slot.position))
             }
             onOutput(L10n.format(
                 "Waiting for App Store Connect to process %d screenshot(s)…\n",
                 pending.count
             ))
+            var idsBySet: [String: Set<String>] = [:]
+            for item in pending {
+                idsBySet[sets[item.setIndex].id, default: []].insert(item.id)
+            }
             let states = try await waitForScreenshotProcessing(
-                ids: Set(pending.map(\.id)),
-                screenshotSetID: screenshotSetID
+                idsBySet: idsBySet,
+                stallWindow: screenshotProcessingStallWindow * attempt
             )
             var stuck: [(PendingScreenshot, ScreenshotDeliveryState)] = []
             for item in pending {
                 let state = states[item.id] ?? ScreenshotDeliveryState(state: "MISSING", errors: [])
                 if state.state == "COMPLETE" {
-                    orderedIDs[item.position] = item.id
+                    orderedIDs[item.setIndex][item.position] = item.id
                     onOutput(L10n.format("Uploaded screenshot %@.\n", item.fileName))
                 } else {
                     stuck.append((item, state))
@@ -4106,8 +4123,8 @@ final class AppStoreConnectService {
                     )
                 )
             }
-            reordered = true
             for (item, state) in stuck {
+                reorderedSets.insert(item.setIndex)
                 onOutput(L10n.format(
                     "App Store Connect left screenshot %@ in state %@; uploading it again (attempt %d of %d).\n",
                     item.fileName,
@@ -4116,14 +4133,15 @@ final class AppStoreConnectService {
                     Self.screenshotUploadAttempts
                 ))
             }
-            remaining = stuck.map(\.0.position)
+            remaining = stuck.map { (setIndex: $0.0.setIndex, position: $0.0.position) }
         }
-        let finalOrder = orderedIDs.compactMap { $0 }
-        if reordered, finalOrder.count > 1 {
+        for setIndex in reorderedSets.sorted() {
+            let finalOrder = orderedIDs[setIndex].compactMap { $0 }
+            guard finalOrder.count > 1 else { continue }
             // Re-sent screenshots land at the end of the set; restore the configured order.
             _ = try await request(
                 method: "PATCH",
-                path: "/v1/appScreenshotSets/\(screenshotSetID)/relationships/appScreenshots",
+                path: "/v1/appScreenshotSets/\(sets[setIndex].id)/relationships/appScreenshots",
                 body: ["data": finalOrder.map { ["type": "appScreenshots", "id": $0] }]
             )
         }
@@ -4177,36 +4195,47 @@ final class AppStoreConnectService {
         return screenshotID
     }
 
-    /// Polls the set until every requested screenshot is COMPLETE or FAILED, or the timeout elapses.
-    /// Returns the last observed state of each requested screenshot; absent entries were not listed.
+    /// Polls every set until each requested screenshot is COMPLETE or FAILED, until no screenshot
+    /// has changed state for `stallWindow`, or until the overall timeout elapses. Returns the last
+    /// observed state of each requested screenshot; absent entries were not listed by the set.
     private func waitForScreenshotProcessing(
-        ids: Set<String>,
-        screenshotSetID: String
+        idsBySet: [String: Set<String>],
+        stallWindow: Duration
     ) async throws -> [String: ScreenshotDeliveryState] {
-        let maxPolls = max(1, Int(screenshotProcessingTimeout / screenshotProcessingPollInterval))
+        let interval = screenshotProcessingPollInterval
+        let maxPolls = max(1, Int(screenshotProcessingTimeout / interval))
+        let stallPolls = max(1, Int(stallWindow / interval))
         var latest: [String: ScreenshotDeliveryState] = [:]
+        var settledIDs = Set<String>()
+        var lastProgressPoll = 0
         for poll in 0..<maxPolls {
             try Task.checkCancellation()
-            let assets = try await pagedData(
-                path: "/v1/appScreenshotSets/\(screenshotSetID)/appScreenshots",
-                query: ["fields[appScreenshots]": "assetDeliveryState,fileName", "limit": "200"]
-            )
-            latest = [:]
-            for asset in assets {
-                guard let id = asset["id"] as? String, ids.contains(id) else { continue }
-                let delivery = Self.attributes(asset)["assetDeliveryState"] as? [String: Any] ?? [:]
-                let errors = (delivery["errors"] as? [[String: Any]] ?? []).compactMap {
-                    ($0["description"] as? String) ?? ($0["message"] as? String)
-                }
-                latest[id] = ScreenshotDeliveryState(
-                    state: delivery["state"] as? String ?? "UNKNOWN",
-                    errors: errors
+            for (setID, ids) in idsBySet.sorted(by: { $0.key < $1.key }) {
+                guard !ids.isSubset(of: settledIDs) else { continue }
+                let assets = try await pagedData(
+                    path: "/v1/appScreenshotSets/\(setID)/appScreenshots",
+                    query: ["fields[appScreenshots]": "assetDeliveryState,fileName", "limit": "200"]
                 )
+                for id in ids where !settledIDs.contains(id) { latest[id] = nil }
+                for asset in assets {
+                    guard let id = asset["id"] as? String, ids.contains(id), !settledIDs.contains(id) else { continue }
+                    let delivery = Self.attributes(asset)["assetDeliveryState"] as? [String: Any] ?? [:]
+                    let errors = (delivery["errors"] as? [[String: Any]] ?? []).compactMap {
+                        ($0["description"] as? String) ?? ($0["message"] as? String)
+                    }
+                    let state = ScreenshotDeliveryState(state: delivery["state"] as? String ?? "UNKNOWN", errors: errors)
+                    latest[id] = state
+                    if state.isSettled {
+                        settledIDs.insert(id)
+                        lastProgressPoll = poll
+                    }
+                }
             }
-            let settled = ids.allSatisfy { ["COMPLETE", "FAILED"].contains(latest[$0]?.state) }
-            if settled { return latest }
+            let allIDs = idsBySet.values.reduce(into: Set<String>()) { $0.formUnion($1) }
+            if allIDs.isSubset(of: settledIDs) { return latest }
+            if poll - lastProgressPoll >= stallPolls { return latest }
             if poll < maxPolls - 1 {
-                try await screenshotProcessingSleep(screenshotProcessingPollInterval)
+                try await screenshotProcessingSleep(interval)
             }
         }
         return latest

@@ -321,42 +321,53 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
 
     // MARK: - Batch processing
 
-    /// Builds a service whose App Store Connect mock reserves screenshots in one set and reports
-    /// per-poll delivery states from `states(pollIndex, fileName)`. Sleeps are recorded, not awaited.
+    /// Builds a service whose App Store Connect mock creates one set per locale/display type,
+    /// reserves screenshots into them, and reports per-poll delivery states from
+    /// `states(pollsSinceLastReservation, fileName)`. Sleeps are recorded, not awaited.
     private func batchService(
         timeout: Duration = .seconds(600),
+        stallWindow: Duration = .seconds(120),
         requests: RequestRecorder,
         sleeps: RequestRecorder,
         reservations: RequestRecorder,
         states: @escaping @Sendable (Int, String) -> String
     ) throws -> AppStoreConnectService {
         let polls = RequestRecorder()
+        let sets = RequestRecorder()
         let service = try service { request in
             let path = request.url!.path
             requests.append("\(request.httpMethod!) \(path)")
             switch (request.httpMethod!, path) {
-            case ("GET", "/v1/appStoreVersionLocalizations/loc/appScreenshotSets"): return ["data": []]
-            case ("POST", "/v1/appScreenshotSets"): return ["data": ["id": "new-set"]]
+            case ("GET", _) where path.hasPrefix("/v1/appStoreVersionLocalizations/") && path.hasSuffix("/appScreenshotSets"):
+                return ["data": []]
+            case ("POST", "/v1/appScreenshotSets"):
+                let id = sets.values.isEmpty ? "new-set" : "set-\(sets.values.count + 1)"
+                sets.append(id)
+                return ["data": ["id": id]]
             case ("POST", "/v1/appScreenshots"):
                 let body = try JSONSerialization.jsonObject(with: request.bodyData()) as? [String: Any]
-                let attributes = ((body?["data"] as? [String: Any])?["attributes"] as? [String: Any]) ?? [:]
-                let fileName = attributes["fileName"] as? String ?? "?"
+                let data = body?["data"] as? [String: Any]
+                let fileName = (data?["attributes"] as? [String: Any])?["fileName"] as? String ?? "?"
+                let setID = (((data?["relationships"] as? [String: Any])?["appScreenshotSet"] as? [String: Any])?["data"] as? [String: Any])?["id"] as? String ?? "?"
                 let id = "shot-\(reservations.values.count + 1)"
-                reservations.append("\(id)=\(fileName)")
+                reservations.append("\(id)=\(fileName)=\(setID)")
+                polls.append("reset")
                 return ["data": ["id": id, "attributes": ["uploadOperations": []]]]
-            case ("GET", "/v1/appScreenshotSets/new-set/appScreenshots"):
-                polls.append(path)
-                let pollIndex = polls.values.count - 1
-                let live = reservations.values.filter { !requests.values.contains("DELETE /v1/appScreenshots/\($0.split(separator: "=")[0])") }
-                return ["data": live.map { entry -> [String: Any] in
-                    let parts = entry.split(separator: "=", maxSplits: 1).map(String.init)
-                    return ["type": "appScreenshots", "id": parts[0],
-                            "attributes": ["fileName": parts[1], "assetDeliveryState": ["state": states(pollIndex, parts[1])]]]
+            case ("GET", _) where path.hasPrefix("/v1/appScreenshotSets/") && path.hasSuffix("/appScreenshots"):
+                let setID = String(path.split(separator: "/")[2])
+                polls.append("poll")
+                let sinceReservation = polls.values.reversed().firstIndex(of: "reset") ?? polls.values.count
+                let deleted = Set(requests.values.compactMap { $0.hasPrefix("DELETE /v1/appScreenshots/") ? String($0.split(separator: "/").last!) : nil })
+                let live = reservations.values.map { $0.split(separator: "=", maxSplits: 2).map(String.init) }
+                    .filter { $0[2] == setID && !deleted.contains($0[0]) }
+                return ["data": live.map { parts -> [String: Any] in
+                    ["type": "appScreenshots", "id": parts[0],
+                     "attributes": ["fileName": parts[1], "assetDeliveryState": ["state": states(sinceReservation, parts[1])]]]
                 }]
-            case ("PATCH", "/v1/appScreenshotSets/new-set/relationships/appScreenshots"):
+            case ("PATCH", _) where path.hasPrefix("/v1/appScreenshotSets/") && path.hasSuffix("/relationships/appScreenshots"):
                 let body = try JSONSerialization.jsonObject(with: request.bodyData()) as? [String: Any]
                 let ids = (body?["data"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String }
-                requests.append("ORDER \(ids.joined(separator: ","))")
+                requests.append("ORDER \(path.split(separator: "/")[2]) \(ids.joined(separator: ","))")
                 return [:]
             case ("PATCH", _) where path.hasPrefix("/v1/appScreenshots/"): return ["data": ["id": String(path.split(separator: "/").last!)]]
             case ("DELETE", _) where path.hasPrefix("/v1/appScreenshots/"): return [:]
@@ -365,12 +376,13 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
         }
         service.screenshotProcessingPollInterval = .seconds(5)
         service.screenshotProcessingTimeout = timeout
+        service.screenshotProcessingStallWindow = stallWindow
         service.screenshotProcessingSleep = { duration in sleeps.append("\(duration)") }
         return service
     }
 
     /// A distinct, valid screenshot saved under `name` so set-level duplicate detection does not trip.
-    private func namedAsset(_ name: String) throws -> AppStoreScreenshotAsset {
+    private func namedAsset(_ name: String, locale: String? = nil) throws -> AppStoreScreenshotAsset {
         let hue = CGFloat(name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 97) / 97
         let source = try asset(accent: CGColor(red: 0.5 + hue / 2, green: 0.9 - hue / 2, blue: 0.2 + hue / 3, alpha: 1))
         let url = source.url.deletingLastPathComponent().appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -378,56 +390,61 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.moveItem(at: source.url, to: url)
         files.append(url)
-        return AppStoreScreenshotAsset(url: url, displayType: source.displayType, locale: nil)
+        return AppStoreScreenshotAsset(url: url, displayType: source.displayType, locale: locale)
     }
 
-    func testAllScreenshotsOfASetAreUploadedBeforeWaitingForProcessing() async throws {
+    func testAllScreenshotsOfEverySetAreUploadedBeforeWaitingForProcessing() async throws {
         let requests = RequestRecorder(), sleeps = RequestRecorder(), reservations = RequestRecorder()
         let service = try batchService(requests: requests, sleeps: sleeps, reservations: reservations) { _, _ in "COMPLETE" }
         let output = RequestRecorder()
-        try await service.uploadScreenshots([try namedAsset("01.png"), try namedAsset("02.png"), try namedAsset("03.png")],
-            localizationIDsByLocale: ["en-us": "loc"], primaryLocale: "en-US", replaceExisting: true, onOutput: { output.append($0) })
+        try await service.uploadScreenshots([
+            try namedAsset("01.png", locale: "en-US"), try namedAsset("02.png", locale: "en-US"),
+            try namedAsset("01.png", locale: "he"), try namedAsset("02.png", locale: "he")
+        ], localizationIDsByLocale: ["en-us": "loc", "he": "loc-he"], primaryLocale: "en-US", replaceExisting: true,
+            onOutput: { output.append($0) })
 
         let values = requests.values
         let lastReservation = values.lastIndex(of: "POST /v1/appScreenshots")!
-        let firstPoll = values.firstIndex(of: "GET /v1/appScreenshotSets/new-set/appScreenshots")!
-        XCTAssertLessThan(lastReservation, firstPoll, "every screenshot must be sent before the first processing poll")
-        XCTAssertEqual(values.filter { $0 == "POST /v1/appScreenshots" }.count, 3)
+        let firstPoll = values.firstIndex { $0.hasPrefix("GET /v1/appScreenshotSets/") }!
+        XCTAssertLessThan(lastReservation, firstPoll, "both locales' sets must be sent before the first processing poll")
+        XCTAssertEqual(values.filter { $0 == "POST /v1/appScreenshotSets" }.count, 2)
+        XCTAssertEqual(values.filter { $0 == "POST /v1/appScreenshots" }.count, 4)
         XCTAssertFalse(values.contains { $0.hasPrefix("DELETE") || $0.hasPrefix("ORDER") })
-        for name in ["01.png", "02.png", "03.png"] {
-            XCTAssertTrue(output.values.contains { $0.contains("Uploaded screenshot \(name)") }, name)
-        }
+        XCTAssertEqual(output.values.filter { $0.hasPrefix("Uploaded screenshot") }.count, 4)
+        XCTAssertEqual(sleeps.values.count, 0)
     }
 
-    func testProcessingSlowerThanFiveMinutesStillSucceeds() async throws {
+    func testUniformlySlowProcessingSucceedsWithGrowingPatience() async throws {
         let requests = RequestRecorder(), sleeps = RequestRecorder(), reservations = RequestRecorder()
-        // 70 polls × 5 s = 350 s of processing, past the previous 300 s per-screenshot cap.
-        let service = try batchService(requests: requests, sleeps: sleeps, reservations: reservations) { poll, _ in
-            poll < 70 ? "UPLOAD_COMPLETE" : "COMPLETE"
+        // Every upload needs 350 s (70 polls) to finish. Attempt 1 gives up after the 120 s stall
+        // window, attempt 2 after 240 s, and attempt 3 waits long enough.
+        let service = try batchService(requests: requests, sleeps: sleeps, reservations: reservations) { sinceReservation, _ in
+            sinceReservation < 70 ? "UPLOAD_COMPLETE" : "COMPLETE"
         }
         try await service.uploadScreenshots([try namedAsset("slow.png")], localizationIDsByLocale: ["en-us": "loc"],
             primaryLocale: "en-US", replaceExisting: true, onOutput: { _ in })
-        XCTAssertEqual(reservations.values.count, 1, "a slow screenshot must not be deleted and re-sent")
-        XCTAssertGreaterThanOrEqual(sleeps.values.count, 70)
-        XCTAssertFalse(requests.values.contains { $0.hasPrefix("DELETE") })
+        XCTAssertEqual(reservations.values.count, 3)
+        XCTAssertEqual(requests.values.filter { $0.hasPrefix("DELETE /v1/appScreenshots/") }.count, 2)
     }
 
-    func testStuckScreenshotIsReplacedAndSetOrderIsRestored() async throws {
+    func testStalledScreenshotIsReplacedSoonAfterTheOthersFinish() async throws {
         let requests = RequestRecorder(), sleeps = RequestRecorder(), reservations = RequestRecorder()
-        // shot-2 (02.png) never leaves UPLOAD_COMPLETE on the first attempt; its replacement shot-3 completes.
-        let service = try batchService(timeout: .seconds(20), requests: requests, sleeps: sleeps, reservations: reservations) { _, name in
-            let stuck = reservations.values.contains("shot-2=\(name)") && !reservations.values.contains { $0.hasPrefix("shot-3=") }
+        // 01 completes at once; 02 never leaves UPLOAD_COMPLETE until it is re-sent as shot-3.
+        let service = try batchService(requests: requests, sleeps: sleeps, reservations: reservations) { _, name in
+            let stuck = reservations.values.contains { $0.hasPrefix("shot-2=\(name)=") } && !reservations.values.contains { $0.hasPrefix("shot-3=") }
             return stuck ? "UPLOAD_COMPLETE" : "COMPLETE"
         }
         let output = RequestRecorder()
         try await service.uploadScreenshots([try namedAsset("01.png"), try namedAsset("02.png")],
             localizationIDsByLocale: ["en-us": "loc"], primaryLocale: "en-US", replaceExisting: true, onOutput: { output.append($0) })
 
-        XCTAssertEqual(reservations.values, ["shot-1=01.png", "shot-2=02.png", "shot-3=02.png"])
+        XCTAssertEqual(reservations.values, ["shot-1=01.png=new-set", "shot-2=02.png=new-set", "shot-3=02.png=new-set"])
         XCTAssertTrue(requests.values.contains("DELETE /v1/appScreenshots/shot-2"))
         XCTAssertFalse(requests.values.contains("DELETE /v1/appScreenshots/shot-1"))
-        XCTAssertEqual(requests.values.filter { $0.hasPrefix("ORDER ") }, ["ORDER shot-1,shot-3"])
+        XCTAssertEqual(requests.values.filter { $0.hasPrefix("ORDER ") }, ["ORDER new-set shot-1,shot-3"])
         XCTAssertTrue(output.values.contains { $0.contains("02.png") && $0.contains("UPLOAD_COMPLETE") })
+        // 120 s stall window at 5 s polls = 24 sleeps, far short of the 600 s timeout.
+        XCTAssertEqual(sleeps.values.count, 24)
     }
 
     func testScreenshotStuckAfterEveryAttemptReportsItsLastState() async throws {
@@ -454,6 +471,7 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
             primaryLocale: "en-US", replaceExisting: true, onOutput: { _ in })
         XCTAssertEqual(reservations.values.count, 2)
         XCTAssertTrue(requests.values.contains("DELETE /v1/appScreenshots/shot-1"))
+        XCTAssertEqual(sleeps.values.count, 0, "a FAILED state is acted on immediately")
     }
 
     private func service(_ handler: @escaping (URLRequest) throws -> [String: Any]) throws -> AppStoreConnectService {
