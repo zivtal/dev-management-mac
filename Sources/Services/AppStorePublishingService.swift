@@ -988,15 +988,30 @@ final class AppStorePublishingService {
     ) -> AppStoreScreenshotAsset? {
         guard ["png", "jpg", "jpeg"].contains(url.pathExtension.lowercased()) else { return nil }
         let dimensions = imageDimensions(at: url) ?? (width: 0, height: 0)
-        let displayType = Self.screenshotDisplayType(
+        let pathHint = Self.platformHint(from: url.path)
+        var platform = platformHint ?? pathHint
+        var displayType = Self.screenshotDisplayType(
+            width: dimensions.width,
+            height: dimensions.height,
+            platform: platform
+        )
+        if displayType == nil, platformHint != nil {
+            // A project-level hint (for example a macOS app) says which family we are collecting,
+            // not what every image in the project is. An image sized for another device family
+            // belongs to that family, so it is filtered out later instead of failing as unsupported.
+            if let otherType = Self.screenshotDisplayType(
                 width: dimensions.width,
                 height: dimensions.height,
-                platform: platformHint ?? Self.platformHint(from: url.path)
-              ) ?? "UNSUPPORTED"
+                platform: pathHint
+            ), let otherPlatform = AppStoreScreenshotPlatform(displayType: otherType), otherPlatform != platformHint {
+                displayType = otherType
+                platform = otherPlatform
+            }
+        }
         return AppStoreScreenshotAsset(
             url: url,
-            displayType: displayType,
-            platform: platformHint,
+            displayType: displayType ?? "UNSUPPORTED",
+            platform: platform,
             locale: automaticallyCaptured ? nil : Self.screenshotLocale(from: url),
             deviceName: deviceName,
             automaticallyCaptured: automaticallyCaptured

@@ -319,6 +319,32 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
         } catch { XCTAssertTrue(error.localizedDescription.contains("editable")) }
     }
 
+    // MARK: - Platform selection
+
+    func testMacProjectIgnoresPhoneAndPadScreenshotsFoundInTheProjectFolder() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        files.append(root)
+        func place(_ source: AppStoreScreenshotAsset, at relativePath: String) throws {
+            let url = root.appendingPathComponent(relativePath)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.moveItem(at: source.url, to: url)
+        }
+        try place(try asset(width: 2064, height: 2752), at: "Screenshots/en-US/iPad-13/01-vault.png")
+        try place(try asset(width: 1320, height: 2868), at: "Screenshots/en-US/iPhone-69/01-vault.png")
+        try place(try asset(width: 2880, height: 1800), at: "Screenshots/mac/mac-window.png")
+        let project = ManagedProject(id: UUID(), displayName: "App", folderPath: root.path,
+            containerPath: root.appendingPathComponent("App.xcodeproj").path, containerKind: .project, scheme: "Mac",
+            configuration: "Release", availableSchemes: ["Mac"], availableConfigurations: ["Release"], isEnabled: true,
+            marketingVersion: "1", buildNumber: "1", applicationPlatform: .macOS)
+        let service = AppStorePublishingService()
+
+        for paths in [[String](), ["Screenshots"]] {
+            let assets = service.localScreenshotAssets(project: project, configuredPaths: paths)
+            XCTAssertEqual(assets.map(\.displayType), ["APP_DESKTOP"], "configured paths \(paths)")
+            XCTAssertEqual(assets.map(\.url.lastPathComponent), ["mac-window.png"], "configured paths \(paths)")
+        }
+    }
+
     // MARK: - Batch processing
 
     /// Builds a service whose App Store Connect mock creates one set per locale/display type,
