@@ -188,6 +188,31 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
         XCTAssertNoThrow(try AppStoreScreenshotValidator.validate(.init(url: output, displayType: "APP_DESKTOP", platform: .mac)))
     }
 
+    @MainActor func testMacCanvasScalesASmallWindowUpToFillTheFrame() throws {
+        // KeyPassX opened a 580 × 500 point window; at 2× that is 1160 × 1000 pixels on a 2560 × 1600 canvas.
+        XCTAssertEqual(MacStoreScreenshotService.canvasRect(for: CGSize(width: 1160, height: 1000)),
+                       CGRect(x: 352, y: 0, width: 1856, height: 1600))
+        XCTAssertEqual(MacStoreScreenshotService.canvasRect(for: CGSize(width: 2560, height: 1600)),
+                       CGRect(x: 0, y: 0, width: 2560, height: 1600))
+        let input = try asset(width: 1160, height: 1000)
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(input.url as CFURL, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let png = try MacStoreScreenshotService.canvas(image)
+        let renderedSource = try XCTUnwrap(CGImageSourceCreateWithData(png as CFData, nil))
+        let rendered = try XCTUnwrap(CGImageSourceCreateImageAtIndex(renderedSource, 0, nil))
+        // The canvas background is gray 0.12; before scaling it covered ~72% of the frame.
+        let metrics = try AppStoreScreenshotValidator.metrics(rendered)
+        XCTAssertLessThan(metrics.dominantFraction, 0.6)
+        XCTAssertFalse(metrics.isNearUniform(for: .mac))
+    }
+
+    @MainActor func testStoreCaptureWindowSizeIsSixteenByTenAndFitsTheScreen() {
+        XCTAssertEqual(MacStoreScreenshotService.storeCaptureWindowSize(visibleFrame: CGRect(x: 0, y: 0, width: 1728, height: 1079)),
+                       CGSize(width: 1280, height: 800))
+        XCTAssertEqual(MacStoreScreenshotService.storeCaptureWindowSize(visibleFrame: CGRect(x: 0, y: 0, width: 1280, height: 720)),
+                       CGSize(width: 1152, height: 720))
+    }
+
     func testInvalidGeneratedCacheIsRemovedButInvalidSuppliedImageIsPreserved() throws {
         let cached = try asset(color: CGColor(gray: 0, alpha: 1))
         let valid = try asset()
