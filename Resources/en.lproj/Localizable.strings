@@ -313,9 +313,9 @@
 "The unresolved App Review submission does not include %@, and Apple does not allow adding items to it." = "The unresolved App Review submission does not include %@, and Apple does not allow adding items to it.";
 "Screenshot asset upload failed." = "Screenshot asset upload failed.";
 "Uploaded screenshot %@.\n" = "Uploaded screenshot %@.\n";
-"Waiting for App Store Connect to process screenshot %@…\n" = "Waiting for App Store Connect to process screenshot %@…\n";
-"App Store Connect failed to process screenshot %@: %@" = "App Store Connect failed to process screenshot %@: %@";
-"Timed out waiting for App Store Connect to process screenshot %@." = "Timed out waiting for App Store Connect to process screenshot %@.";
+"Waiting for App Store Connect to process %d screenshot(s)…\n" = "Waiting for App Store Connect to process %d screenshot(s)…\n";
+"App Store Connect left screenshot %@ in state %@; uploading it again (attempt %d of %d).\n" = "App Store Connect left screenshot %@ in state %@; uploading it again (attempt %d of %d).\n";
+"App Store Connect did not finish processing screenshot %@ after %d attempt(s)." = "App Store Connect did not finish processing screenshot %@ after %d attempt(s).";
 "Copyright owner" = "Copyright owner";
 "Support URL" = "Support URL";
 "Enter the copyright owner in Publishing settings." = "Enter the copyright owner in Publishing settings.";

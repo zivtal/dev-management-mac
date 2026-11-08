@@ -1960,13 +1960,11 @@ final class AppStoreConnectService {
                 screenshotSetID = try Self.identifier(in: created, named: "screenshot set")
             }
 
-            for screenshot in group.value.prefix(10) {
-                try await uploadScreenshot(
-                    screenshot,
-                    screenshotSetID: screenshotSetID,
-                    onOutput: onOutput
-                )
-            }
+            try await uploadScreenshotBatch(
+                Array(group.value.prefix(10)),
+                screenshotSetID: screenshotSetID,
+                onOutput: onOutput
+            )
         }
     }
 
@@ -4034,12 +4032,108 @@ final class AppStoreConnectService {
         return try Self.identifier(in: created, named: "localization")
     }
 
-    private func uploadScreenshot(
-        _ screenshot: AppStoreScreenshotAsset,
+    /// App Store Connect processes screenshots asynchronously and the time it takes varies from
+    /// seconds to many minutes. Every screenshot of a set is sent first, then the whole set is polled
+    /// together; anything that never reaches COMPLETE is deleted and sent again.
+    var screenshotProcessingPollInterval: Duration = .seconds(5)
+    var screenshotProcessingTimeout: Duration = .seconds(600)
+    var screenshotProcessingSleep: @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    static let screenshotUploadAttempts = 3
+
+    private struct PendingScreenshot {
+        let id: String
+        let asset: AppStoreScreenshotAsset
+        let position: Int
+        var fileName: String { asset.url.lastPathComponent }
+    }
+
+    struct ScreenshotDeliveryState: Equatable {
+        let state: String
+        let errors: [String]
+        var description: String {
+            errors.isEmpty ? state : "\(state): \(errors.joined(separator: "; "))"
+        }
+    }
+
+    private func uploadScreenshotBatch(
+        _ screenshots: [AppStoreScreenshotAsset],
         screenshotSetID: String,
         onOutput: @escaping @Sendable (String) -> Void
     ) async throws {
-        try AppStoreScreenshotValidator.validate(screenshot)
+        for screenshot in screenshots {
+            try AppStoreScreenshotValidator.validate(screenshot)
+        }
+        var orderedIDs: [String?] = Array(repeating: nil, count: screenshots.count)
+        var remaining = Array(screenshots.indices)
+        var reordered = false
+        for attempt in 1...Self.screenshotUploadAttempts {
+            var pending: [PendingScreenshot] = []
+            for position in remaining {
+                try Task.checkCancellation()
+                let id = try await reserveAndUploadScreenshot(screenshots[position], screenshotSetID: screenshotSetID)
+                pending.append(PendingScreenshot(id: id, asset: screenshots[position], position: position))
+            }
+            onOutput(L10n.format(
+                "Waiting for App Store Connect to process %d screenshot(s)…\n",
+                pending.count
+            ))
+            let states = try await waitForScreenshotProcessing(
+                ids: Set(pending.map(\.id)),
+                screenshotSetID: screenshotSetID
+            )
+            var stuck: [(PendingScreenshot, ScreenshotDeliveryState)] = []
+            for item in pending {
+                let state = states[item.id] ?? ScreenshotDeliveryState(state: "MISSING", errors: [])
+                if state.state == "COMPLETE" {
+                    orderedIDs[item.position] = item.id
+                    onOutput(L10n.format("Uploaded screenshot %@.\n", item.fileName))
+                } else {
+                    stuck.append((item, state))
+                }
+            }
+            if stuck.isEmpty { break }
+            for (item, _) in stuck {
+                _ = try? await request(method: "DELETE", path: "/v1/appScreenshots/\(item.id)")
+            }
+            guard attempt < Self.screenshotUploadAttempts else {
+                let summary = stuck.map { "\($0.0.fileName) (\($0.1.description))" }.joined(separator: ", ")
+                throw AppStoreConnectError.requestFailed(
+                    408,
+                    L10n.format(
+                        "App Store Connect did not finish processing screenshot %@ after %d attempt(s).",
+                        summary,
+                        Self.screenshotUploadAttempts
+                    )
+                )
+            }
+            reordered = true
+            for (item, state) in stuck {
+                onOutput(L10n.format(
+                    "App Store Connect left screenshot %@ in state %@; uploading it again (attempt %d of %d).\n",
+                    item.fileName,
+                    state.description,
+                    attempt + 1,
+                    Self.screenshotUploadAttempts
+                ))
+            }
+            remaining = stuck.map(\.0.position)
+        }
+        let finalOrder = orderedIDs.compactMap { $0 }
+        if reordered, finalOrder.count > 1 {
+            // Re-sent screenshots land at the end of the set; restore the configured order.
+            _ = try await request(
+                method: "PATCH",
+                path: "/v1/appScreenshotSets/\(screenshotSetID)/relationships/appScreenshots",
+                body: ["data": finalOrder.map { ["type": "appScreenshots", "id": $0] }]
+            )
+        }
+    }
+
+    /// Reserves, uploads, and commits one screenshot without waiting for processing.
+    private func reserveAndUploadScreenshot(
+        _ screenshot: AppStoreScreenshotAsset,
+        screenshotSetID: String
+    ) async throws -> String {
         let fileData = try Data(contentsOf: screenshot.url)
         let reserved = try await request(
             method: "POST",
@@ -4060,82 +4154,62 @@ final class AppStoreConnectService {
             ]
         )
         let screenshotID = try Self.identifier(in: reserved, named: "screenshot")
-        try await uploadReservedAsset(data: fileData, response: reserved)
-        _ = try await request(
-            method: "PATCH",
-            path: "/v1/appScreenshots/\(screenshotID)",
-            body: [
-                "data": [
-                    "type": "appScreenshots",
-                    "id": screenshotID,
-                    "attributes": [
-                        "uploaded": true,
-                        "sourceFileChecksum": Self.md5Hex(fileData)
+        do {
+            try await uploadReservedAsset(data: fileData, response: reserved)
+            _ = try await request(
+                method: "PATCH",
+                path: "/v1/appScreenshots/\(screenshotID)",
+                body: [
+                    "data": [
+                        "type": "appScreenshots",
+                        "id": screenshotID,
+                        "attributes": [
+                            "uploaded": true,
+                            "sourceFileChecksum": Self.md5Hex(fileData)
+                        ]
                     ]
                 ]
-            ]
-        )
-        onOutput(L10n.format(
-            "Waiting for App Store Connect to process screenshot %@…\n",
-            screenshot.url.lastPathComponent
-        ))
-        do {
-            try await waitForScreenshotProcessing(
-                screenshotID,
-                fileName: screenshot.url.lastPathComponent
             )
         } catch {
-            _ = try? await request(
-                method: "DELETE",
-                path: "/v1/appScreenshots/\(screenshotID)"
-            )
+            _ = try? await request(method: "DELETE", path: "/v1/appScreenshots/\(screenshotID)")
             throw error
         }
-        onOutput(L10n.format("Uploaded screenshot %@.\n", screenshot.url.lastPathComponent))
+        return screenshotID
     }
 
+    /// Polls the set until every requested screenshot is COMPLETE or FAILED, or the timeout elapses.
+    /// Returns the last observed state of each requested screenshot; absent entries were not listed.
     private func waitForScreenshotProcessing(
-        _ screenshotID: String,
-        fileName: String
-    ) async throws {
-        for attempt in 0..<150 {
+        ids: Set<String>,
+        screenshotSetID: String
+    ) async throws -> [String: ScreenshotDeliveryState] {
+        let maxPolls = max(1, Int(screenshotProcessingTimeout / screenshotProcessingPollInterval))
+        var latest: [String: ScreenshotDeliveryState] = [:]
+        for poll in 0..<maxPolls {
             try Task.checkCancellation()
-            let response = try await request(
-                method: "GET",
-                path: "/v1/appScreenshots/\(screenshotID)",
-                query: ["fields[appScreenshots]": "assetDeliveryState,fileName"]
+            let assets = try await pagedData(
+                path: "/v1/appScreenshotSets/\(screenshotSetID)/appScreenshots",
+                query: ["fields[appScreenshots]": "assetDeliveryState,fileName", "limit": "200"]
             )
-            let resource = response["data"] as? [String: Any] ?? [:]
-            let attributes = Self.attributes(resource)
-            let delivery = attributes["assetDeliveryState"] as? [String: Any] ?? [:]
-            switch delivery["state"] as? String {
-            case "COMPLETE":
-                return
-            case "FAILED":
+            latest = [:]
+            for asset in assets {
+                guard let id = asset["id"] as? String, ids.contains(id) else { continue }
+                let delivery = Self.attributes(asset)["assetDeliveryState"] as? [String: Any] ?? [:]
                 let errors = (delivery["errors"] as? [[String: Any]] ?? []).compactMap {
                     ($0["description"] as? String) ?? ($0["message"] as? String)
                 }
-                throw AppStoreConnectError.requestFailed(
-                    422,
-                    L10n.format(
-                        "App Store Connect failed to process screenshot %@: %@",
-                        fileName,
-                        errors.joined(separator: "; ").nilIfEmpty ?? L10n.text("Unknown processing error")
-                    )
+                latest[id] = ScreenshotDeliveryState(
+                    state: delivery["state"] as? String ?? "UNKNOWN",
+                    errors: errors
                 )
-            default:
-                if attempt < 149 {
-                    try await Task.sleep(for: .seconds(2))
-                }
+            }
+            let settled = ids.allSatisfy { ["COMPLETE", "FAILED"].contains(latest[$0]?.state) }
+            if settled { return latest }
+            if poll < maxPolls - 1 {
+                try await screenshotProcessingSleep(screenshotProcessingPollInterval)
             }
         }
-        throw AppStoreConnectError.requestFailed(
-            408,
-            L10n.format(
-                "Timed out waiting for App Store Connect to process screenshot %@.",
-                fileName
-            )
-        )
+        return latest
     }
 
     private func uploadReservedAsset(data fileData: Data, response: [String: Any]) async throws {

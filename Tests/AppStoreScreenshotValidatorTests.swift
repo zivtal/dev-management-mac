@@ -13,14 +13,14 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
     }
 
     private func asset(color: CGColor? = nil, width: Int = 2064, height: Int = 2752,
-                       locale: String? = nil) throws -> AppStoreScreenshotAsset {
+                       locale: String? = nil, accent: CGColor? = nil) throws -> AppStoreScreenshotAsset {
         let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
             bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
         context.setFillColor(color ?? CGColor(red: 0.1, green: 0.3, blue: 0.8, alpha: 1))
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
         if color == nil {
-            context.setFillColor(CGColor(red: 0.8, green: 0.6, blue: 0.2, alpha: 1))
+            context.setFillColor(accent ?? CGColor(red: 0.8, green: 0.6, blue: 0.2, alpha: 1))
             context.fill(CGRect(x: 0, y: 0, width: width / 2, height: height / 2))
         }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".png")
@@ -294,8 +294,8 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
             case ("POST", "/v1/appScreenshotSets"): return ["data": ["id": "new-set"]]
             case ("POST", "/v1/appScreenshots"): return ["data": ["id": "new-shot", "attributes": ["uploadOperations": []]]]
             case ("PATCH", "/v1/appScreenshots/new-shot"): return ["data": ["id": "new-shot"]]
-            case ("GET", "/v1/appScreenshots/new-shot"):
-                return ["data": ["id": "new-shot", "attributes": ["assetDeliveryState": ["state": "COMPLETE"]]]]
+            case ("GET", "/v1/appScreenshotSets/new-set/appScreenshots"):
+                return ["data": [["id": "new-shot", "attributes": ["assetDeliveryState": ["state": "COMPLETE"]]]]]
             default: XCTFail("Unexpected mutation/request \(request)"); return [:]
             }
         }
@@ -317,6 +317,143 @@ final class AppStoreScreenshotValidatorTests: XCTestCase {
                 displayType: screenshot.displayType, screenshots: [screenshot], onOutput: { _ in })
             XCTFail()
         } catch { XCTAssertTrue(error.localizedDescription.contains("editable")) }
+    }
+
+    // MARK: - Batch processing
+
+    /// Builds a service whose App Store Connect mock reserves screenshots in one set and reports
+    /// per-poll delivery states from `states(pollIndex, fileName)`. Sleeps are recorded, not awaited.
+    private func batchService(
+        timeout: Duration = .seconds(600),
+        requests: RequestRecorder,
+        sleeps: RequestRecorder,
+        reservations: RequestRecorder,
+        states: @escaping @Sendable (Int, String) -> String
+    ) throws -> AppStoreConnectService {
+        let polls = RequestRecorder()
+        let service = try service { request in
+            let path = request.url!.path
+            requests.append("\(request.httpMethod!) \(path)")
+            switch (request.httpMethod!, path) {
+            case ("GET", "/v1/appStoreVersionLocalizations/loc/appScreenshotSets"): return ["data": []]
+            case ("POST", "/v1/appScreenshotSets"): return ["data": ["id": "new-set"]]
+            case ("POST", "/v1/appScreenshots"):
+                let body = try JSONSerialization.jsonObject(with: request.bodyData()) as? [String: Any]
+                let attributes = ((body?["data"] as? [String: Any])?["attributes"] as? [String: Any]) ?? [:]
+                let fileName = attributes["fileName"] as? String ?? "?"
+                let id = "shot-\(reservations.values.count + 1)"
+                reservations.append("\(id)=\(fileName)")
+                return ["data": ["id": id, "attributes": ["uploadOperations": []]]]
+            case ("GET", "/v1/appScreenshotSets/new-set/appScreenshots"):
+                polls.append(path)
+                let pollIndex = polls.values.count - 1
+                let live = reservations.values.filter { !requests.values.contains("DELETE /v1/appScreenshots/\($0.split(separator: "=")[0])") }
+                return ["data": live.map { entry -> [String: Any] in
+                    let parts = entry.split(separator: "=", maxSplits: 1).map(String.init)
+                    return ["type": "appScreenshots", "id": parts[0],
+                            "attributes": ["fileName": parts[1], "assetDeliveryState": ["state": states(pollIndex, parts[1])]]]
+                }]
+            case ("PATCH", "/v1/appScreenshotSets/new-set/relationships/appScreenshots"):
+                let body = try JSONSerialization.jsonObject(with: request.bodyData()) as? [String: Any]
+                let ids = (body?["data"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String }
+                requests.append("ORDER \(ids.joined(separator: ","))")
+                return [:]
+            case ("PATCH", _) where path.hasPrefix("/v1/appScreenshots/"): return ["data": ["id": String(path.split(separator: "/").last!)]]
+            case ("DELETE", _) where path.hasPrefix("/v1/appScreenshots/"): return [:]
+            default: XCTFail("Unexpected request \(request.httpMethod!) \(path)"); return [:]
+            }
+        }
+        service.screenshotProcessingPollInterval = .seconds(5)
+        service.screenshotProcessingTimeout = timeout
+        service.screenshotProcessingSleep = { duration in sleeps.append("\(duration)") }
+        return service
+    }
+
+    /// A distinct, valid screenshot saved under `name` so set-level duplicate detection does not trip.
+    private func namedAsset(_ name: String) throws -> AppStoreScreenshotAsset {
+        let hue = CGFloat(name.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 97) / 97
+        let source = try asset(accent: CGColor(red: 0.5 + hue / 2, green: 0.9 - hue / 2, blue: 0.2 + hue / 3, alpha: 1))
+        let url = source.url.deletingLastPathComponent().appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: source.url, to: url)
+        files.append(url)
+        return AppStoreScreenshotAsset(url: url, displayType: source.displayType, locale: nil)
+    }
+
+    func testAllScreenshotsOfASetAreUploadedBeforeWaitingForProcessing() async throws {
+        let requests = RequestRecorder(), sleeps = RequestRecorder(), reservations = RequestRecorder()
+        let service = try batchService(requests: requests, sleeps: sleeps, reservations: reservations) { _, _ in "COMPLETE" }
+        let output = RequestRecorder()
+        try await service.uploadScreenshots([try namedAsset("01.png"), try namedAsset("02.png"), try namedAsset("03.png")],
+            localizationIDsByLocale: ["en-us": "loc"], primaryLocale: "en-US", replaceExisting: true, onOutput: { output.append($0) })
+
+        let values = requests.values
+        let lastReservation = values.lastIndex(of: "POST /v1/appScreenshots")!
+        let firstPoll = values.firstIndex(of: "GET /v1/appScreenshotSets/new-set/appScreenshots")!
+        XCTAssertLessThan(lastReservation, firstPoll, "every screenshot must be sent before the first processing poll")
+        XCTAssertEqual(values.filter { $0 == "POST /v1/appScreenshots" }.count, 3)
+        XCTAssertFalse(values.contains { $0.hasPrefix("DELETE") || $0.hasPrefix("ORDER") })
+        for name in ["01.png", "02.png", "03.png"] {
+            XCTAssertTrue(output.values.contains { $0.contains("Uploaded screenshot \(name)") }, name)
+        }
+    }
+
+    func testProcessingSlowerThanFiveMinutesStillSucceeds() async throws {
+        let requests = RequestRecorder(), sleeps = RequestRecorder(), reservations = RequestRecorder()
+        // 70 polls × 5 s = 350 s of processing, past the previous 300 s per-screenshot cap.
+        let service = try batchService(requests: requests, sleeps: sleeps, reservations: reservations) { poll, _ in
+            poll < 70 ? "UPLOAD_COMPLETE" : "COMPLETE"
+        }
+        try await service.uploadScreenshots([try namedAsset("slow.png")], localizationIDsByLocale: ["en-us": "loc"],
+            primaryLocale: "en-US", replaceExisting: true, onOutput: { _ in })
+        XCTAssertEqual(reservations.values.count, 1, "a slow screenshot must not be deleted and re-sent")
+        XCTAssertGreaterThanOrEqual(sleeps.values.count, 70)
+        XCTAssertFalse(requests.values.contains { $0.hasPrefix("DELETE") })
+    }
+
+    func testStuckScreenshotIsReplacedAndSetOrderIsRestored() async throws {
+        let requests = RequestRecorder(), sleeps = RequestRecorder(), reservations = RequestRecorder()
+        // shot-2 (02.png) never leaves UPLOAD_COMPLETE on the first attempt; its replacement shot-3 completes.
+        let service = try batchService(timeout: .seconds(20), requests: requests, sleeps: sleeps, reservations: reservations) { _, name in
+            let stuck = reservations.values.contains("shot-2=\(name)") && !reservations.values.contains { $0.hasPrefix("shot-3=") }
+            return stuck ? "UPLOAD_COMPLETE" : "COMPLETE"
+        }
+        let output = RequestRecorder()
+        try await service.uploadScreenshots([try namedAsset("01.png"), try namedAsset("02.png")],
+            localizationIDsByLocale: ["en-us": "loc"], primaryLocale: "en-US", replaceExisting: true, onOutput: { output.append($0) })
+
+        XCTAssertEqual(reservations.values, ["shot-1=01.png", "shot-2=02.png", "shot-3=02.png"])
+        XCTAssertTrue(requests.values.contains("DELETE /v1/appScreenshots/shot-2"))
+        XCTAssertFalse(requests.values.contains("DELETE /v1/appScreenshots/shot-1"))
+        XCTAssertEqual(requests.values.filter { $0.hasPrefix("ORDER ") }, ["ORDER shot-1,shot-3"])
+        XCTAssertTrue(output.values.contains { $0.contains("02.png") && $0.contains("UPLOAD_COMPLETE") })
+    }
+
+    func testScreenshotStuckAfterEveryAttemptReportsItsLastState() async throws {
+        let requests = RequestRecorder(), sleeps = RequestRecorder(), reservations = RequestRecorder()
+        let service = try batchService(timeout: .seconds(10), requests: requests, sleeps: sleeps, reservations: reservations) { _, _ in "UPLOAD_COMPLETE" }
+        do {
+            try await service.uploadScreenshots([try namedAsset("stuck.png")], localizationIDsByLocale: ["en-us": "loc"],
+                primaryLocale: "en-US", replaceExisting: true, onOutput: { _ in })
+            XCTFail("expected a processing failure")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("stuck.png"), error.localizedDescription)
+            XCTAssertTrue(error.localizedDescription.contains("UPLOAD_COMPLETE"), error.localizedDescription)
+        }
+        XCTAssertEqual(reservations.values.count, 3, "three upload attempts before giving up")
+        XCTAssertEqual(requests.values.filter { $0.hasPrefix("DELETE /v1/appScreenshots/") }.count, 3, "no stuck placeholder is left behind")
+    }
+
+    func testFailedProcessingIsRetriedOnceBeforeSurfacingAppleError() async throws {
+        let requests = RequestRecorder(), sleeps = RequestRecorder(), reservations = RequestRecorder()
+        let service = try batchService(requests: requests, sleeps: sleeps, reservations: reservations) { _, _ in
+            reservations.values.count < 2 ? "FAILED" : "COMPLETE"
+        }
+        try await service.uploadScreenshots([try namedAsset("retry.png")], localizationIDsByLocale: ["en-us": "loc"],
+            primaryLocale: "en-US", replaceExisting: true, onOutput: { _ in })
+        XCTAssertEqual(reservations.values.count, 2)
+        XCTAssertTrue(requests.values.contains("DELETE /v1/appScreenshots/shot-1"))
     }
 
     private func service(_ handler: @escaping (URLRequest) throws -> [String: Any]) throws -> AppStoreConnectService {
@@ -349,4 +486,22 @@ private final class ScreenshotProtocol: URLProtocol {
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
     override func stopLoading() {}
+}
+
+private extension URLRequest {
+    func bodyData() throws -> Data {
+        if let httpBody { return httpBody }
+        let stream = try XCTUnwrap(httpBodyStream)
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count < 0 { throw stream.streamError ?? AppStoreConnectError.invalidResponse }
+            if count == 0 { break }
+            data.append(buffer, count: count)
+        }
+        return data
+    }
 }
